@@ -147,6 +147,7 @@ timestamp, type, data}` and chains to its predecessor.
 | `tool_call` | A tool invocation; `source` is `model` or `module:<name>` | core |
 | `tool_result` | The result, `ok` or `error` | core |
 | `options_change` | A session option changed mid-session: `{key, from, to, source}` for `model`, `compaction_enabled`, `permission_mode`. **(core gap)** Revision 1 had only `model_change` and no event for the compaction toggle it promised. | core |
+| `state_change` | Session lifecycle transition `{from, to, reason?}`. **(core gap)** Found while designing restart recovery: without it the daemon cannot tell from the log whether a session was mid-turn when it died. | core |
 | `compaction` | Context reduced; `mode: clear_results \| summarize`; the log keeps everything | core |
 | `context` | A block injected into the model request outside of messages: `{source, slot: prefix \| suffix, content}` | core, on behalf of modules |
 | `tasks` | Full snapshot of the task list after a change (§9) | core |
@@ -184,6 +185,8 @@ it. Pending outbox items stay pending and trigger a notification when connectivi
 returns; the user then sends them. Deliberately simple.
 
 ### Session states
+
+Recorded by `state_change` events; a log with none is `idle`.
 
 `idle`, `running`, `blocked` (needs user input, or verification vetoes are
 outstanding and the loop stopped making progress), `paused` (budget exhausted or
@@ -819,7 +822,7 @@ milestone sooner.
 
 | Milestone | Delivers | Ends with |
 |---|---|---|
-| **P0 — Protocol and session format** | Event schema (14 types), session states and options, JSON-RPC methods including `hello` and the ephemeral `delta` notification, error codes, the veto template and Current state block, conformance vectors, Go `protocol` package. | The contract that makes the polyglot client split safe. |
+| **P0 — Protocol and session format** | Event schema (15 types), session states and options, JSON-RPC methods including `hello` and the ephemeral `delta` notification, error codes, the veto template and Current state block, conformance vectors, Go `protocol` package. | The contract that makes the polyglot client split safe. |
 | **P1 — Daemon, loop, modules, CLI** | `session`, `agent` (loop, stop gate, both compaction stages, budget, graceful restart), `provider`, `tools`, `module`, modules `skills`, `guard`, `verify`, `report`, the WebSocket API, and `run` / `status` / `attach` / `stop` / `resume`. | Claude Code delegates to nabu with `--done-when`, gets a verifiable report, and the agent is guarded from the first run. |
 | **P2 — TUI** | Bubble Tea client with transcript, task pane, goal, permission overlay. | nabu replaces pi as the daily driver. |
 | **P3 — Memory** | The `memory` module: files, index, recall, curator, consolidation, Claude Code import. | Sessions on a repo start already knowing what the last one learned. |
