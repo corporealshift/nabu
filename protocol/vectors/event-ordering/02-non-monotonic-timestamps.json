@@ -1,0 +1,64 @@
+{
+  "name": "non monotonic timestamps",
+  "description": "Timestamps never reorder events; position does.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-10T00:26:42.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "hi"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-10T00:26:35.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "clock went back"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-09-10T00:26:31.000Z",
+      "type": "state_change",
+      "data": {
+        "from": "running",
+        "to": "idle"
+      }
+    }
+  ],
+  "operation": {
+    "op": "events_after",
+    "last_event_id": null
+  },
+  "expect": {
+    "event_ids": [
+      "01JEVENT000000000000000001",
+      "01JEVENT000000000000000002",
+      "01JEVENT000000000000000003",
+      "01JEVENT000000000000000004"
+    ],
+    "synced": true
+  }
+}

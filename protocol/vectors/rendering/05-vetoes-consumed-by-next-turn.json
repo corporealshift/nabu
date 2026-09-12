@@ -1,0 +1,75 @@
+{
+  "name": "vetoes consumed by next turn",
+  "description": "A veto before the latest assistant message is no longer outstanding.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-10T00:26:42.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "do it"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-10T00:26:43.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "done",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-09-10T00:26:44.000Z",
+      "type": "stop_veto",
+      "data": {
+        "module": "verify",
+        "reason": "open tasks"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000005",
+      "parent_id": "01JEVENT000000000000000004",
+      "timestamp": "2026-09-10T00:26:45.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "fixed",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    }
+  ],
+  "operation": {
+    "op": "render_vetoes"
+  },
+  "expect": {
+    "text": ""
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "name": "state block full",
+  "description": "Every task status glyph, goal line, and bounded budget.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-10T00:26:42.000Z",
+      "type": "goal",
+      "data": {
+        "condition": "all vectors pass",
+        "state": "set",
+        "source": "client"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-10T00:26:43.000Z",
+      "type": "budget",
+      "data": {
+        "max_turns": 40,
+        "source": "client"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-09-10T00:26:44.000Z",
+      "type": "tasks",
+      "data": {
+        "revision": 3,
+        "source": "model",
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "Write validate.go",
+            "status": "done",
+            "blocked_by": [],
+            "evidence": "01JEVENT000000000000000002"
+          },
+          {
+            "id": "t2",
+            "title": "Write cursor.go",
+            "status": "in_progress",
+            "blocked_by": []
+          },
+          {
+            "id": "t3",
+            "title": "Write vectors",
+            "status": "pending",
+            "blocked_by": [
+              "t2"
+            ]
+          },
+          {
+            "id": "t4",
+            "title": "Kotlin runner",
+            "status": "blocked",
+            "blocked_by": [],
+            "note": "no Android project yet"
+          },
+          {
+            "id": "t5",
+            "title": "Old approach",
+            "status": "cancelled",
+            "blocked_by": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000005",
+      "parent_id": "01JEVENT000000000000000004",
+      "timestamp": "2026-09-10T00:26:45.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "go"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000006",
+      "parent_id": "01JEVENT000000000000000005",
+      "timestamp": "2026-09-10T00:26:46.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "ok",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000007",
+      "parent_id": "01JEVENT000000000000000006",
+      "timestamp": "2026-09-10T00:26:47.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "ok",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    }
+  ],
+  "operation": {
+    "op": "render_state"
+  },
+  "expect": {
+    "text": "## Current state\nGoal: all vectors pass (set)\nTasks (1/5 done):\n- [x] t1 Write validate.go\n- [>] t2 Write cursor.go\n- [ ] t3 Write vectors\n- [!] t4 Kotlin runner — blocked: no Android project yet\n- [-] t5 Old approach — cancelled\nBudget: turn 2 of 40"
+  }
+}
