@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** COMPLETE, 2026-09-12. All 17 tasks done; `go build ./... && go vet ./... &&
+go test ./...` is green, and the live smoke test passed against Qwen3.6-35B-A3B on
+llama.cpp (the model called `read`, got the file, loop returned to idle in two turns).
+Findings recorded in "Decisions settled" below: `Store.Close`, `protocol.NewULIDAfter`,
+`agent.CreateOptions`, and the stage-1 compaction range.
+
 **Goal:** The agent loop runs end to end inside the daemon process — persisted
 append-only sessions, a streaming OpenAI-compatible provider, built-in tools, the
 stop gate, budget, and both compaction stages — proven against a scripted fake
@@ -146,7 +152,7 @@ func TestRenderTasksMatchesStateBlock(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+- [x] **Step 2: Run it to see it fail**
 
 Run: `go test ./protocol/ -run TestRenderTasks`
 Expected: compile error `undefined: RenderTasks`.
@@ -195,12 +201,12 @@ with
 	}
 ```
 
-- [ ] **Step 4: Run protocol tests (vectors must still pass)**
+- [x] **Step 4: Run protocol tests (vectors must still pass)**
 
 Run: `go test ./protocol/ -count=1`
 Expected: `ok`.
 
-- [ ] **Step 5: Change `Registry.Init` to take a host factory**
+- [x] **Step 5: Change `Registry.Init` to take a host factory**
 
 In `daemon/module/registry.go` replace the `Init` signature and the call to `m.Init`:
 
@@ -244,12 +250,12 @@ In `daemon/module/registry_test.go` change the call in `TestInitHonoursEnabledFl
 	})
 ```
 
-- [ ] **Step 6: Run the gate**
+- [x] **Step 6: Run the gate**
 
 Run: `go build ./... && go vet ./... && go test ./... -count=1`
 Expected: all `ok`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add protocol/render.go protocol/protocol_test.go daemon/module/registry.go daemon/module/registry_test.go
@@ -264,7 +270,7 @@ git commit -m "protocol: RenderTasks; module: per-module hosts at Init"
 - Create: `daemon/workspace/workspace.go`
 - Create: `daemon/workspace/workspace_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `daemon/workspace/workspace_test.go`:
 
@@ -339,12 +345,12 @@ func TestSlug(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/workspace/`
 Expected: compile errors, `undefined: Resolve`, `undefined: slug`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `daemon/workspace/workspace.go`:
 
@@ -445,12 +451,12 @@ func slug(s string) string {
 
 Also replace the placeholder `daemon/workspace/doc.go` comment so it describes only what exists: keep the file, it already says "resolves the working directory, computes the workspace key … tracks trust" — trust is P1b; leave the comment.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `go test ./daemon/workspace/ -count=1 -v`
 Expected: three PASS lines (the git test may SKIP if git is missing; on this machine it must PASS).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add daemon/workspace/workspace.go daemon/workspace/workspace_test.go
@@ -466,7 +472,7 @@ git commit -m "workspace: resolve path and stable key from git common dir"
 - Create: `daemon/session/store.go`
 - Create: `daemon/session/session_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `daemon/session/session_test.go`:
 
@@ -602,12 +608,12 @@ func TestGetUnknownAndCorrupt(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/session/`
 Expected: compile errors (`undefined: Open`, `ErrNotFound`, …).
 
-- [ ] **Step 3: Implement `session.go`**
+- [x] **Step 3: Implement `session.go`**
 
 ```go
 package session
@@ -757,7 +763,7 @@ func (s *Session) broadcast(e protocol.Event) {
 }
 ```
 
-- [ ] **Step 4: Implement `store.go`**
+- [x] **Step 4: Implement `store.go`**
 
 ```go
 package session
@@ -961,12 +967,12 @@ func (st *Store) RecoverInterrupted() ([]string, error) {
 
 
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `go test ./daemon/session/ -count=1 -v`
 Expected: five PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add daemon/session/session.go daemon/session/store.go daemon/session/session_test.go
@@ -981,7 +987,7 @@ git commit -m "session: append-only JSONL store with validation and reload"
 - Modify: `daemon/session/session.go` (add `Subscribe`)
 - Create: `daemon/session/store_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `daemon/session/store_test.go`:
 
@@ -1063,12 +1069,12 @@ func TestListAndRecover(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/session/ -run 'Subscribe|Slow|ListAndRecover'`
 Expected: `undefined: (*Session).Subscribe` compile error.
 
-- [ ] **Step 3: Add `Subscribe`**
+- [x] **Step 3: Add `Subscribe`**
 
 Append to `daemon/session/session.go`:
 
@@ -1098,12 +1104,12 @@ func (s *Session) Subscribe(buf int) (<-chan protocol.Event, func()) {
 }
 ```
 
-- [ ] **Step 4: Run the package tests**
+- [x] **Step 4: Run the package tests**
 
 Run: `go test ./daemon/session/ -count=1`
 Expected: `ok`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add daemon/session/session.go daemon/session/store_test.go
@@ -1120,7 +1126,7 @@ git commit -m "session: subscriptions, listing, restart recovery"
 - Create: `daemon/provider/registry.go`
 - Create: `daemon/provider/provider_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `daemon/provider/provider_test.go`:
 
@@ -1195,12 +1201,12 @@ func TestRegistryResolve(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/provider/`
 Expected: compile errors (`undefined: Fake`, `NewRegistry`, …).
 
-- [ ] **Step 3: Implement `provider.go`**
+- [x] **Step 3: Implement `provider.go`**
 
 ```go
 package provider
@@ -1284,7 +1290,7 @@ func (c Config) withDefaults() Config {
 }
 ```
 
-- [ ] **Step 4: Implement `fake.go`**
+- [x] **Step 4: Implement `fake.go`**
 
 ```go
 package provider
@@ -1355,7 +1361,7 @@ func (f *Fake) CallCount() int {
 }
 ```
 
-- [ ] **Step 5: Implement `registry.go`**
+- [x] **Step 5: Implement `registry.go`**
 
 ```go
 package provider
@@ -1412,12 +1418,12 @@ func (r *Registry) Names() []string {
 }
 ```
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `go test ./daemon/provider/ -count=1`
 Expected: `ok`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add daemon/provider/provider.go daemon/provider/fake.go daemon/provider/registry.go daemon/provider/provider_test.go
@@ -1432,7 +1438,7 @@ git commit -m "provider: request/response types, scripted fake, registry"
 - Create: `daemon/provider/openai.go`
 - Create: `daemon/provider/openai_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `daemon/provider/openai_test.go`:
 
@@ -1557,12 +1563,12 @@ func TestOpenAIErrorEventMidStream(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/provider/ -run OpenAI`
 Expected: `undefined: NewOpenAI`.
 
-- [ ] **Step 3: Implement `openai.go`**
+- [x] **Step 3: Implement `openai.go`**
 
 ```go
 package provider
@@ -1889,12 +1895,12 @@ func normalizeArgs(s string) json.RawMessage {
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `go test ./daemon/provider/ -count=1 -run OpenAI -v`
 Expected: three PASS. Note `TestOpenAINonStreamErrorBody` sets `Retries: -1` so a 400 is not retried; the retry path is Task 7.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add daemon/provider/openai.go daemon/provider/openai_test.go
@@ -1911,7 +1917,7 @@ git commit -m "provider: openai-compatible streaming client with tool-call accum
 The retry loop and the semaphore already live in `openai.go` (Task 6). This task
 proves them.
 
-- [ ] **Step 1: Write the tests**
+- [x] **Step 1: Write the tests**
 
 `daemon/provider/limiter_test.go`:
 
@@ -2005,12 +2011,12 @@ func TestMaxInFlightSerialises(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run them**
+- [x] **Step 2: Run them**
 
 Run: `go test ./daemon/provider/ -count=1 -v`
 Expected: all PASS (the retry test takes about a second).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add daemon/provider/limiter_test.go
@@ -2026,7 +2032,7 @@ git commit -m "provider: prove retry-with-backoff and max_in_flight"
 - Create: `daemon/tools/files.go`
 - Create: `daemon/tools/files_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `daemon/tools/files_test.go`:
 
@@ -2179,12 +2185,12 @@ func TestGlobToRegexp(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/tools/`
 Expected: compile errors (`undefined: Builtins`, `globToRegexp`).
 
-- [ ] **Step 3: Implement `builtins.go`**
+- [x] **Step 3: Implement `builtins.go`**
 
 ```go
 package tools
@@ -2290,7 +2296,7 @@ func truncate(out string, max int) string {
 func schema(s string) json.RawMessage { return json.RawMessage(s) }
 ```
 
-- [ ] **Step 4: Implement `files.go`**
+- [x] **Step 4: Implement `files.go`**
 
 ```go
 package tools
@@ -2654,12 +2660,12 @@ func (b *Builtins) taskTool() module.Tool { return module.Tool{Name: "task.updat
 type TaskStore interface{}
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `go test ./daemon/tools/ -count=1 -v`
 Expected: `TestWriteReadEdit`, `TestGlobAndGrep`, `TestGlobToRegexp` PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add daemon/tools/builtins.go daemon/tools/files.go daemon/tools/files_test.go
@@ -2675,7 +2681,7 @@ git commit -m "tools: read, write, edit, glob, grep as a module"
 - Create: `daemon/tools/bash_test.go`
 - Modify: `daemon/tools/builtins.go` (delete the `bashTool` stub)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `daemon/tools/bash_test.go`:
 
@@ -2737,12 +2743,12 @@ func TestBashOutputTruncated(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/tools/ -run Bash`
 Expected: FAIL — the stub tool has a nil `Run` (panic) or wrong output.
 
-- [ ] **Step 3: Implement `bash.go` and delete the stub**
+- [x] **Step 3: Implement `bash.go` and delete the stub**
 
 `daemon/tools/bash.go`:
 
@@ -2837,12 +2843,12 @@ func (b *Builtins) bashTool() module.Tool {
 
 Delete `func (b *Builtins) bashTool() module.Tool { return module.Tool{Name: "bash"} }` from `builtins.go`.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `go test ./daemon/tools/ -count=1 -run Bash -v`
 Expected: three PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add daemon/tools/bash.go daemon/tools/bash_test.go daemon/tools/builtins.go
@@ -2858,7 +2864,7 @@ git commit -m "tools: bash with timeout, exit status, and output cap"
 - Create: `daemon/tools/tasks_test.go`
 - Modify: `daemon/tools/builtins.go` (delete the `taskTool` stub and the placeholder `TaskStore`)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `daemon/tools/tasks_test.go`:
 
@@ -2981,12 +2987,12 @@ func TestTaskUpdateToolRendersList(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/tools/ -run 'Merge|TaskUpdate'`
 Expected: compile errors (`undefined: Merge`; `TaskStore` has no `UpdateTasks`).
 
-- [ ] **Step 3: Implement `tasks.go`; delete the stubs in `builtins.go`**
+- [x] **Step 3: Implement `tasks.go`; delete the stubs in `builtins.go`**
 
 Remove from `builtins.go`:
 
@@ -3138,12 +3144,12 @@ func (b *Builtins) taskTool() module.Tool {
 }
 ```
 
-- [ ] **Step 4: Run the whole tools package**
+- [x] **Step 4: Run the whole tools package**
 
 Run: `go test ./daemon/tools/ -count=1`
 Expected: `ok`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add daemon/tools/tasks.go daemon/tools/tasks_test.go daemon/tools/builtins.go
@@ -3159,7 +3165,7 @@ git commit -m "tools: task.update with whole-list merge and mechanical evidence"
 - Create: `daemon/agent/request.go`
 - Create: `daemon/agent/request_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `daemon/agent/request_test.go`:
 
@@ -3276,12 +3282,12 @@ func TestBuildRequestAfterSummarize(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/agent/`
 Expected: `undefined: buildRequest`.
 
-- [ ] **Step 3: Implement `config.go`**
+- [x] **Step 3: Implement `config.go`**
 
 ```go
 package agent
@@ -3347,7 +3353,7 @@ Rules:
 - When the work is finished, reply with a short summary and no tool calls. If you cannot proceed without the user, say exactly what you need.`
 ```
 
-- [ ] **Step 4: Implement `request.go`**
+- [x] **Step 4: Implement `request.go`**
 
 ```go
 package agent
@@ -3446,12 +3452,12 @@ func firstOf[T any](log []protocol.Event) (*T, bool) {
 }
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `go test ./daemon/agent/ -count=1 -v`
 Expected: two PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add daemon/agent/config.go daemon/agent/request.go daemon/agent/request_test.go
@@ -3470,7 +3476,7 @@ The Manager does not exist yet; this task defines the handle and host against a
 small `core` interface that Task 13's Manager will satisfy, so the handle can be
 tested on its own.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `daemon/agent/handle_test.go`:
 
@@ -3565,12 +3571,12 @@ func TestHostToolCallCarriesModuleSource(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/agent/ -run 'Handle|Host'`
 Expected: compile errors (`undefined: sessionHandle`, `newHost`).
 
-- [ ] **Step 3: Implement `handle.go`**
+- [x] **Step 3: Implement `handle.go`**
 
 ```go
 package agent
@@ -3699,12 +3705,12 @@ func (u uiAPI) Ask(ctx context.Context, s module.Session, question string, choic
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `go test ./daemon/agent/ -count=1`
 Expected: `ok`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add daemon/agent/handle.go daemon/agent/handle_test.go
@@ -3723,7 +3729,7 @@ git commit -m "agent: module session handle and per-module host"
 This task builds everything around the loop. `runLoop` is a stub that immediately
 returns the session to `idle`; Task 14 fills it in.
 
-- [ ] **Step 1: Add `DefaultModel` to Config**
+- [x] **Step 1: Add `DefaultModel` to Config**
 
 In `daemon/agent/config.go`, add to the `Config` struct after `SystemPrompt`:
 
@@ -3740,7 +3746,7 @@ and in `withDefaults`, after the `SystemPrompt` block:
 	}
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 `daemon/agent/manager_test.go`:
 
@@ -4035,12 +4041,12 @@ func testLogger() *slog.Logger {
 }
 ```
 
-- [ ] **Step 3: Run to see it fail**
+- [x] **Step 3: Run to see it fail**
 
 Run: `go test ./daemon/agent/ -run Manager`
 Expected: compile errors (`undefined: New`, `Deps`, …).
 
-- [ ] **Step 4: Implement `manager.go`**
+- [x] **Step 4: Implement `manager.go`**
 
 ```go
 package agent
@@ -4663,7 +4669,7 @@ func (m *Manager) dataDir(name string) (string, error) {
 // running state itself.
 ```
 
-- [ ] **Step 5: Add `ModuleConfig` to Config**
+- [x] **Step 5: Add `ModuleConfig` to Config**
 
 Append to `daemon/agent/config.go`:
 
@@ -4693,7 +4699,7 @@ func (c Config) ModuleConfig(name string) module.Config {
 
 Add `"github.com/corporealshift/nabu/daemon/module"` to the config.go imports.
 
-- [ ] **Step 6: Add the stub loop so the package compiles**
+- [x] **Step 6: Add the stub loop so the package compiles**
 
 Create `daemon/agent/runner.go`:
 
@@ -4714,12 +4720,12 @@ With the stub, `Prompt` leaves the session in `running`; `TestPromptOnTerminalSe
 calls `WaitIdle` (which returns at once because the goroutine finishes) and then `Stop`,
 which appends `completed` and the report. That test passes with the stub.
 
-- [ ] **Step 7: Run the tests**
+- [x] **Step 7: Run the tests**
 
 Run: `go test ./daemon/agent/ -count=1 -v`
 Expected: every test in the file PASSes.
 
-- [ ] **Step 8: Run the gate and commit**
+- [x] **Step 8: Run the gate and commit**
 
 ```bash
 go build ./... && go vet ./... && go test ./... -count=1
@@ -4735,7 +4741,7 @@ git commit -m "agent: manager, tool invocation, and session lifecycle"
 - Modify: `daemon/agent/runner.go` (replace the stub)
 - Create: `daemon/agent/runner_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `daemon/agent/runner_test.go`:
 
@@ -4914,13 +4920,13 @@ func TestPromptDuringRunIsPickedUpNextTurn(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/agent/ -run Loop`
 Expected: FAIL — the stub loop never calls the provider, so `WaitIdle` returns with the
 session still `running`.
 
-- [ ] **Step 3: Implement the loop**
+- [x] **Step 3: Implement the loop**
 
 Replace `daemon/agent/runner.go` entirely:
 
@@ -5034,7 +5040,7 @@ func (m *Manager) toIdle(ctx context.Context, h *sessionHandle, reason string) e
 
 Drop `"errors"` from the import block: nothing in runner.go uses it.
 
-- [ ] **Step 4: Handle the interrupted partial message**
+- [x] **Step 4: Handle the interrupted partial message**
 
 The interrupt test expects the last event to be the state change appended by
 `Interrupt`. The loop must not append a partial assistant message when the provider
@@ -5043,12 +5049,12 @@ that already streamed text are handled in P1b when real cancellation mid-stream 
 wired to the API; the spec's `interrupted: true` field is populated there. Confirm the
 current behaviour matches the test: on `ctx.Err()` the loop returns without appending.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `go test ./daemon/agent/ -count=1 -v`
 Expected: every test PASSes, including the Task 13 ones.
 
-- [ ] **Step 6: Run the gate and commit**
+- [x] **Step 6: Run the gate and commit**
 
 ```bash
 go build ./... && go vet ./... && go test ./... -count=1
@@ -5065,7 +5071,7 @@ git commit -m "agent: the turn loop with streaming, tools, and usage"
 - Modify: `daemon/agent/runner.go` (call the gate; add the budget check)
 - Create: `daemon/agent/stop_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `daemon/agent/stop_test.go`:
 
@@ -5233,12 +5239,12 @@ func TestVetoesAreClearedByTheNextTurn(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/agent/ -run 'Veto|Budget|Progress|Blocked'`
 Expected: FAIL — the loop goes idle without asking the gate.
 
-- [ ] **Step 3: Implement `stop.go`**
+- [x] **Step 3: Implement `stop.go`**
 
 ```go
 package agent
@@ -5415,7 +5421,7 @@ func budgetExceeded(st protocol.State) (bool, string) {
 }
 ```
 
-- [ ] **Step 4: Wire the gate and the budget into the loop**
+- [x] **Step 4: Wire the gate and the budget into the loop**
 
 In `daemon/agent/runner.go`, replace the no-tool-call branch:
 
@@ -5434,12 +5440,12 @@ and add the budget check at the top of `turn`, right after `st := protocol.Proje
 	}
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `go test ./daemon/agent/ -count=1 -v`
 Expected: every test PASSes.
 
-- [ ] **Step 6: Run the gate and commit**
+- [x] **Step 6: Run the gate and commit**
 
 ```bash
 go build ./... && go vet ./... && go test ./... -count=1
@@ -5456,7 +5462,7 @@ git commit -m "agent: stop gate, veto feedback, progress detector, budget"
 - Modify: `daemon/agent/runner.go` (`afterTurn` calls it)
 - Create: `daemon/agent/compaction_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `daemon/agent/compaction_test.go`:
 
@@ -5611,12 +5617,12 @@ func TestCompactionDisabledHardStops(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to see it fail**
+- [x] **Step 2: Run to see it fail**
 
 Run: `go test ./daemon/agent/ -run 'Clear|Summarize|CompactionDisabled'`
 Expected: FAIL — `afterTurn` returns without compacting.
 
-- [ ] **Step 3: Implement `compaction.go`**
+- [x] **Step 3: Implement `compaction.go`**
 
 ```go
 package agent
@@ -5843,7 +5849,7 @@ func truncateText(s string, max int) string {
 }
 ```
 
-- [ ] **Step 4: Call it from `afterTurn`**
+- [x] **Step 4: Call it from `afterTurn`**
 
 In `daemon/agent/runner.go`, replace `afterTurn`:
 
@@ -5862,12 +5868,12 @@ func (m *Manager) afterTurn(ctx context.Context, h *sessionHandle, pcfg provider
 }
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `go test ./daemon/agent/ -count=1 -v`
 Expected: every test PASSes.
 
-- [ ] **Step 6: Run the gate and commit**
+- [x] **Step 6: Run the gate and commit**
 
 ```bash
 go build ./... && go vet ./... && go test ./... -count=1
@@ -5883,7 +5889,7 @@ git commit -m "agent: two-stage compaction as events"
 - Create: `daemon/agent/live_test.go`
 - Modify: `ARCHITECTURE.md` (the Verifying section)
 
-- [ ] **Step 1: Write the env-gated live test**
+- [x] **Step 1: Write the env-gated live test**
 
 `daemon/agent/live_test.go`:
 
@@ -6012,12 +6018,12 @@ func firstLine(s string) string {
 }
 ```
 
-- [ ] **Step 2: Run the hermetic gate**
+- [x] **Step 2: Run the hermetic gate**
 
 Run: `go build ./... && go vet ./... && go test ./... -count=1`
 Expected: all packages `ok`; the live test reports SKIP.
 
-- [ ] **Step 3: Run the live smoke test**
+- [x] **Step 3: Run the live smoke test**
 
 Confirm the model server is up first:
 
@@ -6042,7 +6048,7 @@ field (log the raw SSE by adding a temporary `t.Log` in `readStream`); or the mo
 ignores the tools entirely (try a more explicit prompt, and record the finding — that
 is a real signal about which local model can drive nabu).
 
-- [ ] **Step 4: Record the result in ARCHITECTURE.md**
+- [x] **Step 4: Record the result in ARCHITECTURE.md**
 
 In `ARCHITECTURE.md`, replace the Verifying section with:
 
@@ -6065,14 +6071,14 @@ NABU_LIVE_BASE_URL=http://localhost:8033/v1 NABU_LIVE_MODEL=qwen3.6-35b-a3b \
 ```
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add daemon/agent/live_test.go ARCHITECTURE.md
 git commit -m "agent: live smoke test against a local OpenAI-compatible server"
 ```
 
-- [ ] **Step 6: Push the branch**
+- [x] **Step 6: Push the branch**
 
 ```bash
 git push -u origin p1
