@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to a branch cancels the run still going for it. This repo is
+# private on the free tier, so in-flight runs are billed minutes worth
+# reclaiming.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      # Both platforms always report. nabu targets Windows, and knowing whether
+      # a failure is platform-specific is the whole reason the matrix exists.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # There is no go.sum yet: the module is standard library only. Keying
+          # the cache on go.mod keeps this working if dependencies appear.
+          cache-dependency-path: go.mod
+
+      # bash is present on the Windows runner too, so one script covers both.
+      - name: gofmt
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt: these files need formatting"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: build
+        run: go build ./...
+
+      - name: vet
+        run: go vet ./...
+
+      # The live smoke test skips itself unless NABU_LIVE_BASE_URL is set, and
+      # it never is here: it needs the local model server on the desktop.
+      - name: test
+        run: go test ./...
