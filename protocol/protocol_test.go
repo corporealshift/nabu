@@ -78,3 +78,21 @@ func TestRenderTasksMatchesStateBlock(t *testing.T) {
 		t.Fatalf("empty: %q", got)
 	}
 }
+
+func TestNewULIDAfterIsMonotonic(t *testing.T) {
+	// Same-millisecond generation must still order by creation.
+	prev := ""
+	for i := 0; i < 200; i++ {
+		id := NewULIDAfter(prev)
+		if ValidateULID(id) != nil {
+			t.Fatalf("invalid: %s", id)
+		}
+		if prev != "" && id <= prev {
+			t.Fatalf("not monotonic at %d: %s <= %s", i, id, prev)
+		}
+		prev = id
+	}
+	if NewULIDAfter("not-a-ulid") == "" {
+		t.Fatal("a non-ULID prev must still yield an id")
+	}
+}

@@ -68,6 +68,11 @@ steps give. Every other task fits comfortably in one pass.
 - **`Store.Close` exists** and closes every open session file. The daemon needs it at
   shutdown, and on Windows an open handle blocks directory removal, so every test
   that opens a store must close it (the `openAt` helper in `session_test.go` does).
+- **Ordering needs `protocol.NewULIDAfter`, not `NewULID`.** Plain ULIDs order only by
+  millisecond; two generated in the same millisecond order by their random bits, which
+  is not creation order. Both sequences that must stay ordered — a session's events and
+  a store's session ids — generate through `NewULIDAfter(prev)`. Found when two
+  sessions created in one millisecond listed out of order.
 
 ## File structure
 

@@ -55,7 +55,6 @@ func (s *Session) Append(t protocol.EventType, data any) (protocol.Event, error)
 		return protocol.Event{}, ErrClosed
 	}
 	e := protocol.Event{
-		ID:        protocol.NewULID(),
 		Timestamp: time.Now().UTC().Truncate(time.Millisecond),
 		Type:      t,
 		Data:      raw,
@@ -65,12 +64,11 @@ func (s *Session) Append(t protocol.EventType, data any) (protocol.Event, error)
 		pid := last.ID
 		e.ParentID = &pid
 		// Ids must sort in log order even within one millisecond.
-		for e.ID <= last.ID {
-			lt, _ := protocol.ULIDTime(last.ID)
-			e.ID = protocol.NewULIDAt(lt.Add(time.Millisecond))
-		}
+		e.ID = protocol.NewULIDAfter(last.ID)
 	} else if t != protocol.EventSession {
 		return protocol.Event{}, fmt.Errorf("first event must be session, got %s", t)
+	} else {
+		e.ID = protocol.NewULID()
 	}
 	if err := protocol.ValidateEvent(e); err != nil {
 		return protocol.Event{}, err

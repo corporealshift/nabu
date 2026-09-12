@@ -21,8 +21,10 @@ var ErrNotFound = errors.New("session not found")
 // Store owns <root>/sessions/: one <id>.jsonl per session.
 type Store struct {
 	root string
-	mu   sync.Mutex
-	open map[string]*Session
+
+	mu     sync.Mutex
+	open   map[string]*Session
+	lastID string // ensures session ids sort by creation order
 }
 
 // Open creates <root>/sessions if needed and returns a Store.
@@ -40,7 +42,12 @@ func (st *Store) Dir() string { return st.root }
 // Create starts a new session whose first event records the workspace and
 // options.
 func (st *Store) Create(workspace, key string, opts protocol.Options) (*Session, error) {
-	id := protocol.NewULID()
+	// Session ids order listings, so two sessions created in the same
+	// millisecond must still sort by creation order.
+	st.mu.Lock()
+	id := protocol.NewULIDAfter(st.lastID)
+	st.lastID = id
+	st.mu.Unlock()
 	path := filepath.Join(st.root, id+".jsonl")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
