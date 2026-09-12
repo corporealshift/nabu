@@ -16,15 +16,31 @@ func RenderCurrentState(s State) string {
 		lines = append(lines, fmt.Sprintf("Goal: %s (%s)", s.Goal.Condition, s.Goal.State))
 	}
 	if len(s.Tasks) > 0 {
-		lines = append(lines, fmt.Sprintf("Tasks (%d/%d done):", s.DoneTasks(), len(s.Tasks)))
-		for _, t := range s.Tasks {
-			lines = append(lines, renderTaskLine(t))
-		}
+		lines = append(lines, RenderTasks(s.Tasks))
 	}
 	if s.Budget.MaxTurns > 0 {
 		lines = append(lines, fmt.Sprintf("Budget: turn %d of %d", s.Turns, s.Budget.MaxTurns))
 	} else {
 		lines = append(lines, fmt.Sprintf("Budget: turn %d (unlimited)", s.Turns))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// RenderTasks renders a task list in the same form the Current state block
+// uses, so a task.update tool result and the state block never disagree.
+func RenderTasks(tasks []Task) string {
+	if len(tasks) == 0 {
+		return "Tasks: none"
+	}
+	done := 0
+	for _, t := range tasks {
+		if t.Status == TaskDone {
+			done++
+		}
+	}
+	lines := []string{fmt.Sprintf("Tasks (%d/%d done):", done, len(tasks))}
+	for _, t := range tasks {
+		lines = append(lines, renderTaskLine(t))
 	}
 	return strings.Join(lines, "\n")
 }
