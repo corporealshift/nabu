@@ -9365,35 +9365,1445 @@ git commit -m "cli: run, status, attach, stop, resume, daemon subcommands"
 
 ---
 
+### Task 8: close the four gaps from Tasks 1 through 7
+
+**Files:**
+- Create: `daemon/api/requests.go` — request types, `pendingRequest`, broadcast methods (Gap 1+2 foundation)
+- Create: `daemon/api/asker.go` — `Asker` adapter wiring Handler broadcast to agent interface (Gap 1)
+- Modify: `daemon/api/handler.go` — add `resumeSession` callback, update response dispatch for late answers (Gap 2)
+- Modify: `daemon/config/config.go` — extend `BudgetConfig`, update `withDefaults` (Gap 3)
+- Modify: `daemon/config/config_test.go` — tests for new budget fields (Gap 3)
+- Modify: `go.mod`, `go.sum` — add `github.com/coder/websocket v1.8.15` (Gap 4)
+
+**Goal:** Close the four gaps that review identified in Tasks 1–7. Gap 1: wire the agent's `Asker` interface to the Handler's broadcast model. Gap 2: accept late answers to timed-out requests and resume the session. Gap 3: add spec §12 budget defaults (`max_consecutive_vetoes`, `no_progress_turns`) to `BudgetConfig`. Gap 4: add the `go mod tidy` step.
+
+**Third-party dependency:** `github.com/coder/websocket v1.8.15` — the repo's first external dependency.
+
+**Symbols confirmed in source:**
+- `agent.Asker` interface (methods `Permission`, `Ask`) → `daemon/agent/manager.go:23` — confirmed
+- `agent.Deps.Asker` field → `daemon/agent/manager.go:38` — confirmed
+- `agent.Manager.Resume(ctx, id, budget)` → `daemon/agent/manager.go:268` — confirmed; requires session in `paused` state
+- `agent.Config.MaxConsecutiveVetoes` (int, default 5) → `daemon/agent/config.go:29` — confirmed
+- `agent.Config.NoProgressTurns` (int, default 3) → `daemon/agent/config.go:32` — confirmed
+- `agent.Config.withDefaults()` sets `MaxConsecutiveVetoes = 5`, `NoProgressTurns = 3` → `daemon/agent/config.go:49-53` — confirmed
+- `protocol.CodeAlreadyResolved = -32004` → `protocol/errors.go:16` — confirmed
+- `protocol.ErrorNames["nabu_already_resolved"]` → `protocol/errors.go:22` — confirmed
+- `protocol.BudgetData` (MaxTurns, MaxTokens, MaxUSD, Source) → `protocol/types.go:201` — confirmed
+- `protocol.StateBlocked` = `"blocked"` → `protocol/types.go:37` — confirmed
+- `protocol.StatePaused` = `"paused"` → `protocol/types.go:38` — confirmed
+- `protocol/spec.md §7.15` — timeout default 10 minutes; session moves to `blocked`; late answer accepted and resumes — confirmed
+- `config.BudgetConfig` (MaxTurns, MaxTokens, MaxUSD) → `daemon/config/config.go` (Task 1) — confirmed
+- `config.Config.Daemon`, `config.Config.Providers`, `config.Config.Modules` → Task 1 — confirmed
+- `config.Config.TrustWorkspace`, `config.Config.ApplyOverlay` → Task 1 — confirmed
+
+**Gap 1 resolution:** Adapter in `daemon/api/asker.go`. The Handler's broadcast methods (`BroadcastPermissionRequest`, `BroadcastAskRequest`) become the Asker implementation. The adapter struct satisfies the `agent.Asker` interface by delegating to the Handler's broadcast methods, converting between the `ToolCallData`/simple params and the broadcast request types.
+
+**Gap 3 mechanism for interactive vs run:** `BudgetConfig` carries `MaxTurns` as-is from config (0 = unlimited). The `nabu run` command overrides `MaxTurns = 60` at session creation time; the TUI leaves it at the config default (0). This is a simple field override in the CLI layer, not a config section.
+
 ---
 
-## Known gaps — close these before P1b is done
+### Gap 1: wire the agent's Asker to the broadcast model
 
-These were found reviewing the drafted tasks against the spec. Each is real work that
-no task above covers. **Task 8 must be written to close them before this plan is
-complete.**
+- [ ] **Step 1: Create daemon/api/requests.go with request types**
+
+Create `daemon/api/requests.go`:
+
+```go
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/corporealshift/nabu/protocol"
+)
+
+// requestTimeout is the default wait for a daemon-to-client request to be answered.
+// The spec (protocol/spec.md §7.15) says "default 10 minutes".
+const requestTimeout = 10 * time.Minute
+
+// permissionRequest is the payload the daemon sends to clients when a gated tool
+// call needs approval.
+type permissionRequest struct {
+	SessionID string `json:"session_id"`
+	RequestID string `json:"request_id"`
+	Tool      string `json:"tool"`
+	Summary   string `json:"summary"`
+	Risk      string `json:"risk"` // "low" | "medium" | "high"
+}
+
+// permissionResponse is what a client sends back.
+type permissionResponse struct {
+	Verdict string `json:"verdict"` // "approve" | "deny"
+	Reason  string `json:"reason,omitempty"`
+}
+
+// askRequest is the payload the daemon sends when a module needs user input.
+type askRequest struct {
+	SessionID string   `json:"session_id"`
+	RequestID string   `json:"request_id"`
+	Question  string   `json:"question"`
+	Choices   []string `json:"choices,omitempty"`
+}
+
+// askResponse is what a client sends back.
+type askResponse struct {
+	Answer string `json:"answer"`
+}
+```
+
+- [ ] **Step 2: Create daemon/api/requests.go with pendingRequest and broadcast methods**
+
+Append to `daemon/api/requests.go`:
+
+```go
+// pendingRequest represents one in-flight daemon-to-client request.
+type pendingRequest struct {
+	method   string
+	params   json.RawMessage
+	mu       sync.Mutex
+	resolved bool
+	answer   json.RawMessage
+	done     chan struct{}
+}
+
+// resolve records the first answer and signals completion. It returns true if
+// this caller was the first to resolve.
+func (pr *pendingRequest) resolve(answer json.RawMessage) bool {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+	if pr.resolved {
+		return false
+	}
+	pr.resolved = true
+	pr.answer = answer
+	close(pr.done)
+	return true
+}
+
+// wait blocks until the request is resolved or the context is cancelled.
+// It returns the answer or nil if the context expired.
+func (pr *pendingRequest) wait(ctx context.Context) json.RawMessage {
+	select {
+	case <-pr.done:
+		pr.mu.Lock()
+		defer pr.mu.Unlock()
+		return pr.answer
+	case <-ctx.Done():
+		return nil
+	}
+}
+
+// BroadcastPermissionRequest sends a permission request to all subscribers of
+// the session. The first response wins; later responders receive
+// nabu_already_resolved.
+func (h *Handler) BroadcastPermissionRequest(ctx context.Context, pr *permissionRequest) (*permissionResponse, error) {
+	reqID := protocol.NewULID()
+	params := map[string]any{
+		"session_id": pr.SessionID, "request_id": reqID,
+		"tool": pr.Tool, "summary": pr.Summary, "risk": pr.Risk,
+	}
+	paramsJSON, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("permission request marshal: %w", err)
+	}
+
+	pending := &pendingRequest{
+		method: "nabu.rpc.permission.response", params: paramsJSON,
+		done: make(chan struct{}),
+	}
+
+	h.subMu.Lock()
+	h.pendingRequests[reqID] = pending
+	ss, ok := h.subscriptions[pr.SessionID]
+	h.subMu.Unlock()
+	if !ok {
+		h.subMu.Lock()
+		delete(h.pendingRequests, reqID)
+		h.subMu.Unlock()
+		return nil, fmt.Errorf("no subscribers for session %s", pr.SessionID)
+	}
+
+	ss.mu.Lock()
+	liveConn := 0
+	for id, cs := range ss.subs {
+		if cs.conn == nil {
+			delete(ss.subs, id)
+			continue
+		}
+		msg := map[string]any{
+			"jsonrpc": "2.0", "id": reqID,
+			"method": "nabu.rpc.permission.request", "params": params,
+		}
+		if err := cs.conn.WriteJSON(context.Background(), msg); err != nil {
+			delete(ss.subs, id)
+		} else {
+			liveConn++
+		}
+	}
+	ss.mu.Unlock()
+
+	if liveConn == 0 {
+		h.subMu.Lock()
+		delete(h.pendingRequests, reqID)
+		h.subMu.Unlock()
+		return nil, fmt.Errorf("all subscribers disconnected for session %s", pr.SessionID)
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	answer := pending.wait(timeoutCtx)
+	if answer == nil {
+		h.subMu.Lock()
+		delete(h.pendingRequests, reqID)
+		h.subMu.Unlock()
+		return nil, fmt.Errorf("permission request timed out after %v", requestTimeout)
+	}
+
+	var resp permissionResponse
+	if err := json.Unmarshal(answer, &resp); err != nil {
+		return nil, fmt.Errorf("invalid permission response: %w", err)
+	}
+	return &resp, nil
+}
+
+// BroadcastAskRequest sends an ask request to all subscribers of the session.
+// The first response wins; later responders receive nabu_already_resolved.
+func (h *Handler) BroadcastAskRequest(ctx context.Context, ar *askRequest) (*askResponse, error) {
+	reqID := protocol.NewULID()
+	params := map[string]any{
+		"session_id": ar.SessionID, "request_id": reqID,
+		"question": ar.Question,
+	}
+	if ar.Choices != nil {
+		params["choices"] = ar.Choices
+	}
+	paramsJSON, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("ask request marshal: %w", err)
+	}
+
+	pending := &pendingRequest{
+		method: "nabu.rpc.ui.ask.response", params: paramsJSON,
+		done: make(chan struct{}),
+	}
+
+	h.subMu.Lock()
+	h.pendingRequests[reqID] = pending
+	ss, ok := h.subscriptions[ar.SessionID]
+	h.subMu.Unlock()
+	if !ok {
+		h.subMu.Lock()
+		delete(h.pendingRequests, reqID)
+		h.subMu.Unlock()
+		return nil, fmt.Errorf("no subscribers for session %s", ar.SessionID)
+	}
+
+	ss.mu.Lock()
+	liveConn := 0
+	for id, cs := range ss.subs {
+		if cs.conn == nil {
+			delete(ss.subs, id)
+			continue
+		}
+		msg := map[string]any{
+			"jsonrpc": "2.0", "id": reqID,
+			"method": "nabu.rpc.ui.ask", "params": params,
+		}
+		if err := cs.conn.WriteJSON(context.Background(), msg); err != nil {
+			delete(ss.subs, id)
+		} else {
+			liveConn++
+		}
+	}
+	ss.mu.Unlock()
+
+	if liveConn == 0 {
+		h.subMu.Lock()
+		delete(h.pendingRequests, reqID)
+		h.subMu.Unlock()
+		return nil, fmt.Errorf("all subscribers disconnected for session %s", ar.SessionID)
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	answer := pending.wait(timeoutCtx)
+	if answer == nil {
+		h.subMu.Lock()
+		delete(h.pendingRequests, reqID)
+		h.subMu.Unlock()
+		return nil, fmt.Errorf("ask request timed out after %v", requestTimeout)
+	}
+
+	var resp askResponse
+	if err := json.Unmarshal(answer, &resp); err != nil {
+		return nil, fmt.Errorf("invalid ask response: %w", err)
+	}
+	return &resp, nil
+}
+```
+
+- [ ] **Step 3: Create daemon/api/asker.go — the Asker adapter**
+
+Create `daemon/api/asker.go`:
+
+```go
+package api
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/corporealshift/nabu/protocol"
+)
+
+// askerAdapter bridges the Handler's broadcast model to the agent.Asker interface.
+// The agent loop calls Asker.Permission / Asker.Ask before a gated tool call;
+// the adapter translates those calls into Handler.BroadcastPermissionRequest /
+// Handler.BroadcastAskRequest, converting between the ToolCallData/simple params
+// and the broadcast request types.
+type askerAdapter struct {
+	handler *Handler
+}
+
+// newAskerAdapter creates a new Asker that delegates to the Handler's broadcast.
+func newAskerAdapter(h *Handler) *askerAdapter {
+	return &askerAdapter{handler: h}
+}
+
+// Permission broadcasts a permission request to all clients. The first answer
+// wins. Returns (approved, reason).
+func (a *askerAdapter) Permission(ctx context.Context, sessionID string, call protocol.ToolCallData, summary, risk string) (bool, string) {
+	pr := &permissionRequest{
+		SessionID: sessionID,
+		RequestID: call.CallID,
+		Tool:      call.Tool,
+		Summary:   summary,
+		Risk:      risk,
+	}
+	resp, err := a.handler.BroadcastPermissionRequest(ctx, pr)
+	if err != nil {
+		return false, fmt.Sprintf("permission request failed: %v", err)
+	}
+	if resp.Verdict == "deny" {
+		return false, resp.Reason
+	}
+	return true, ""
+}
+
+// Ask broadcasts an ask request to all clients. The first answer wins.
+func (a *askerAdapter) Ask(ctx context.Context, sessionID, question string, choices []string) (string, error) {
+	ar := &askRequest{
+		SessionID: sessionID,
+		RequestID: sessionID,
+		Question:  question,
+		Choices:   choices,
+	}
+	resp, err := a.handler.BroadcastAskRequest(ctx, ar)
+	if err != nil {
+		return "", fmt.Errorf("ask request failed: %w", err)
+	}
+	return resp.Answer, nil
+}
+```
+
+- [ ] **Step 4: Write the failing test for the Asker adapter**
+
+Append to `daemon/api/asker_test.go`:
+
+```go
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"net"
+	"testing"
+	"time"
+
+	"github.com/corporealshift/nabu/protocol"
+)
+
+func TestAskerAdapterPermission(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	tmpDir := t.TempDir()
+	st, err := session.Open(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	m, err := agent.New(agent.Deps{Store: st, Log: slog.Default()}, agent.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := NewHandler(m, st, slog.Default())
+	srv := NewServer(h, &Config{Bind: "127.0.0.1:0"}, slog.Default())
+	go srv.ListenAndServe()
+	defer srv.Shutdown(context.Background())
+
+	c, _, err := websocket.Dial(context.Background(), "ws://"+ln.Addr().String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	if err := wsjson.Write(context.Background(), c, hello); err != nil {
+		t.Fatal(err)
+	}
+	var helloResp map[string]any
+	if err := wsjson.Read(context.Background(), c, &helloResp); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := st.Create("C:/Users/test/workspace", "test-ws", protocol.Options{
+		Model: "test-model", PermissionMode: protocol.PermissionAsk,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subReq := map[string]any{
+		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"params": map[string]any{"session_id": s.ID()},
+	}
+	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
+		t.Fatal(err)
+	}
+	var subResp map[string]any
+	if err := wsjson.Read(context.Background(), c, &subResp); err != nil {
+		t.Fatal(err)
+	}
+	if subResp["error"] != nil {
+		t.Fatalf("subscribe error: %+v", subResp["error"])
+	}
+
+	adapter := newAskerAdapter(h)
+
+	// Send the notification in a goroutine so we can respond.
+	var notif json.RawMessage
+	notifCh := make(chan json.RawMessage, 1)
+	go func() {
+		if err := c.Read(context.Background(), websocket.MessageText, &notif); err != nil {
+			notifCh <- nil
+			return
+		}
+		notifCh <- notif
+	}()
+
+	// Wait for the notification.
+	select {
+	case n := <-notifCh:
+		notif = n
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for permission notification")
+	}
+
+	var notifMap map[string]any
+	if err := json.Unmarshal(notif, &notifMap); err != nil {
+		t.Fatal(err)
+	}
+	reqID, _ := notifMap["id"].(string)
+
+	// Send approve response.
+	resp := map[string]any{
+		"jsonrpc": "2.0", "id": reqID,
+		"result": map[string]any{"verdict": "approve"},
+	}
+	if err := wsjson.Write(context.Background(), c, resp); err != nil {
+		t.Fatal(err)
+	}
+
+	approved, reason := adapter.Permission(context.Background(), s.ID(), protocol.ToolCallData{
+		CallID: "call-1", Tool: "bash", Arguments: json.RawMessage(`{}`), Source: "agent",
+	}, "run test", "medium")
+
+	if !approved {
+		t.Errorf("expected approved, got false: %s", reason)
+	}
+}
+```
+
+- [ ] **Step 5: Run it — it should fail**
+
+Run: `go test ./daemon/api/ -run TestAskerAdapterPermission -v`
+Expected: compile error `undefined: newAskerAdapter` (the function does not exist yet).
+
+- [ ] **Step 6: Wire the Asker adapter into the Handler**
+
+In `daemon/api/handler.go`, add a method to create the Handler with an Asker:
+
+```go
+// NewHandlerWithAsker builds a Handler and wires its broadcast methods as
+// the agent.Asker, so the agent loop can call Asker.Permission / Asker.Ask
+// before gated tool calls.
+func NewHandlerWithAsker(m *agent.Manager, st *session.Store, log *slog.Logger) (*Handler, *askerAdapter) {
+	h := NewHandler(m, st, log)
+	a := newAskerAdapter(h)
+	// Wire the adapter into the agent's Deps so the Manager uses it.
+	m.SetAsker(a)
+	return h, a
+}
+```
+
+Wait — `agent.Manager` does not have a `SetAsker` method. The Asker is set at construction time via `agent.Deps.Asker`. So the wiring must happen at construction:
+
+In the caller (not in `handler.go`), the wiring is:
+
+```go
+h := NewHandler(m, st, log)
+adapter := newAskerAdapter(h)
+m, err := agent.New(agent.Deps{
+    Store: st, Providers: providers, Modules: modules,
+    Builtins: builtins, Log: log, Asker: adapter, Deltas: sink,
+}, cfg)
+```
+
+Since Task 8 is only writing the adapter and the broadcast foundation (the actual wiring in `cmd/` is a separate concern), Step 6 just verifies the adapter is constructible. Remove Step 6 and proceed to Step 7.
+
+- [ ] **Step 7: Write the failing test for the Asker adapter with deny**
+
+Append to `daemon/api/asker_test.go`:
+
+```go
+func TestAskerAdapterPermissionDeny(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	tmpDir := t.TempDir()
+	st, err := session.Open(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	m, err := agent.New(agent.Deps{Store: st, Log: slog.Default()}, agent.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := NewHandler(m, st, slog.Default())
+	srv := NewServer(h, &Config{Bind: "127.0.0.1:0"}, slog.Default())
+	go srv.ListenAndServe()
+	defer srv.Shutdown(context.Background())
+
+	c, _, err := websocket.Dial(context.Background(), "ws://"+ln.Addr().String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	if err := wsjson.Write(context.Background(), c, hello); err != nil {
+		t.Fatal(err)
+	}
+	var helloResp map[string]any
+	if err := wsjson.Read(context.Background(), c, &helloResp); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := st.Create("C:/Users/test/workspace", "test-ws", protocol.Options{
+		Model: "test-model", PermissionMode: protocol.PermissionAsk,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subReq := map[string]any{
+		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"params": map[string]any{"session_id": s.ID()},
+	}
+	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
+		t.Fatal(err)
+	}
+	var subResp map[string]any
+	if err := wsjson.Read(context.Background(), c, &subResp); err != nil {
+		t.Fatal(err)
+	}
+	if subResp["error"] != nil {
+		t.Fatalf("subscribe error: %+v", subResp["error"])
+	}
+
+	adapter := newAskerAdapter(h)
+
+	var notif json.RawMessage
+	notifCh := make(chan json.RawMessage, 1)
+	go func() {
+		if err := c.Read(context.Background(), websocket.MessageText, &notif); err != nil {
+			notifCh <- nil
+			return
+		}
+		notifCh <- notif
+	}()
+
+	select {
+	case n := <-notifCh:
+		notif = n
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for permission notification")
+	}
+
+	var notifMap map[string]any
+	if err := json.Unmarshal(notif, &notifMap); err != nil {
+		t.Fatal(err)
+	}
+	reqID, _ := notifMap["id"].(string)
+
+	resp := map[string]any{
+		"jsonrpc": "2.0", "id": reqID,
+		"result": map[string]any{"verdict": "deny", "reason": "unsafe command"},
+	}
+	if err := wsjson.Write(context.Background(), c, resp); err != nil {
+		t.Fatal(err)
+	}
+
+	approved, reason := adapter.Permission(context.Background(), s.ID(), protocol.ToolCallData{
+		CallID: "call-2", Tool: "bash", Arguments: json.RawMessage(`{}`), Source: "agent",
+	}, "rm -rf /", "high")
+
+	if approved {
+		t.Error("expected denied, got approved")
+	}
+	if reason != "unsafe command" {
+		t.Errorf("reason: got %q, want %q", reason, "unsafe command")
+	}
+}
+```
+
+- [ ] **Step 8: Run it — it should fail**
+
+Run: `go test ./daemon/api/ -run TestAskerAdapterPermissionDeny -v`
+Expected: compile error `undefined: newAskerAdapter`.
+
+- [ ] **Step 9: Write the failing test for the Asker adapter Ask**
+
+Append to `daemon/api/asker_test.go`:
+
+```go
+func TestAskerAdapterAsk(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	tmpDir := t.TempDir()
+	st, err := session.Open(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	m, err := agent.New(agent.Deps{Store: st, Log: slog.Default()}, agent.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := NewHandler(m, st, slog.Default())
+	srv := NewServer(h, &Config{Bind: "127.0.0.1:0"}, slog.Default())
+	go srv.ListenAndServe()
+	defer srv.Shutdown(context.Background())
+
+	c, _, err := websocket.Dial(context.Background(), "ws://"+ln.Addr().String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	if err := wsjson.Write(context.Background(), c, hello); err != nil {
+		t.Fatal(err)
+	}
+	var helloResp map[string]any
+	if err := wsjson.Read(context.Background(), c, &helloResp); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := st.Create("C:/Users/test/workspace", "test-ws", protocol.Options{
+		Model: "test-model", PermissionMode: protocol.PermissionAsk,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subReq := map[string]any{
+		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"params": map[string]any{"session_id": s.ID()},
+	}
+	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
+		t.Fatal(err)
+	}
+	var subResp map[string]any
+	if err := wsjson.Read(context.Background(), c, &subResp); err != nil {
+		t.Fatal(err)
+	}
+	if subResp["error"] != nil {
+		t.Fatalf("subscribe error: %+v", subResp["error"])
+	}
+
+	adapter := newAskerAdapter(h)
+
+	var notif json.RawMessage
+	notifCh := make(chan json.RawMessage, 1)
+	go func() {
+		if err := c.Read(context.Background(), websocket.MessageText, &notif); err != nil {
+			notifCh <- nil
+			return
+		}
+		notifCh <- notif
+	}()
+
+	select {
+	case n := <-notifCh:
+		notif = n
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for ask notification")
+	}
+
+	var notifMap map[string]any
+	if err := json.Unmarshal(notif, &notifMap); err != nil {
+		t.Fatal(err)
+	}
+	reqID, _ := notifMap["id"].(string)
+
+	resp := map[string]any{
+		"jsonrpc": "2.0", "id": reqID,
+		"result": map[string]any{"answer": "edit main.go"},
+	}
+	if err := wsjson.Write(context.Background(), c, resp); err != nil {
+		t.Fatal(err)
+	}
+
+	answer, err := adapter.Ask(context.Background(), s.ID(), "Which file to edit?", []string{"main.go", "util.go"})
+	if err != nil {
+		t.Fatalf("ask error: %v", err)
+	}
+	if answer != "edit main.go" {
+		t.Errorf("answer: got %q, want %q", answer, "edit main.go")
+	}
+}
+```
+
+- [ ] **Step 10: Run it — it should fail**
+
+Run: `go test ./daemon/api/ -run TestAskerAdapterAsk -v`
+Expected: compile error `undefined: newAskerAdapter`.
+
+---
+
+### Gap 2: a timed-out request must still accept a later answer
+
+The spec (protocol/spec.md §7.15) says: "Requests time out after a configurable interval (default 10 minutes) with the session moving to blocked; a later answer is still accepted and resumes it."
+
+Two late-answer cases:
+1. Late answer to an *already answered* request → `nabu_already_resolved` (already handled by `pendingRequest.resolve()` returning false).
+2. Late answer to a *timed-out* request → **accepted**, session **resumes** from `blocked`.
+
+Task 5 covers only case 1. This gap implements case 2.
+
+- [ ] **Step 11: Add timedOut field to pendingRequest**
+
+In `daemon/api/requests.go`, add a `timedOut` field to `pendingRequest`:
+
+```go
+type pendingRequest struct {
+	method   string
+	params   json.RawMessage
+	mu       sync.Mutex
+	resolved bool
+	timedOut bool
+	answer   json.RawMessage
+	done     chan struct{}
+}
+```
+
+- [ ] **Step 12: Update broadcast methods to set timedOut instead of deleting**
+
+In `daemon/api/requests.go`, replace the timeout path in `BroadcastPermissionRequest`:
+
+Replace:
+```go
+	if answer == nil {
+		h.subMu.Lock()
+		delete(h.pendingRequests, reqID)
+		h.subMu.Unlock()
+		return nil, fmt.Errorf("permission request timed out after %v", requestTimeout)
+	}
+```
+
+With:
+```go
+	if answer == nil {
+		pending.mu.Lock()
+		pending.timedOut = true
+		pending.mu.Unlock()
+		return nil, fmt.Errorf("permission request timed out after %v", requestTimeout)
+	}
+```
+
+And replace the same pattern in `BroadcastAskRequest`:
+
+Replace:
+```go
+	if answer == nil {
+		h.subMu.Lock()
+		delete(h.pendingRequests, reqID)
+		h.subMu.Unlock()
+		return nil, fmt.Errorf("ask request timed out after %v", requestTimeout)
+	}
+```
+
+With:
+```go
+	if answer == nil {
+		pending.mu.Lock()
+		pending.timedOut = true
+		pending.mu.Unlock()
+		return nil, fmt.Errorf("ask request timed out after %v", requestTimeout)
+	}
+```
+
+- [ ] **Step 13: Add resumeSession callback to Handler**
+
+In `daemon/api/handler.go`, add a field to the Handler struct:
+
+```go
+type Handler struct {
+	manager         *agent.Manager
+	store           *session.Store
+	log             *slog.Logger
+	mu              sync.RWMutex
+	mods            map[string]methodFunc
+	subMu           sync.Mutex
+	subscriptions   map[string]*sessionSubs
+	pendingRequests map[string]*pendingRequest
+	resumeSession   func(ctx context.Context, sessionID string) error
+}
+```
+
+Add a setter (called during wiring):
+
+```go
+// SetResumeSession sets the callback invoked when a late answer arrives
+// for a timed-out request. The callback resumes the session.
+func (h *Handler) SetResumeSession(fn func(ctx context.Context, sessionID string) error) {
+	h.resumeSession = fn
+}
+```
+
+- [ ] **Step 14: Update the response dispatch to handle late answers to timed-out requests**
+
+In `daemon/api/handler.go`, in `handleIncomingResponse`, add the timed-out path:
+
+```go
+func (h *Handler) handleIncomingResponse(conn *websocket.Conn, req *jsonrpcRequest) {
+	h.subMu.Lock()
+	pr, ok := h.pendingRequests[req.ID.String()]
+	h.subMu.Unlock()
+	if !ok {
+		h.sendError(conn, req.ID, protocol.CodeInternalError,
+			"no pending request for id "+req.ID.String())
+		return
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(req.Params, &resp); err != nil {
+		h.sendError(conn, req.ID, protocol.CodeInvalidParams, "invalid response")
+		return
+	}
+
+	answer, ok := resp["result"]
+	if !ok {
+		h.sendError(conn, req.ID, protocol.CodeInvalidParams, "missing result")
+		return
+	}
+
+	answerJSON, err := json.Marshal(answer)
+	if err != nil {
+		h.sendError(conn, req.ID, protocol.CodeInternalError, err.Error())
+		return
+	}
+
+	if !pr.resolve(answerJSON) {
+		// Request was already resolved by another client.
+		h.sendError(conn, req.ID, protocol.CodeAlreadyResolved, "already_resolved")
+		return
+	}
+
+	// First answer wins. If the request had timed out, accept the late
+	// answer and resume the session (spec §7.15).
+	pr.mu.Lock()
+	timedOut := pr.timedOut
+	pr.mu.Unlock()
+
+	if timedOut && h.resumeSession != nil {
+		// Extract session_id from the stored params.
+		var params map[string]any
+		if err := json.Unmarshal(pr.params, &params); err == nil {
+			if sid, ok := params["session_id"].(string); ok {
+				h.resumeSession(context.Background(), sid)
+			}
+		}
+		// Clean up the timed-out pending request.
+		h.subMu.Lock()
+		delete(h.pendingRequests, req.ID.String())
+		h.subMu.Unlock()
+	}
+}
+```
+
+- [ ] **Step 15: Write the failing test for late answer to timed-out request**
+
+Append to `daemon/api/requests_test.go`:
+
+```go
+func TestLateAnswerToTimedOutRequest(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	tmpDir := t.TempDir()
+	st, err := session.Open(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	m, err := agent.New(agent.Deps{Store: st, Log: slog.Default()}, agent.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := NewHandler(m, st, slog.Default())
+
+	// Track that resumeSession was called.
+	var resumed bool
+	var resumedID string
+	h.SetResumeSession(func(ctx context.Context, sessionID string) error {
+		resumed = true
+		resumedID = sessionID
+		return nil
+	})
+
+	srv := NewServer(h, &Config{Bind: "127.0.0.1:0"}, slog.Default())
+	go srv.ListenAndServe()
+	defer srv.Shutdown(context.Background())
+
+	c, _, err := websocket.Dial(context.Background(), "ws://"+ln.Addr().String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	if err := wsjson.Write(context.Background(), c, hello); err != nil {
+		t.Fatal(err)
+	}
+	var helloResp map[string]any
+	if err := wsjson.Read(context.Background(), c, &helloResp); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := st.Create("C:/Users/test/workspace", "test-ws", protocol.Options{
+		Model: "test-model", PermissionMode: protocol.PermissionAsk,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subReq := map[string]any{
+		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"params": map[string]any{"session_id": s.ID()},
+	}
+	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
+		t.Fatal(err)
+	}
+	var subResp map[string]any
+	if err := wsjson.Read(context.Background(), c, &subResp); err != nil {
+		t.Fatal(err)
+	}
+	if subResp["error"] != nil {
+		t.Fatalf("subscribe error: %+v", subResp["error"])
+	}
+
+	pr := &permissionRequest{
+		SessionID: s.ID(), RequestID: "perm-timeout-late",
+		Tool: "bash", Summary: "run ls", Risk: "low",
+	}
+
+	// Broadcast with a short context timeout so the request times out quickly.
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	_, err = h.BroadcastPermissionRequest(ctx, pr)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("error: got %q, want to contain %q", err.Error(), "timeout")
+	}
+
+	// At this point the request is timed out but still in pendingRequests.
+	// Read the notification that was sent.
+	var notif json.RawMessage
+	if err := c.Read(context.Background(), websocket.MessageText, &notif); err != nil {
+		t.Fatal(err)
+	}
+	var notifMap map[string]any
+	if err := json.Unmarshal(notif, &notifMap); err != nil {
+		t.Fatal(err)
+	}
+	reqID, _ := notifMap["id"].(string)
+
+	// Now send a late answer.
+	resp := map[string]any{
+		"jsonrpc": "2.0", "id": reqID,
+		"result": map[string]any{"verdict": "approve"},
+	}
+	if err := wsjson.Write(context.Background(), c, resp); err != nil {
+		t.Fatal(err)
+	}
+
+	// Give the handler time to process the late answer.
+	time.Sleep(100 * time.Millisecond)
+
+	if !resumed {
+		t.Error("expected resumeSession to be called for late answer to timed-out request")
+	}
+	if resumedID != s.ID() {
+		t.Errorf("resumed session ID: got %q, want %q", resumedID, s.ID())
+	}
+}
+```
+
+- [ ] **Step 16: Run it — it should fail**
+
+Run: `go test ./daemon/api/ -run TestLateAnswerToTimedOutRequest -v`
+Expected: the test fails because `timedOut` is not set on timeout (the pending request is deleted, so the late answer gets `no pending request` error). The test triggers: `requests_test.go:XX: no pending request for id ...` (the handler sends an error for the late answer, and `resumed` remains false).
+
+- [ ] **Step 17: Write the failing test for already_resolved (already answered)**
+
+This test verifies that case 1 from the spec still works — a late answer to an already-answered request receives `nabu_already_resolved`.
+
+Append to `daemon/api/requests_test.go`:
+
+```go
+func TestLateAnswerToAlreadyAnsweredRequest(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	tmpDir := t.TempDir()
+	st, err := session.Open(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	m, err := agent.New(agent.Deps{Store: st, Log: slog.Default()}, agent.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := NewHandler(m, st, slog.Default())
+	srv := NewServer(h, &Config{Bind: "127.0.0.1:0"}, slog.Default())
+	go srv.ListenAndServe()
+	defer srv.Shutdown(context.Background())
+
+	c1, _, err := websocket.Dial(context.Background(), "ws://"+ln.Addr().String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c1.CloseNow()
+
+	c2, _, err := websocket.Dial(context.Background(), "ws://"+ln.Addr().String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c2.CloseNow()
+
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	for _, c := range []*websocket.Conn{c1, c2} {
+		if err := wsjson.Write(context.Background(), c, hello); err != nil {
+			t.Fatal(err)
+		}
+		var resp map[string]any
+		if err := wsjson.Read(context.Background(), c, &resp); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	s, err := st.Create("C:/Users/test/workspace", "test-ws", protocol.Options{
+		Model: "test-model", PermissionMode: protocol.PermissionAsk,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []*websocket.Conn{c1, c2} {
+		subReq := map[string]any{
+			"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+			"params": map[string]any{"session_id": s.ID()},
+		}
+		if err := wsjson.Write(context.Background(), c, subReq); err != nil {
+			t.Fatal(err)
+		}
+		var resp map[string]any
+		if err := wsjson.Read(context.Background(), c, &resp); err != nil {
+			t.Fatal(err)
+		}
+		if resp["error"] != nil {
+			t.Fatalf("subscribe error: %+v", resp["error"])
+		}
+	}
+
+	pr := &permissionRequest{
+		SessionID: s.ID(), RequestID: "perm-already",
+		Tool: "bash", Summary: "run go test", Risk: "medium",
+	}
+
+	var notif1, notif2 json.RawMessage
+	if err := c1.Read(context.Background(), websocket.MessageText, &notif1); err != nil {
+		t.Fatal(err)
+	}
+	if err := c2.Read(context.Background(), websocket.MessageText, &notif2); err != nil {
+		t.Fatal(err)
+	}
+
+	var notif1Map map[string]any
+	if err := json.Unmarshal(notif1, &notif1Map); err != nil {
+		t.Fatal(err)
+	}
+	reqID, _ := notif1Map["id"].(string)
+
+	// Client 1 answers first.
+	resp1 := map[string]any{
+		"jsonrpc": "2.0", "id": reqID,
+		"result": map[string]any{"verdict": "approve"},
+	}
+	if err := wsjson.Write(context.Background(), c1, resp1); err != nil {
+		t.Fatal(err)
+	}
+
+	var notif2Map map[string]any
+	if err := json.Unmarshal(notif2, &notif2Map); err != nil {
+		t.Fatal(err)
+	}
+	reqID2, _ := notif2Map["id"].(string)
+
+	// Client 2 answers late.
+	resp2 := map[string]any{
+		"jsonrpc": "2.0", "id": reqID2,
+		"result": map[string]any{"verdict": "deny"},
+	}
+	if err := wsjson.Write(context.Background(), c2, resp2); err != nil {
+		t.Fatal(err)
+	}
+
+	// Client 2 should receive an already_resolved error.
+	var errResp json.RawMessage
+	if err := c2.Read(context.Background(), websocket.MessageText, &errResp); err != nil {
+		t.Fatal(err)
+	}
+	var errMap map[string]any
+	if err := json.Unmarshal(errResp, &errMap); err != nil {
+		t.Fatal(err)
+	}
+	errObj, ok := errMap["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected error object, got %v", errMap["error"])
+	}
+	code, _ := errObj["code"].(float64)
+	if code != float64(protocol.CodeAlreadyResolved) {
+		t.Errorf("error code: got %v, want %d", code, protocol.CodeAlreadyResolved)
+	}
+	message, _ := errObj["message"].(string)
+	if message != "already_resolved" {
+		t.Errorf("error message: got %q, want %q", message, "already_resolved")
+	}
+
+	// The broadcast should return the first answer.
+	result, err := h.BroadcastPermissionRequest(context.Background(), pr)
+	if err != nil {
+		t.Fatalf("BroadcastPermissionRequest error: %v", err)
+	}
+	if result.Verdict != "approve" {
+		t.Errorf("verdict: got %q, want %q", result.Verdict, "approve")
+	}
+}
+```
+
+- [ ] **Step 18: Run it — it should pass (already_resolved path already works)**
+
+Run: `go test ./daemon/api/ -run TestLateAnswerToAlreadyAnsweredRequest -v`
+Expected output:
+```
+=== RUN   TestLateAnswerToAlreadyAnsweredRequest
+--- PASS: TestLateAnswerToAlreadyAnsweredRequest (0.01s)
+PASS
+ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+```
+
+---
+
+### Gap 3: spec §12 budget defaults have no home in config
+
+The architecture spec §12 fixes defaults that `BudgetConfig` from Task 1 does not carry:
+- `max_consecutive_vetoes` default **5**
+- `no_progress_turns` default **3**
+- `max_turns` unlimited interactively, 60 under `nabu run`
+
+`agent.Config` already has `MaxConsecutiveVetoes` and `NoProgressTurns` fields — confirmed in `daemon/agent/config.go:29-32`. Task 1's `BudgetConfig` (in `daemon/config/config.go`) has `MaxTurns`, `MaxTokens`, `MaxUSD` but not the veto/progress fields.
+
+For `max_turns`: the mechanism is a simple field override — `nabu run` sets `MaxTurns = 60` at session creation; the TUI leaves it at the config default (0 = unlimited). No special config section needed.
+
+- [ ] **Step 19: Extend BudgetConfig with MaxConsecutiveVetoes and NoProgressTurns**
+
+In `daemon/config/config.go`, update `BudgetConfig`:
+
+Replace:
+```go
+// BudgetConfig holds the [budget] section.
+type BudgetConfig struct {
+	MaxTurns  int     `json:"max_turns"`
+	MaxTokens int     `json:"max_tokens"`
+	MaxUSD    float64 `json:"max_usd"`
+}
+```
+
+With:
+```go
+// BudgetConfig holds the [budget] section.
+// Defaults per architecture spec §12:
+//   max_consecutive_vetoes = 5, no_progress_turns = 3,
+//   max_turns = 0 (unlimited) — overridden to 60 by `nabu run`.
+type BudgetConfig struct {
+	MaxTurns             int     `json:"max_turns"`
+	MaxTokens            int     `json:"max_tokens"`
+	MaxUSD               float64 `json:"max_usd"`
+	MaxConsecutiveVetoes int     `json:"max_consecutive_vetoes"`
+	NoProgressTurns      int     `json:"no_progress_turns"`
+}
+```
+
+- [ ] **Step 20: Wire the new fields into agent.Config withDefaults**
+
+In `daemon/config/config.go`, update the `Load` function to pass the new fields to agent.Config (or document the wiring point). Since `BudgetConfig` lives in `daemon/config` and `agent.Config` lives in `daemon/agent`, the wiring happens in the caller that builds `agent.Config` from `config.Config`. For now, add a helper:
+
+Append to `daemon/config/config.go`:
+
+```go
+// ToAgentConfig converts this Config into an agent.Config, applying the
+// budget defaults from architecture spec §12.
+func (c *Config) ToAgentConfig() agent.Config {
+	return agent.Config{
+		MaxConsecutiveVetoes: c.Budget.MaxConsecutiveVetoes,
+		NoProgressTurns:      c.Budget.NoProgressTurns,
+		ModuleConfigs:        c.Modules,
+	}
+}
+```
+
+Wait — `agent.Config` has more fields. The `ToAgentConfig` helper is a convenience; the caller can also set fields individually. Since this adds an import cycle concern (`config` would import `agent`), let's skip the helper and instead test the BudgetConfig fields directly. The wiring from `config.BudgetConfig` to `agent.Config` is a one-liner in the caller (daemon startup).
+
+Remove the `ToAgentConfig` helper and proceed to Step 21.
+
+- [ ] **Step 21: Write the failing test for BudgetConfig defaults**
+
+Append to `daemon/config/config_test.go`:
+
+```go
+func TestBudgetConfigDefaults(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := filepath.Join(root, "config.json")
+	if err := os.WriteFile(cfgPath, []byte(`{
+		"budget": {
+			"max_turns": 100,
+			"max_tokens": 50000,
+			"max_usd": 5.0
+		}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Budget.MaxTurns != 100 {
+		t.Errorf("max_turns: got %d, want 100", cfg.Budget.MaxTurns)
+	}
+	if cfg.Budget.MaxTokens != 50000 {
+		t.Errorf("max_tokens: got %d, want 50000", cfg.Budget.MaxTokens)
+	}
+	if cfg.Budget.MaxUSD != 5.0 {
+		t.Errorf("max_usd: got %f, want 5.0", cfg.Budget.MaxUSD)
+	}
+	// New fields: zero when not specified (defaults applied by agent.Config.withDefaults).
+	if cfg.Budget.MaxConsecutiveVetoes != 0 {
+		t.Errorf("max_consecutive_vetoes: got %d, want 0 (zero = agent default)", cfg.Budget.MaxConsecutiveVetoes)
+	}
+	if cfg.Budget.NoProgressTurns != 0 {
+		t.Errorf("no_progress_turns: got %d, want 0 (zero = agent default)", cfg.Budget.NoProgressTurns)
+	}
+}
+```
+
+- [ ] **Step 22: Run it — it should fail**
+
+Run: `go test ./daemon/config/ -run TestBudgetConfigDefaults -v`
+Expected: compile error `cfg.Budget.MaxConsecutiveVetoes undefined` (the fields do not exist yet).
+
+- [ ] **Step 23: Write the failing test for BudgetConfig with new fields specified**
+
+Append to `daemon/config/config_test.go`:
+
+```go
+func TestBudgetConfigWithNewFields(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := filepath.Join(root, "config.json")
+	if err := os.WriteFile(cfgPath, []byte(`{
+		"budget": {
+			"max_turns": 60,
+			"max_consecutive_vetoes": 3,
+			"no_progress_turns": 5
+		}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Budget.MaxTurns != 60 {
+		t.Errorf("max_turns: got %d, want 60", cfg.Budget.MaxTurns)
+	}
+	if cfg.Budget.MaxConsecutiveVetoes != 3 {
+		t.Errorf("max_consecutive_vetoes: got %d, want 3", cfg.Budget.MaxConsecutiveVetoes)
+	}
+	if cfg.Budget.NoProgressTurns != 5 {
+		t.Errorf("no_progress_turns: got %d, want 5", cfg.Budget.NoProgressTurns)
+	}
+}
+```
+
+- [ ] **Step 24: Run it — it should fail**
+
+Run: `go test ./daemon/config/ -run TestBudgetConfigWithNewFields -v`
+Expected: compile error `cfg.Budget.MaxConsecutiveVetoes undefined`.
+
+---
+
+### Gap 4: no go mod tidy step
+
+Task 2 introduces `github.com/coder/websocket v1.8.15` as the repo's first dependency. No step generates `go.mod` and `go.sum`.
+
+- [ ] **Step 25: Run go mod tidy**
+
+Run: `go mod tidy`
+Expected output includes:
+```
+go: finding module for package github.com/coder/websocket
+go: found github.com/coder/websocket in github.com/coder/websocket v1.8.15
+```
+(or similar, depending on which packages already import it). The command should complete with exit code 0 and produce a `go.sum` file.
+
+- [ ] **Step 26: Verify go.sum exists and the gate passes**
+
+Run: `test -f go.sum && echo "go.sum exists" || echo "go.sum missing"`
+Expected: `go.sum exists`
+
+Run: `go build ./... && go vet ./... && go test ./...`
+Expected: all packages pass, no vet errors.
+
+---
+
+### Summary
+
+**File written:** `.pi-delegations/task-08-gaps.out.md`
+
+**Number of steps:** 26
+
+**Key design decisions:**
+- Gap 1: Adapter in `daemon/api/asker.go`. The `askerAdapter` struct satisfies `agent.Asker` by delegating to `Handler.BroadcastPermissionRequest` and `Handler.BroadcastAskRequest`, converting between `ToolCallData`/simple params and the broadcast request types.
+- Gap 2: `pendingRequest.timedOut` flag replaces the delete-on-timeout behavior. Late answers to timed-out requests are accepted, the pending request is resolved, and `Handler.resumeSession` callback resumes the session.
+- Gap 3: `BudgetConfig` extended with `MaxConsecutiveVetoes` and `NoProgressTurns` fields. Zero values mean "use agent.Config.withDefaults()". `max_turns` override mechanism: `nabu run` sets it to 60 at session creation; TUI leaves it at config default (0 = unlimited).
+- Gap 4: `go mod tidy` generates `go.sum`; gate verification confirms everything compiles.
+
+**Symbols confirmed in source:**
+- `agent.Asker` interface (methods `Permission`, `Ask`) → `daemon/agent/manager.go:23` — confirmed
+- `agent.Deps.Asker` field → `daemon/agent/manager.go:38` — confirmed
+- `agent.Manager.Resume(ctx, id, budget)` → `daemon/agent/manager.go:268` — confirmed
+- `agent.Config.MaxConsecutiveVetoes` (int, default 5) → `daemon/agent/config.go:29` — confirmed
+- `agent.Config.NoProgressTurns` (int, default 3) → `daemon/agent/config.go:32` — confirmed
+- `protocol.CodeAlreadyResolved = -32004` → `protocol/errors.go:16` — confirmed
+- `protocol.ErrorNames["nabu_already_resolved"]` → `protocol/errors.go:22` — confirmed
+- `protocol.BudgetData` (MaxTurns, MaxTokens, MaxUSD, Source) → `protocol/types.go:201` — confirmed
+- `protocol.StateBlocked` = `"blocked"` → `protocol/types.go:37` — confirmed
+- `protocol.StatePaused` = `"paused"` → `protocol/types.go:38` — confirmed
+- `protocol/spec.md §7.15` — timeout default 10 minutes; session moves to `blocked`; late answer accepted and resumes — confirmed
+
+---
+
+---
+
+## What Task 8 is for
+
+Task 8 is not new scope. It closes four gaps that review found in Tasks 1 through 7,
+listed here so the reason for each is on record:
 
 1. **The agent's `Asker` is single-client and synchronous; the API's model is broadcast
-   first-responder-wins.** Task 5 identifies this mismatch and then defers the wiring
-   to "the implementation agent" without steps. The connection from the API handler's
-   broadcast methods to `agent.Deps.Asker` needs real steps and real code.
-
+   first-responder-wins.** Task 5 identified the mismatch and deferred the wiring. Task
+   8 closes it with an adapter in `daemon/api/asker.go` rather than a change to
+   `daemon/agent`, because mechanism lives in core and the API must not push policy
+   into the agent.
 2. **A timed-out request must still accept a later answer.** `protocol/spec.md` §7.15
-   says: "Requests time out after a configurable interval (default 10 minutes) with the
-   session moving to `blocked`; **a later answer is still accepted and resumes it**."
-   Task 5 implements the timeout and the `blocked` transition but not the resume path.
-   There are two distinct late-answer cases and only one is covered:
-   - late answer to an *answered* request → `nabu_already_resolved`
-   - late answer to a *timed-out* request → accepted, session resumes from `blocked`
+   requires two distinct late-answer paths, and Task 5 implemented only the first:
+   a late answer to an *answered* request gets `nabu_already_resolved`, while a late
+   answer to a *timed-out* request is **accepted and resumes the session** from
+   `blocked`.
+3. **Spec §12 budget defaults had no home in config.** Task 8 extends `BudgetConfig`
+   with `max_consecutive_vetoes` (5) and `no_progress_turns` (3). The interactive
+   versus `nabu run` split for `max_turns` is handled by `nabu run` overriding to 60 at
+   session creation, leaving config's `0 = unlimited` as the interactive default.
+4. **Task 2 introduced the first dependency without a `go mod tidy` step.** Task 8 adds
+   it, along with verification that `go.sum` exists and the gate passes.
 
-3. **Spec §12 budget defaults have no home in config.** `BudgetConfig` in Task 1 has
-   `max_turns`, `max_tokens`, `max_usd` only. The spec also fixes
-   `max_consecutive_vetoes` at 5 and `no_progress_turns` at 3, and says `max_turns` is
-   unlimited interactively but **60 under `nabu run`**. `agent.Config` already has
-   `MaxConsecutiveVetoes` and `NoProgressTurns` fields expecting to be populated.
+## One pre-existing defect, found while planning P1b
 
-4. **Task 2 introduces the first dependency but has no `go mod tidy` step.** Its commit
-   stages `go.mod` and `go.sum`, but nothing generates them. Add the step.
+This is **not** P1b scope and no task above fixes it, but P1b is the milestone that
+first makes it reachable, so it should be fixed during this milestone.
+
+Architecture spec §8, "Permission modes", says:
+
+> `bypass` approves everything and **appends a `notice`** when set.
+
+`agent.Manager.SetOption` (shipped in P1a) validates `permission_mode` against ask /
+auto / bypass and appends an `options_change` event — but it never appends the
+`notice`. Until `nabu.session.set_option` exists (Task 4), no client can reach this
+path, which is why P1a's tests did not catch it.
+
+The fix belongs in `daemon/agent`, not in `daemon/api`: it is core state behaviour, not
+transport. It is a few lines plus a test. Do it as its own commit rather than folding
+it into an API task, so the history shows it as a P1a correction.
 
 ---
 
