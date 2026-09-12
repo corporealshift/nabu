@@ -71,3 +71,11 @@ go build ./... && go vet ./... && go test ./...
 
 That command is the project gate. The conformance vectors under `protocol/vectors/`
 are the central correctness artifact and run as part of `go test ./protocol/`.
+
+A live smoke test drives the real agent loop against a local OpenAI-compatible
+server. It is skipped unless the base URL is set, so the gate stays hermetic:
+
+```
+NABU_LIVE_BASE_URL=http://localhost:8033/v1 NABU_LIVE_MODEL=qwen3.6-35b-a3b \
+  go test ./daemon/agent/ -run Live -v -timeout 10m
+```

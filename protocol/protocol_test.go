@@ -64,3 +64,35 @@ func TestRPCErrorCarriesName(t *testing.T) {
 		t.Fatalf("missing name: %s", b)
 	}
 }
+
+func TestRenderTasksMatchesStateBlock(t *testing.T) {
+	tasks := []Task{
+		{ID: "t1", Title: "A", Status: TaskDone, BlockedBy: []string{}},
+		{ID: "t2", Title: "B", Status: TaskBlocked, BlockedBy: []string{}, Note: "waiting"},
+	}
+	want := "Tasks (1/2 done):\n- [x] t1 A\n- [!] t2 B — blocked: waiting"
+	if got := RenderTasks(tasks); got != want {
+		t.Fatalf("RenderTasks:\n%s\nwant:\n%s", got, want)
+	}
+	if got := RenderTasks(nil); got != "Tasks: none" {
+		t.Fatalf("empty: %q", got)
+	}
+}
+
+func TestNewULIDAfterIsMonotonic(t *testing.T) {
+	// Same-millisecond generation must still order by creation.
+	prev := ""
+	for i := 0; i < 200; i++ {
+		id := NewULIDAfter(prev)
+		if ValidateULID(id) != nil {
+			t.Fatalf("invalid: %s", id)
+		}
+		if prev != "" && id <= prev {
+			t.Fatalf("not monotonic at %d: %s <= %s", i, id, prev)
+		}
+		prev = id
+	}
+	if NewULIDAfter("not-a-ulid") == "" {
+		t.Fatal("a non-ULID prev must still yield an id")
+	}
+}

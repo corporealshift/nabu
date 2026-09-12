@@ -37,8 +37,15 @@ fields and capabilities it does not know.
 ## 2. Identifiers and time
 
 Session ids and event ids are **ULIDs** (26 characters, Crockford base32, per the ULID
-spec): 48 bits of millisecond time followed by 80 random bits. They sort by creation
-time as strings. Timestamps are RFC 3339 with millisecond precision in UTC.
+spec): 48 bits of millisecond time followed by 80 random bits. Timestamps are RFC 3339
+with millisecond precision in UTC.
+
+Ids sort by creation order as strings, and a writer MUST guarantee that: two ULIDs
+generated in the same millisecond order by their random bits, which is not creation
+order. A writer issuing a sequence (a session's events, a daemon's session ids) MUST
+ensure each new id sorts strictly after the previous one, generating at the next
+millisecond if necessary. Readers may rely on this ordering within one log; they MUST
+NOT rely on it across logs written by different daemons.
 
 ## 3. The session event log
 

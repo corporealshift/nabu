@@ -48,10 +48,12 @@ func NewRegistry(mods []Module, opts Options) *Registry {
 	return &Registry{modules: mods, opts: opts, disabled: map[string]map[string]bool{}, dead: map[string]error{}}
 }
 
-// Init initialises every module. configFor returns a module's config section;
-// a module whose config says enabled=false is not initialised and is skipped.
-// Init failures are recorded, not fatal: the daemon runs without that module.
-func (r *Registry) Init(h Host, configFor func(name string) Config) {
+// Init initialises every module. hostFor returns the Host for a module: each
+// gets its own so its tool calls carry source module:<name>. configFor returns
+// its config section; a module whose config says enabled=false is not
+// initialised. Init failures are recorded, not fatal: the daemon runs without
+// that module.
+func (r *Registry) Init(hostFor func(name string) Host, configFor func(name string) Config) {
 	for _, m := range r.modules {
 		cfg := configFor(m.Name())
 		if !cfg.Enabled() {
@@ -64,7 +66,7 @@ func (r *Registry) Init(h Host, configFor func(name string) Config) {
 					r.dead[m.Name()] = fmt.Errorf("panic in Init: %v", p)
 				}
 			}()
-			if err := m.Init(h, cfg); err != nil {
+			if err := m.Init(hostFor(m.Name()), cfg); err != nil {
 				r.dead[m.Name()] = err
 			}
 		}()

@@ -80,6 +80,25 @@ func encodeULID(b [16]byte) string {
 	return string(out[:])
 }
 
+// NewULIDAfter returns a fresh ULID guaranteed to sort strictly after prev.
+// Plain ULIDs only order by millisecond: two generated in the same
+// millisecond order by their random bits, which is not creation order. Any
+// sequence that must stay in order (a session's events, a store's sessions)
+// generates through this.
+func NewULIDAfter(prev string) string {
+	id := NewULID()
+	if prev == "" || id > prev {
+		return id
+	}
+	t, err := ULIDTime(prev)
+	if err != nil {
+		return id // prev is not a ULID; nothing to order against
+	}
+	// A later millisecond raises the leading 10 characters, so the result
+	// sorts after prev whatever the random bits are.
+	return NewULIDAt(t.Add(time.Millisecond))
+}
+
 // ErrInvalidULID is returned by ValidateULID.
 var ErrInvalidULID = errors.New("invalid ULID")
 
