@@ -51,10 +51,11 @@ clients/                  go-tui/ android/ rust-gui/
 docs/superpowers/specs/   design specs; plans/ implementation plans
 ```
 
-## Event types (14)
+## Event types (15)
 
-`session`, `message`, `tool_call`, `tool_result`, `options_change`, `compaction`,
-`context`, `tasks`, `goal`, `check`, `stop_veto`, `budget`, `notice`, `report`.
+`session`, `message`, `tool_call`, `tool_result`, `options_change`, `state_change`,
+`compaction`, `context`, `tasks`, `goal`, `check`, `stop_veto`, `budget`, `notice`,
+`report`.
 Schemas in `protocol/schema/event.json`; semantics in `protocol/spec.md`.
 
 ## Milestones
