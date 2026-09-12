@@ -7,29 +7,37 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"runtime"
+	"strings"
 	"time"
 
 	"github.com/corporealshift/nabu/daemon/module"
 )
 
-// shellCommand returns the interpreter and the flag that takes a command.
-func (b *Builtins) shellCommand() (string, string) {
+// shellBase reduces a configured shell to a bare lowercase interpreter name, so
+// a full path such as C:\Windows\System32\cmd.exe is still recognized as cmd.
+func shellBase(shell string) string {
+	s := strings.ToLower(shell)
+	s = s[strings.LastIndexAny(s, `/\`)+1:]
+	return strings.TrimSuffix(s, ".exe")
+}
+
+// shellCommand returns the interpreter and the flag that takes a command. It
+// fails rather than falling back to another shell: the tool is named bash and
+// the model writes bash syntax, so handing that to cmd.exe silently corrupts
+// commands instead of refusing them.
+func (b *Builtins) shellCommand() (string, string, error) {
 	if b.Shell != "" {
-		if b.Shell == "cmd" || b.Shell == "cmd.exe" {
-			return b.Shell, "/C"
+		if shellBase(b.Shell) == "cmd" {
+			return b.Shell, "/C", nil
 		}
-		return b.Shell, "-c"
+		return b.Shell, "-c", nil
 	}
 	for _, sh := range []string{"bash", "sh"} {
 		if p, err := exec.LookPath(sh); err == nil {
-			return p, "-c"
+			return p, "-c", nil
 		}
 	}
-	if runtime.GOOS == "windows" {
-		return "cmd", "/C"
-	}
-	return "sh", "-c"
+	return "", "", errors.New(`no shell found: install bash or sh, or set the "shell" config key`)
 }
 
 func (b *Builtins) bashTool() module.Tool {
@@ -60,7 +68,10 @@ func (b *Builtins) bashTool() module.Tool {
 			}
 			cctx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
-			sh, flag := b.shellCommand()
+			sh, flag, err := b.shellCommand()
+			if err != nil {
+				return "", err
+			}
 			cmd := exec.CommandContext(cctx, sh, flag, a.Command)
 			cmd.Dir = s.Workspace().Path
 			// On a timeout the shell is killed, but a grandchild it spawned
