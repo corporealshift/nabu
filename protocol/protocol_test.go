@@ -64,3 +64,17 @@ func TestRPCErrorCarriesName(t *testing.T) {
 		t.Fatalf("missing name: %s", b)
 	}
 }
+
+func TestRenderTasksMatchesStateBlock(t *testing.T) {
+	tasks := []Task{
+		{ID: "t1", Title: "A", Status: TaskDone, BlockedBy: []string{}},
+		{ID: "t2", Title: "B", Status: TaskBlocked, BlockedBy: []string{}, Note: "waiting"},
+	}
+	want := "Tasks (1/2 done):\n- [x] t1 A\n- [!] t2 B — blocked: waiting"
+	if got := RenderTasks(tasks); got != want {
+		t.Fatalf("RenderTasks:\n%s\nwant:\n%s", got, want)
+	}
+	if got := RenderTasks(nil); got != "Tasks: none" {
+		t.Fatalf("empty: %q", got)
+	}
+}

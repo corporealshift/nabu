@@ -231,7 +231,7 @@ type disabledByConfig struct{ base }
 
 func TestInitHonoursEnabledFlagAndSurvivesFailure(t *testing.T) {
 	r := NewRegistry([]Module{disabledByConfig{base{"off"}}, allower{base{"on"}, new([]string)}}, quiet())
-	r.Init(nil, func(name string) Config {
+	r.Init(func(string) Host { return nil }, func(name string) Config {
 		if name == "off" {
 			return Config{"enabled": false}
 		}
