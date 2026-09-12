@@ -68,6 +68,11 @@ steps give. Every other task fits comfortably in one pass.
 - **`Store.Close` exists** and closes every open session file. The daemon needs it at
   shutdown, and on Windows an open handle blocks directory removal, so every test
   that opens a store must close it (the `openAt` helper in `session_test.go` does).
+- **`Manager.Create` takes `agent.CreateOptions`, not `protocol.Options`.** The
+  protocol type's `compaction_enabled` is a required bool, so its zero value reads as
+  "compaction off" — the opposite of the spec's default, and silently so. CreateOptions
+  makes that one field a `*bool`: nil means on, and false is an explicit choice. Model
+  and permission mode keep plain string fields because "" is unambiguous.
 - **Ordering needs `protocol.NewULIDAfter`, not `NewULID`.** Plain ULIDs order only by
   millisecond; two generated in the same millisecond order by their random bits, which
   is not creation order. Both sequences that must stay ordered — a session's events and

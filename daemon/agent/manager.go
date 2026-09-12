@@ -112,18 +112,41 @@ func (m *Manager) toolNames() []string {
 
 // ---------------------------------------------------------------- lifecycle
 
+// CreateOptions are the optional settings for a new session. An unset field
+// takes the daemon default. CompactionEnabled is a pointer because false is a
+// meaningful choice: a bare bool could not tell "leave it on" from "turn it
+// off", and the zero value would silently disable compaction.
+type CreateOptions struct {
+	Model             string                  // "" = the configured default model
+	PermissionMode    protocol.PermissionMode // "" = ask
+	CompactionEnabled *bool                   // nil = on
+}
+
+func (o CreateOptions) resolve(defaultModel string) protocol.Options {
+	out := protocol.Options{
+		Model:             o.Model,
+		PermissionMode:    o.PermissionMode,
+		CompactionEnabled: true,
+	}
+	if out.Model == "" {
+		out.Model = defaultModel
+	}
+	if out.PermissionMode == "" {
+		out.PermissionMode = protocol.PermissionAsk
+	}
+	if o.CompactionEnabled != nil {
+		out.CompactionEnabled = *o.CompactionEnabled
+	}
+	return out
+}
+
 // Create resolves the workspace, starts a session, and dispatches SessionStart.
-func (m *Manager) Create(ctx context.Context, workspacePath string, opts protocol.Options) (*session.Session, error) {
+func (m *Manager) Create(ctx context.Context, workspacePath string, co CreateOptions) (*session.Session, error) {
 	ws, err := workspace.Resolve(workspacePath)
 	if err != nil {
 		return nil, err
 	}
-	if opts.Model == "" {
-		opts.Model = m.cfg.DefaultModel
-	}
-	if opts.PermissionMode == "" {
-		opts.PermissionMode = protocol.PermissionAsk
-	}
+	opts := co.resolve(m.cfg.DefaultModel)
 	s, err := m.deps.Store.Create(ws.Path, ws.Key, opts)
 	if err != nil {
 		return nil, err
