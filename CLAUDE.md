@@ -30,8 +30,8 @@ full gate, not a single package, before claiming anything works.
   `daemon/agent` or `daemon/session`, it probably belongs in a module.
 - Every model-visible injection is a `context` event. Every plugin-like side effect is
   a logged event with a `source`.
-- Modules import only `github.com/corporealshift/nabu/daemon/module` from the daemon
-  tree; the boundary test enforces it.
+- Modules import only `daemon/module` and `protocol` from this repo; the boundary test
+  in `daemon/module` enforces it.
 - Line endings are LF (see `.gitattributes`).
 
 ## Layout
