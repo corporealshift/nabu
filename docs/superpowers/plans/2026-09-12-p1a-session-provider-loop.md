@@ -65,6 +65,9 @@ steps give. Every other task fits comfortably in one pass.
   objects (killing grandchildren on timeout) are a P1b task, not this plan.
 - **No `index.json` yet.** `Store.List` scans `sessions/*.jsonl`; the index is an
   optimization for when logs are large.
+- **`Store.Close` exists** and closes every open session file. The daemon needs it at
+  shutdown, and on Windows an open handle blocks directory removal, so every test
+  that opens a store must close it (the `openAt` helper in `session_test.go` does).
 
 ## File structure
 
@@ -113,7 +116,7 @@ steps give. Every other task fits comfortably in one pass.
 - Modify: `daemon/module/registry.go` (the `Init` method)
 - Modify: `daemon/module/registry_test.go` (`TestInitHonoursEnabledFlagAndSurvivesFailure`)
 
-- [ ] **Step 1: Write the failing test for RenderTasks**
+- [x] **Step 1: Write the failing test for RenderTasks**
 
 Append to `protocol/protocol_test.go`:
 
@@ -138,7 +141,7 @@ func TestRenderTasksMatchesStateBlock(t *testing.T) {
 Run: `go test ./protocol/ -run TestRenderTasks`
 Expected: compile error `undefined: RenderTasks`.
 
-- [ ] **Step 3: Implement RenderTasks and reuse it**
+- [x] **Step 3: Implement RenderTasks and reuse it**
 
 In `protocol/render.go`, replace the tasks section of `RenderCurrentState` and add the function:
 
