@@ -1,0 +1,164 @@
+{
+  "name": "goal tasks budget",
+  "description": "Goal, tasks and budget come from their latest events.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-10T00:26:42.000Z",
+      "type": "goal",
+      "data": {
+        "condition": "go test ./... passes",
+        "state": "set",
+        "source": "client"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-10T00:26:43.000Z",
+      "type": "budget",
+      "data": {
+        "max_turns": 60,
+        "source": "client"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-09-10T00:26:44.000Z",
+      "type": "tasks",
+      "data": {
+        "revision": 1,
+        "source": "model",
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "Write the test",
+            "status": "in_progress",
+            "done_when": "test exists and fails",
+            "blocked_by": []
+          },
+          {
+            "id": "t2",
+            "title": "Make it pass",
+            "status": "pending",
+            "done_when": "go test ./... exits 0",
+            "check": "go test ./...",
+            "blocked_by": [
+              "t1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000005",
+      "parent_id": "01JEVENT000000000000000004",
+      "timestamp": "2026-09-10T00:26:45.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "go"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000006",
+      "parent_id": "01JEVENT000000000000000005",
+      "timestamp": "2026-09-10T00:26:46.000Z",
+      "type": "state_change",
+      "data": {
+        "from": "idle",
+        "to": "running",
+        "reason": "prompt"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000007",
+      "parent_id": "01JEVENT000000000000000006",
+      "timestamp": "2026-09-10T00:26:47.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "Working.",
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 5
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000008",
+      "parent_id": "01JEVENT000000000000000007",
+      "timestamp": "2026-09-10T00:26:48.000Z",
+      "type": "goal",
+      "data": {
+        "condition": "go test ./... passes",
+        "state": "unmet",
+        "reason": "t2 is pending",
+        "source": "module:verify"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000009",
+      "parent_id": "01JEVENT000000000000000008",
+      "timestamp": "2026-09-10T00:26:49.000Z",
+      "type": "stop_veto",
+      "data": {
+        "module": "verify",
+        "reason": "1 task still open: t2 (pending)"
+      }
+    }
+  ],
+  "operation": {
+    "op": "project"
+  },
+  "expect": {
+    "state": "running",
+    "goal": {
+      "condition": "go test ./... passes",
+      "state": "unmet",
+      "reason": "t2 is pending",
+      "source": "module:verify"
+    },
+    "tasks": [
+      {
+        "id": "t1",
+        "title": "Write the test",
+        "status": "in_progress",
+        "done_when": "test exists and fails",
+        "blocked_by": []
+      },
+      {
+        "id": "t2",
+        "title": "Make it pass",
+        "status": "pending",
+        "done_when": "go test ./... exits 0",
+        "check": "go test ./...",
+        "blocked_by": [
+          "t1"
+        ]
+      }
+    ],
+    "budget": {
+      "max_turns": 60,
+      "source": "client"
+    },
+    "turns": 1
+  }
+}

@@ -1,0 +1,145 @@
+{
+  "name": "paused after compaction",
+  "description": "Paused state, summed usage, and compacted_through.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-10T00:26:42.000Z",
+      "type": "state_change",
+      "data": {
+        "from": null,
+        "to": "idle"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-10T00:26:43.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "long task"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-09-10T00:26:44.000Z",
+      "type": "state_change",
+      "data": {
+        "from": "idle",
+        "to": "running",
+        "reason": "prompt"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000005",
+      "parent_id": "01JEVENT000000000000000004",
+      "timestamp": "2026-09-10T00:26:45.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "turn 1",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 100
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000006",
+      "parent_id": "01JEVENT000000000000000005",
+      "timestamp": "2026-09-10T00:26:46.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "turn 2",
+        "usage": {
+          "input_tokens": 1200,
+          "output_tokens": 100,
+          "cached_tokens": 900
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000007",
+      "parent_id": "01JEVENT000000000000000006",
+      "timestamp": "2026-09-10T00:26:47.000Z",
+      "type": "compaction",
+      "data": {
+        "mode": "summarize",
+        "range_start": "01JEVENT000000000000000003",
+        "range_end": "01JEVENT000000000000000006",
+        "summary": "User asked for a long task; two turns done."
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000008",
+      "parent_id": "01JEVENT000000000000000007",
+      "timestamp": "2026-09-10T00:26:48.000Z",
+      "type": "budget",
+      "data": {
+        "max_turns": 5,
+        "source": "daemon"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000009",
+      "parent_id": "01JEVENT000000000000000008",
+      "timestamp": "2026-09-10T00:26:49.000Z",
+      "type": "state_change",
+      "data": {
+        "from": "running",
+        "to": "paused",
+        "reason": "budget"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000010",
+      "parent_id": "01JEVENT000000000000000009",
+      "timestamp": "2026-09-10T00:26:50.000Z",
+      "type": "report",
+      "data": {
+        "exit_status": "paused",
+        "tasks": {
+          "total": 0,
+          "done": 0,
+          "open": []
+        },
+        "checks": []
+      }
+    }
+  ],
+  "operation": {
+    "op": "project"
+  },
+  "expect": {
+    "state": "paused",
+    "turns": 2,
+    "usage": {
+      "input_tokens": 2200,
+      "output_tokens": 200,
+      "cached_tokens": 900
+    },
+    "compacted_through": "01JEVENT000000000000000006",
+    "budget": {
+      "max_turns": 5
+    }
+  }
+}

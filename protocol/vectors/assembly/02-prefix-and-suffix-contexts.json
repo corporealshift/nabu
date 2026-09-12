@@ -1,0 +1,119 @@
+{
+  "name": "prefix and suffix contexts",
+  "description": "Prefix blocks lead; suffix blocks after the last assistant message trail.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-10T00:26:42.000Z",
+      "type": "context",
+      "data": {
+        "source": "module:skills",
+        "slot": "prefix",
+        "content": "# Skills\n- verifying-work"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-10T00:26:43.000Z",
+      "type": "context",
+      "data": {
+        "source": "module:memory",
+        "slot": "prefix",
+        "content": "# Memory\n- owner prefers named-file git adds"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-09-10T00:26:44.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "hi"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000005",
+      "parent_id": "01JEVENT000000000000000004",
+      "timestamp": "2026-09-10T00:26:45.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "hello",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000006",
+      "parent_id": "01JEVENT000000000000000005",
+      "timestamp": "2026-09-10T00:26:46.000Z",
+      "type": "context",
+      "data": {
+        "source": "module:memory",
+        "slot": "suffix",
+        "content": "Possibly relevant: [[rancher-desktop-docker]]"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000007",
+      "parent_id": "01JEVENT000000000000000006",
+      "timestamp": "2026-09-10T00:26:47.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "next"
+      }
+    }
+  ],
+  "operation": {
+    "op": "assemble"
+  },
+  "expect": {
+    "segments": [
+      {
+        "kind": "prefix_context",
+        "id": "01JEVENT000000000000000002"
+      },
+      {
+        "kind": "prefix_context",
+        "id": "01JEVENT000000000000000003"
+      },
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000004"
+      },
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000005"
+      },
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000007"
+      },
+      {
+        "kind": "suffix_context",
+        "id": "01JEVENT000000000000000006"
+      }
+    ]
+  }
+}

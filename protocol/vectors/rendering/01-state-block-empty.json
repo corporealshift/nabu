@@ -1,0 +1,27 @@
+{
+  "name": "state block empty",
+  "description": "Current state with no goal, no tasks, unlimited budget.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    }
+  ],
+  "operation": {
+    "op": "render_state"
+  },
+  "expect": {
+    "text": "## Current state\nGoal: none\nBudget: turn 0 (unlimited)"
+  }
+}

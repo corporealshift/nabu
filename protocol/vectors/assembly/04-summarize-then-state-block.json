@@ -1,0 +1,177 @@
+{
+  "name": "summarize then state block",
+  "description": "After summarize: re-injected prefix, summary, state block, post-compaction events, vetoes.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-10T00:26:42.000Z",
+      "type": "context",
+      "data": {
+        "source": "module:skills",
+        "slot": "prefix",
+        "content": "# Skills"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-10T00:26:43.000Z",
+      "type": "goal",
+      "data": {
+        "condition": "tests pass",
+        "state": "set",
+        "source": "client"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-09-10T00:26:44.000Z",
+      "type": "tasks",
+      "data": {
+        "revision": 1,
+        "source": "model",
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "Fix",
+            "status": "in_progress",
+            "blocked_by": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000005",
+      "parent_id": "01JEVENT000000000000000004",
+      "timestamp": "2026-09-10T00:26:45.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "start"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000006",
+      "parent_id": "01JEVENT000000000000000005",
+      "timestamp": "2026-09-10T00:26:46.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "turn 1",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000007",
+      "parent_id": "01JEVENT000000000000000006",
+      "timestamp": "2026-09-10T00:26:47.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "more"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000008",
+      "parent_id": "01JEVENT000000000000000007",
+      "timestamp": "2026-09-10T00:26:48.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "turn 2",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000009",
+      "parent_id": "01JEVENT000000000000000008",
+      "timestamp": "2026-09-10T00:26:49.000Z",
+      "type": "compaction",
+      "data": {
+        "mode": "summarize",
+        "range_start": "01JEVENT000000000000000002",
+        "range_end": "01JEVENT000000000000000008",
+        "summary": "Two turns of work on the fix."
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000010",
+      "parent_id": "01JEVENT000000000000000009",
+      "timestamp": "2026-09-10T00:26:50.000Z",
+      "type": "context",
+      "data": {
+        "source": "module:skills",
+        "slot": "prefix",
+        "content": "# Skills"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000011",
+      "parent_id": "01JEVENT000000000000000010",
+      "timestamp": "2026-09-10T00:26:51.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "keep going"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000012",
+      "parent_id": "01JEVENT000000000000000011",
+      "timestamp": "2026-09-10T00:26:52.000Z",
+      "type": "stop_veto",
+      "data": {
+        "module": "verify",
+        "reason": "t1 still open"
+      }
+    }
+  ],
+  "operation": {
+    "op": "assemble"
+  },
+  "expect": {
+    "segments": [
+      {
+        "kind": "prefix_context",
+        "id": "01JEVENT000000000000000010"
+      },
+      {
+        "kind": "summary",
+        "id": "01JEVENT000000000000000009"
+      },
+      {
+        "kind": "state"
+      },
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000011"
+      },
+      {
+        "kind": "vetoes"
+      }
+    ]
+  }
+}

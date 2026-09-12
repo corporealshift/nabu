@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nabu.dev/schema/jsonrpc.json",
+  "title": "nabu JSON-RPC 2.0 message",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/notification" },
+    { "$ref": "#/$defs/success" },
+    { "$ref": "#/$defs/failure" }
+  ],
+  "$defs": {
+    "id": { "oneOf": [{ "type": "integer" }, { "type": "string" }] },
+    "method": {
+      "type": "string",
+      "enum": [
+        "nabu.hello",
+        "nabu.session.list",
+        "nabu.session.create",
+        "nabu.session.send_prompt",
+        "nabu.session.events_after",
+        "nabu.session.subscribe",
+        "nabu.session.unsubscribe",
+        "nabu.session.interrupt",
+        "nabu.session.stop",
+        "nabu.session.resume",
+        "nabu.session.state",
+        "nabu.session.set_goal",
+        "nabu.session.clear_goal",
+        "nabu.session.set_option",
+        "nabu.session.update_tasks",
+        "nabu.session.event",
+        "nabu.session.delta",
+        "nabu.rpc.permission.request",
+        "nabu.rpc.ui.ask"
+      ]
+    },
+    "request": {
+      "type": "object",
+      "required": ["jsonrpc", "id", "method"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "method": { "$ref": "#/$defs/method" },
+        "params": { "type": "object" }
+      }
+    },
+    "notification": {
+      "type": "object",
+      "required": ["jsonrpc", "method"],
+      "not": { "required": ["id"] },
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": { "type": "string", "enum": ["nabu.session.event", "nabu.session.delta"] },
+        "params": { "type": "object" }
+      }
+    },
+    "success": {
+      "type": "object",
+      "required": ["jsonrpc", "id", "result"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "result": { "type": ["object", "null"] }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "required": ["jsonrpc", "id", "error"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "type": "integer",
+              "enum": [-32700, -32600, -32601, -32602, -32603, -32001, -32002, -32003, -32004, -32005, -32006, -32007, -32008]
+            },
+            "message": { "type": "string" },
+            "data": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "enum": [
+                    "parse_error", "invalid_request", "method_not_found", "invalid_params", "internal_error",
+                    "nabu_session_not_found", "nabu_invalid_transition", "nabu_permission_denied",
+                    "nabu_already_resolved", "nabu_cursor_unknown", "nabu_protocol_mismatch",
+                    "nabu_unauthorized", "nabu_workspace_untrusted"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

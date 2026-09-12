@@ -1,0 +1,137 @@
+{
+  "name": "tool call source client",
+  "description": "Clients never originate tool calls.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-10T00:26:42.000Z",
+      "type": "state_change",
+      "data": {
+        "from": null,
+        "to": "idle"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-10T00:26:43.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "Add cursor validation to events_after."
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-09-10T00:26:44.000Z",
+      "type": "state_change",
+      "data": {
+        "from": "idle",
+        "to": "running",
+        "reason": "prompt"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000005",
+      "parent_id": "01JEVENT000000000000000004",
+      "timestamp": "2026-09-10T00:26:45.000Z",
+      "type": "tool_call",
+      "data": {
+        "call_id": "c1",
+        "tool": "read",
+        "arguments": {
+          "path": "protocol/cursor.go"
+        },
+        "source": "client"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000006",
+      "parent_id": "01JEVENT000000000000000005",
+      "timestamp": "2026-09-10T00:26:46.000Z",
+      "type": "tool_result",
+      "data": {
+        "call_id": "c1",
+        "tool": "read",
+        "content": "package protocol\n// ... 40 lines",
+        "status": "ok"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000007",
+      "parent_id": "01JEVENT000000000000000006",
+      "timestamp": "2026-09-10T00:26:47.000Z",
+      "type": "tool_call",
+      "data": {
+        "call_id": "c2",
+        "tool": "bash",
+        "arguments": {
+          "command": "go test ./protocol/"
+        },
+        "source": "model"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000008",
+      "parent_id": "01JEVENT000000000000000007",
+      "timestamp": "2026-09-10T00:26:48.000Z",
+      "type": "tool_result",
+      "data": {
+        "call_id": "c2",
+        "tool": "bash",
+        "content": "ok  \t./protocol\t0.4s",
+        "status": "ok"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000009",
+      "parent_id": "01JEVENT000000000000000008",
+      "timestamp": "2026-09-10T00:26:49.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "Done: cursor validation added and tests pass.",
+        "usage": {
+          "input_tokens": 8123,
+          "output_tokens": 212,
+          "cached_tokens": 7900
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000010",
+      "parent_id": "01JEVENT000000000000000009",
+      "timestamp": "2026-09-10T00:26:50.000Z",
+      "type": "state_change",
+      "data": {
+        "from": "running",
+        "to": "idle",
+        "reason": "turn_complete"
+      }
+    }
+  ],
+  "operation": {
+    "op": "validate"
+  },
+  "expect": {
+    "valid": false,
+    "error": "source \"client\" invalid"
+  }
+}

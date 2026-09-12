@@ -1,0 +1,67 @@
+{
+  "name": "options change applies in order",
+  "description": "Each options_change overwrites one option.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-10T00:26:42.000Z",
+      "type": "options_change",
+      "data": {
+        "key": "permission_mode",
+        "from": "ask",
+        "to": "auto",
+        "source": "client"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-10T00:26:43.000Z",
+      "type": "options_change",
+      "data": {
+        "key": "compaction_enabled",
+        "from": true,
+        "to": false,
+        "source": "client"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-09-10T00:26:44.000Z",
+      "type": "options_change",
+      "data": {
+        "key": "model",
+        "from": "qwen3.6-35b-a3b",
+        "to": "deepseek-v4",
+        "source": "client"
+      }
+    }
+  ],
+  "operation": {
+    "op": "project"
+  },
+  "expect": {
+    "options": {
+      "model": "deepseek-v4",
+      "compaction_enabled": false,
+      "permission_mode": "auto"
+    }
+  }
+}

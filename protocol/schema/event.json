@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nabu.dev/schema/event.json",
+  "title": "nabu session event",
+  "type": "object",
+  "required": ["id", "parent_id", "timestamp", "type", "data"],
+  "properties": {
+    "id": { "$ref": "#/$defs/ulid" },
+    "parent_id": { "oneOf": [{ "$ref": "#/$defs/ulid" }, { "type": "null" }] },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "type": {
+      "type": "string",
+      "enum": [
+        "session", "message", "tool_call", "tool_result", "options_change",
+        "state_change", "compaction", "context", "tasks", "goal", "check",
+        "stop_veto", "budget", "notice", "report"
+      ]
+    },
+    "data": { "type": "object" }
+  },
+  "allOf": [
+    { "if": { "properties": { "type": { "const": "session" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/session" } } } },
+    { "if": { "properties": { "type": { "const": "message" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/message" } } } },
+    { "if": { "properties": { "type": { "const": "tool_call" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/tool_call" } } } },
+    { "if": { "properties": { "type": { "const": "tool_result" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/tool_result" } } } },
+    { "if": { "properties": { "type": { "const": "options_change" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/options_change" } } } },
+    { "if": { "properties": { "type": { "const": "state_change" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/state_change" } } } },
+    { "if": { "properties": { "type": { "const": "compaction" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/compaction" } } } },
+    { "if": { "properties": { "type": { "const": "context" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/context" } } } },
+    { "if": { "properties": { "type": { "const": "tasks" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/tasks" } } } },
+    { "if": { "properties": { "type": { "const": "goal" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/goal" } } } },
+    { "if": { "properties": { "type": { "const": "check" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/check" } } } },
+    { "if": { "properties": { "type": { "const": "stop_veto" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/stop_veto" } } } },
+    { "if": { "properties": { "type": { "const": "budget" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/budget" } } } },
+    { "if": { "properties": { "type": { "const": "notice" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/notice" } } } },
+    { "if": { "properties": { "type": { "const": "report" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/report" } } } }
+  ],
+  "$defs": {
+    "ulid": { "type": "string", "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$" },
+    "source": { "type": "string", "pattern": "^(daemon|model|client|module:[a-z][a-z0-9_-]*)$" },
+    "session_state": { "type": "string", "enum": ["idle", "running", "blocked", "paused", "completed", "error"] },
+    "permission_mode": { "type": "string", "enum": ["ask", "auto", "bypass"] },
+    "options": {
+      "type": "object",
+      "required": ["model", "compaction_enabled", "permission_mode"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "compaction_enabled": { "type": "boolean" },
+        "permission_mode": { "$ref": "#/$defs/permission_mode" }
+      }
+    },
+    "session": {
+      "type": "object",
+      "required": ["workspace", "workspace_key", "options"],
+      "properties": {
+        "workspace": { "type": "string", "minLength": 1 },
+        "workspace_key": { "type": "string", "minLength": 1 },
+        "options": { "$ref": "#/$defs/options" }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "required": ["input_tokens", "output_tokens"],
+      "properties": {
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "cached_tokens": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "message": {
+      "type": "object",
+      "required": ["role", "content"],
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content": { "type": "string" },
+        "usage": { "$ref": "#/$defs/usage" },
+        "interrupted": { "type": "boolean" }
+      }
+    },
+    "tool_call": {
+      "type": "object",
+      "required": ["call_id", "tool", "arguments", "source"],
+      "properties": {
+        "call_id": { "type": "string", "minLength": 1 },
+        "tool": { "type": "string", "minLength": 1 },
+        "arguments": { "type": "object" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "tool_result": {
+      "type": "object",
+      "required": ["call_id", "tool", "content", "status"],
+      "properties": {
+        "call_id": { "type": "string", "minLength": 1 },
+        "tool": { "type": "string", "minLength": 1 },
+        "content": { "type": "string" },
+        "status": { "type": "string", "enum": ["ok", "error"] }
+      }
+    },
+    "options_change": {
+      "type": "object",
+      "required": ["key", "from", "to", "source"],
+      "properties": {
+        "key": { "type": "string", "enum": ["model", "compaction_enabled", "permission_mode"] },
+        "from": {},
+        "to": {},
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "state_change": {
+      "type": "object",
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "oneOf": [{ "$ref": "#/$defs/session_state" }, { "type": "null" }] },
+        "to": { "$ref": "#/$defs/session_state" },
+        "reason": { "type": "string" }
+      }
+    },
+    "compaction": {
+      "type": "object",
+      "required": ["mode", "range_start", "range_end"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["clear_results", "summarize"] },
+        "range_start": { "$ref": "#/$defs/ulid" },
+        "range_end": { "$ref": "#/$defs/ulid" },
+        "summary": { "type": "string" }
+      },
+      "if": { "properties": { "mode": { "const": "summarize" } } },
+      "then": { "required": ["mode", "range_start", "range_end", "summary"] }
+    },
+    "context": {
+      "type": "object",
+      "required": ["source", "slot", "content"],
+      "properties": {
+        "source": { "$ref": "#/$defs/source" },
+        "slot": { "type": "string", "enum": ["prefix", "suffix"] },
+        "content": { "type": "string" }
+      }
+    },
+    "task": {
+      "type": "object",
+      "required": ["id", "title", "status", "blocked_by"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "blocked", "done", "failed", "cancelled"] },
+        "done_when": { "type": "string" },
+        "check": { "type": "string" },
+        "blocked_by": { "type": "array", "items": { "type": "string" } },
+        "note": { "type": "string" },
+        "evidence": { "$ref": "#/$defs/ulid" }
+      }
+    },
+    "tasks": {
+      "type": "object",
+      "required": ["revision", "source", "tasks"],
+      "properties": {
+        "revision": { "type": "integer", "minimum": 1 },
+        "source": { "$ref": "#/$defs/source" },
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } }
+      }
+    },
+    "goal": {
+      "type": "object",
+      "required": ["condition", "state", "source"],
+      "properties": {
+        "condition": { "type": "string", "minLength": 1 },
+        "state": { "type": "string", "enum": ["set", "met", "unmet", "impossible", "cleared"] },
+        "reason": { "type": "string" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "check": {
+      "type": "object",
+      "required": ["name", "kind", "status", "summary"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["command", "judge", "module"] },
+        "task_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["pass", "fail", "error"] },
+        "summary": { "type": "string" },
+        "output": { "type": "string" }
+      }
+    },
+    "stop_veto": {
+      "type": "object",
+      "required": ["module", "reason"],
+      "properties": {
+        "module": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "required": ["max_turns", "source"],
+      "properties": {
+        "max_turns": { "type": "integer", "minimum": 0 },
+        "max_tokens": { "type": "integer", "minimum": 0 },
+        "max_usd": { "type": "number", "minimum": 0 },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "notice": {
+      "type": "object",
+      "required": ["source", "level", "message"],
+      "properties": {
+        "source": { "$ref": "#/$defs/source" },
+        "level": { "type": "string", "enum": ["info", "warn", "error"] },
+        "message": { "type": "string" }
+      }
+    },
+    "report": {
+      "type": "object",
+      "required": ["exit_status", "tasks", "checks"],
+      "properties": {
+        "exit_status": { "type": "string", "enum": ["completed", "blocked", "paused", "error"] },
+        "goal": {
+          "type": "object",
+          "required": ["condition", "state"],
+          "properties": {
+            "condition": { "type": "string" },
+            "state": { "type": "string", "enum": ["set", "met", "unmet", "impossible", "cleared"] },
+            "reason": { "type": "string" }
+          }
+        },
+        "tasks": {
+          "type": "object",
+          "required": ["total", "done", "open"],
+          "properties": {
+            "total": { "type": "integer", "minimum": 0 },
+            "done": { "type": "integer", "minimum": 0 },
+            "open": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "title", "status"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "title": { "type": "string" },
+                  "status": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "status", "summary"],
+            "properties": {
+              "name": { "type": "string" },
+              "status": { "type": "string", "enum": ["pass", "fail", "error"] },
+              "summary": { "type": "string" }
+            }
+          }
+        },
+        "files_touched": { "type": "array", "items": { "type": "string" } },
+        "commits": { "type": "array", "items": { "type": "string" } },
+        "tree_dirty": { "type": "boolean" }
+      }
+    }
+  }
+}
