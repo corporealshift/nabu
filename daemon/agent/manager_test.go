@@ -45,7 +45,7 @@ func newHarness(t *testing.T, mods []module.Module, script []provider.Response) 
 
 func (h *harness) create(t *testing.T) *session.Session {
 	t.Helper()
-	s, err := h.m.Create(context.Background(), h.dir, protocol.Options{})
+	s, err := h.m.Create(context.Background(), h.dir, CreateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,5 +271,25 @@ func TestPromptOnTerminalSessionIsRejected(t *testing.T) {
 	r := protocol.MustData[protocol.ReportData](ev[len(ev)-1])
 	if r.ExitStatus != protocol.StateCompleted || r.Checks == nil || r.Tasks.Open == nil {
 		t.Fatalf("report: %+v", r)
+	}
+}
+
+func TestCreateOptionsDefaults(t *testing.T) {
+	h := newHarness(t, nil, nil)
+	// Compaction is on unless explicitly disabled: a zero CreateOptions must
+	// not silently turn it off.
+	s := h.create(t)
+	if opts := s.State().Options; !opts.CompactionEnabled {
+		t.Fatalf("compaction must default on: %+v", opts)
+	}
+	off := false
+	s2, err := h.m.Create(context.Background(), h.dir, CreateOptions{
+		CompactionEnabled: &off, Model: "fake/other", PermissionMode: protocol.PermissionBypass})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := s2.State().Options
+	if opts.CompactionEnabled || opts.Model != "fake/other" || opts.PermissionMode != protocol.PermissionBypass {
+		t.Fatalf("explicit options must be honoured: %+v", opts)
 	}
 }
