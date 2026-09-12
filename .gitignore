@@ -1,2 +1,6 @@
 .superpowers/
 .pi-delegations/
+bin/
+*.exe
+*.test
+coverage.out
