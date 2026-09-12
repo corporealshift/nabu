@@ -30,7 +30,7 @@ func TestSlowSubscriberIsDropped(t *testing.T) {
 	defer cancel()
 	s.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "1"})
 	s.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "2"}) // overflows
-	<-ch                                                                             // the first event
+	<-ch                                                                              // the first event
 	if _, ok := <-ch; ok {
 		t.Fatal("overflowed subscriber must be closed")
 	}
