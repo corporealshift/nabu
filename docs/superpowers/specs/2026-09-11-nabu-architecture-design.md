@@ -29,6 +29,16 @@ and found five, marked **(core gap)**: an `options_change` event, token usage on
 assistant messages, a protocol handshake, ephemeral streaming deltas, and daemon
 lifecycle/config/storage. Section 22 records the owner's answers of 2026-09-11.
 
+### Amendments after approval
+
+Changes made to this document after its 2026-09-11 approval are listed here and marked
+inline at the section they affect.
+
+- **2026-09-12 — §8 Configuration is JSON, not TOML.** Decided while planning P1b. Every
+  Go TOML and YAML parser is a third-party dependency; `encoding/json` is standard
+  library. The config loader stays dependency-free, at the cost of comments in the
+  config file. See §8 "Configuration" for the full reasoning and the resulting shape.
+
 ## 1. Purpose
 
 Nabu is a custom coding-agent harness that replaces `pi` (the `pi-coding-agent` CLI)
@@ -316,7 +326,7 @@ asks the stop gate (§10.1). Every transition appends to the log.
   to a running daemon and, if none is listening, **starts one detached** and waits for
   its handshake. Claude Code's delegation must never fail with "daemon not running."
   `nabu daemon stop` performs the graceful shutdown below.
-- Storage lives under `~/.nabu/`: `config.toml`, `sessions/<id>.jsonl` (one
+- Storage lives under `~/.nabu/`: `config.json`, `sessions/<id>.jsonl` (one
   append-only file per session) plus `sessions/index.json`, `memory/`,
   `modules/<name>/`, `daemon.log` (structured, `log/slog`), `daemon.pid`, and
   `daemon.port`.
@@ -324,15 +334,26 @@ asks the stop gate (§10.1). Every transition appends to the log.
   safe to generate on any client for outbox items before the daemon assigns the
   canonical id.
 
-### Configuration **(core gap)**
+### Configuration **(core gap)** **(amended 2026-09-12: JSON, was TOML)**
 
-TOML. `~/.nabu/config.toml` is the base; a trusted workspace may add
-`<workspace>/.nabu/config.toml`, which overlays it. Untrusted workspaces are
-prompted on first use and their overlay is ignored until trusted. Sections:
-`[daemon]` (bind, token, log level), `[providers.<name>]` (base URL, key,
-`max_in_flight`, `tasks_enabled`), `[budget]`, and one `[modules.<name>]` section per
-module with at least `enabled`. Every module config value has a default; a missing
-section means "on, with defaults."
+JSON, parsed with the standard library `encoding/json`. `~/.nabu/config.json` is the
+base; a trusted workspace may add `<workspace>/.nabu/config.json`, which overlays it.
+Untrusted workspaces are prompted on first use and their overlay is ignored until
+trusted. Top-level keys: `daemon` (bind, token, log level), `providers` (an object
+keyed by provider name, each with base URL, key, `max_in_flight`, `tasks_enabled`),
+`budget`, and `modules` (an object keyed by module name, each with at least
+`enabled`). Every module config value has a default; a missing key means "on, with
+defaults." Decoding uses `DisallowUnknownFields`, so a typo in a key is a loud error
+rather than a silently ignored setting.
+
+The default daemon bind is `127.0.0.1:8737`.
+
+**Why this changed.** The original decision was TOML, for comments in a hand-edited
+file. Every Go TOML parser is a third-party dependency, and so is every YAML parser,
+so neither was free. The owner chose to keep the config loader dependency-free on
+2026-09-12; `encoding/json` is in the standard library. The accepted cost is that the
+config file cannot carry comments, so its options must be documented in the repo and
+in `nabu daemon --help` rather than inline.
 
 ### Permission modes
 

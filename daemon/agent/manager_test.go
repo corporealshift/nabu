@@ -293,3 +293,56 @@ func TestCreateOptionsDefaults(t *testing.T) {
 		t.Fatalf("explicit options must be honoured: %+v", opts)
 	}
 }
+
+// Spec 8: "bypass approves everything and appends a notice when set." The
+// notice is what makes an unguarded session visible in the log afterwards.
+func TestSettingBypassAppendsANotice(t *testing.T) {
+	h := newHarness(t, nil, nil)
+	s := h.create(t)
+
+	if _, err := h.m.SetOption(context.Background(), s.ID(), "permission_mode", "bypass"); err != nil {
+		t.Fatal(err)
+	}
+
+	var notice *protocol.NoticeData
+	for _, ev := range s.Events() {
+		if ev.Type != protocol.EventNotice {
+			continue
+		}
+		var d protocol.NoticeData
+		if err := json.Unmarshal(ev.Data, &d); err != nil {
+			t.Fatal(err)
+		}
+		notice = &d
+	}
+	if notice == nil {
+		t.Fatal("setting bypass must append a notice")
+	}
+	if !strings.Contains(strings.ToLower(notice.Message), "bypass") {
+		t.Errorf("the notice should name the mode, got %q", notice.Message)
+	}
+}
+
+// Switching to a guarded mode is unremarkable and should not add a notice.
+func TestSettingAskAppendsNoNotice(t *testing.T) {
+	h := newHarness(t, nil, nil)
+	s := h.create(t)
+	before := countNotices(s.Events())
+
+	if _, err := h.m.SetOption(context.Background(), s.ID(), "permission_mode", "ask"); err != nil {
+		t.Fatal(err)
+	}
+	if got := countNotices(s.Events()); got != before {
+		t.Errorf("notices: got %d, want %d", got, before)
+	}
+}
+
+func countNotices(events []protocol.Event) int {
+	n := 0
+	for _, ev := range events {
+		if ev.Type == protocol.EventNotice {
+			n++
+		}
+	}
+	return n
+}

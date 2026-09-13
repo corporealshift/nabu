@@ -1,0 +1,377 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"strings"
+	"testing"
+
+	"github.com/coder/websocket"
+
+	"github.com/corporealshift/nabu/daemon/agent"
+	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/daemon/provider"
+	"github.com/corporealshift/nabu/daemon/session"
+	"github.com/corporealshift/nabu/daemon/tools"
+	"github.com/corporealshift/nabu/protocol"
+)
+
+// harness wires a Handler over a temp dir and a scripted provider.
+type harness struct {
+	h     *Handler
+	cs    *connState
+	m     *agent.Manager
+	store *session.Store
+	dir   string
+}
+
+func newHarness(t *testing.T) *harness {
+	t.Helper()
+	dir := t.TempDir()
+	store, err := session.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	pr := provider.NewRegistry()
+	pr.Add(provider.Config{Name: "fake", ContextWindow: 8000}, &provider.Fake{}, true)
+	builtins := &tools.Builtins{}
+	mr := module.NewRegistry([]module.Module{builtins}, module.Options{Log: discardLogger()})
+
+	m, err := agent.New(agent.Deps{
+		Store: store, Providers: pr, Modules: mr, Builtins: builtins,
+		Root: dir, Log: discardLogger(),
+	}, agent.Config{DefaultModel: "fake/m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Shutdown(context.Background()) })
+
+	hn := &harness{h: NewHandler(m, store, discardLogger()), m: m, store: store, dir: dir}
+	hn.cs = &connState{conn: &scriptedConn{}, ctx: context.Background()}
+	return hn
+}
+
+// call dispatches one request and returns the response envelope.
+func (hn *harness) call(t *testing.T, id any, method string, params any) *jsonrpcResponse {
+	t.Helper()
+	req := map[string]any{"jsonrpc": "2.0", "method": method}
+	if id != nil {
+		req["id"] = id
+	}
+	if params != nil {
+		req["params"] = params
+	}
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hn.h.dispatch(context.Background(), hn.cs, raw)
+}
+
+// result re-decodes a response result into v.
+func result(t *testing.T, resp *jsonrpcResponse, v any) {
+	t.Helper()
+	if resp == nil {
+		t.Fatal("no response")
+	}
+	if resp.Error != nil {
+		t.Fatalf("unexpected rpc error: %+v", resp.Error)
+	}
+	raw, err := json.Marshal(resp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, v); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (hn *harness) mustCreate(t *testing.T) string {
+	t.Helper()
+	resp := hn.call(t, 1, "nabu.session.create", map[string]any{"workspace": hn.dir})
+	var out struct {
+		SessionID string         `json:"session_id"`
+		Event     protocol.Event `json:"event"`
+	}
+	result(t, resp, &out)
+	if out.SessionID == "" {
+		t.Fatal("create returned no session_id")
+	}
+	return out.SessionID
+}
+
+func TestMalformedJSONReturnsParseError(t *testing.T) {
+	hn := newHarness(t)
+	resp := hn.h.dispatch(context.Background(), hn.cs, json.RawMessage(`{not json`))
+	if resp == nil || resp.Error == nil {
+		t.Fatal("want a parse error response")
+	}
+	if resp.Error.Code != protocol.CodeParseError {
+		t.Errorf("code: got %d, want %d", resp.Error.Code, protocol.CodeParseError)
+	}
+}
+
+func TestRejectsWrongJSONRPCVersion(t *testing.T) {
+	hn := newHarness(t)
+	resp := hn.h.dispatch(context.Background(), hn.cs,
+		json.RawMessage(`{"jsonrpc":"1.0","id":1,"method":"nabu.session.list"}`))
+	if resp == nil || resp.Error == nil {
+		t.Fatal("want an invalid-request response")
+	}
+	if resp.Error.Code != protocol.CodeInvalidRequest {
+		t.Errorf("code: got %d, want %d", resp.Error.Code, protocol.CodeInvalidRequest)
+	}
+}
+
+func TestUnknownMethod(t *testing.T) {
+	hn := newHarness(t)
+	resp := hn.call(t, 9, "nabu.session.teleport", nil)
+	if resp == nil || resp.Error == nil {
+		t.Fatal("want a method-not-found response")
+	}
+	if resp.Error.Code != protocol.CodeMethodNotFound {
+		t.Errorf("code: got %d, want %d", resp.Error.Code, protocol.CodeMethodNotFound)
+	}
+}
+
+func TestIDEchoing(t *testing.T) {
+	hn := newHarness(t)
+	for _, id := range []any{float64(42), "abc"} {
+		resp := hn.call(t, id, "nabu.session.list", nil)
+		if resp == nil {
+			t.Fatalf("id %v: no response", id)
+		}
+		if resp.ID != id {
+			t.Errorf("id: got %#v, want %#v", resp.ID, id)
+		}
+		if resp.JSONRPC != "2.0" {
+			t.Errorf("jsonrpc: got %q", resp.JSONRPC)
+		}
+	}
+}
+
+// A request with no id is a notification and gets no reply.
+func TestNotificationGetsNoResponse(t *testing.T) {
+	hn := newHarness(t)
+	if resp := hn.call(t, nil, "nabu.session.list", nil); resp != nil {
+		t.Fatalf("notification must not be answered, got %+v", resp)
+	}
+}
+
+func TestSessionListEmpty(t *testing.T) {
+	hn := newHarness(t)
+	var out struct {
+		Sessions []session.Summary `json:"sessions"`
+	}
+	result(t, hn.call(t, 1, "nabu.session.list", nil), &out)
+	if out.Sessions == nil {
+		t.Fatal("sessions must be an empty array, not null")
+	}
+	if len(out.Sessions) != 0 {
+		t.Fatalf("sessions: got %d, want 0", len(out.Sessions))
+	}
+}
+
+func TestSessionListWithSessions(t *testing.T) {
+	hn := newHarness(t)
+	first := hn.mustCreate(t)
+	second := hn.mustCreate(t)
+
+	var out struct {
+		Sessions []session.Summary `json:"sessions"`
+	}
+	result(t, hn.call(t, 2, "nabu.session.list", nil), &out)
+	if len(out.Sessions) != 2 {
+		t.Fatalf("sessions: got %d, want 2", len(out.Sessions))
+	}
+	seen := map[string]bool{}
+	for _, s := range out.Sessions {
+		seen[s.SessionID] = true
+	}
+	if !seen[first] || !seen[second] {
+		t.Fatalf("both sessions must be listed, got %v", seen)
+	}
+}
+
+func TestSessionCreate(t *testing.T) {
+	hn := newHarness(t)
+	resp := hn.call(t, 1, "nabu.session.create", map[string]any{
+		"workspace": hn.dir,
+		"options":   map[string]any{"permission_mode": "bypass"},
+	})
+	var out struct {
+		SessionID string         `json:"session_id"`
+		Event     protocol.Event `json:"event"`
+	}
+	result(t, resp, &out)
+
+	if out.SessionID == "" {
+		t.Fatal("session_id is empty")
+	}
+	if out.Event.Type != protocol.EventSession {
+		t.Errorf("first event type: got %q, want %q", out.Event.Type, protocol.EventSession)
+	}
+	st, rpcErr := hn.h.getSession(out.SessionID)
+	if rpcErr != nil {
+		t.Fatalf("created session not retrievable: %+v", rpcErr)
+	}
+	if got := st.State().Options.PermissionMode; got != protocol.PermissionBypass {
+		t.Errorf("permission_mode: got %q, want %q", got, protocol.PermissionBypass)
+	}
+}
+
+func TestSessionCreateMissingWorkspace(t *testing.T) {
+	hn := newHarness(t)
+	for _, params := range []any{
+		map[string]any{},
+		map[string]any{"workspace": "   "},
+	} {
+		resp := hn.call(t, 1, "nabu.session.create", params)
+		if resp == nil || resp.Error == nil {
+			t.Fatalf("params %v: want an invalid-params error", params)
+		}
+		if resp.Error.Code != protocol.CodeInvalidParams {
+			t.Errorf("code: got %d, want %d", resp.Error.Code, protocol.CodeInvalidParams)
+		}
+	}
+}
+
+func TestSessionNotFound(t *testing.T) {
+	hn := newHarness(t)
+	for _, method := range []string{"nabu.session.state", "nabu.session.events_after"} {
+		resp := hn.call(t, 1, method, map[string]any{"session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
+		if resp == nil || resp.Error == nil {
+			t.Fatalf("%s: want a session-not-found error", method)
+		}
+		if resp.Error.Code != protocol.CodeSessionNotFound {
+			t.Errorf("%s code: got %d, want %d", method, resp.Error.Code, protocol.CodeSessionNotFound)
+		}
+	}
+}
+
+func TestSessionIDRequired(t *testing.T) {
+	hn := newHarness(t)
+	for _, method := range []string{"nabu.session.state", "nabu.session.events_after"} {
+		resp := hn.call(t, 1, method, map[string]any{})
+		if resp == nil || resp.Error == nil {
+			t.Fatalf("%s: want an invalid-params error", method)
+		}
+		if resp.Error.Code != protocol.CodeInvalidParams {
+			t.Errorf("%s code: got %d, want %d", method, resp.Error.Code, protocol.CodeInvalidParams)
+		}
+	}
+}
+
+func TestEventsAfter(t *testing.T) {
+	hn := newHarness(t)
+	id := hn.mustCreate(t)
+
+	var all struct {
+		Events []protocol.Event `json:"events"`
+		Synced bool             `json:"synced"`
+	}
+	result(t, hn.call(t, 1, "nabu.session.events_after",
+		map[string]any{"session_id": id}), &all)
+	if len(all.Events) == 0 {
+		t.Fatal("a nil cursor must return the whole log")
+	}
+	if !all.Synced {
+		t.Error("synced should be true for a nil cursor")
+	}
+
+	last := all.Events[len(all.Events)-1].ID
+	var tail struct {
+		Events []protocol.Event `json:"events"`
+		Synced bool             `json:"synced"`
+	}
+	result(t, hn.call(t, 2, "nabu.session.events_after",
+		map[string]any{"session_id": id, "last_event_id": last}), &tail)
+	if tail.Events == nil {
+		t.Fatal("events must be an empty array, not null")
+	}
+	if len(tail.Events) != 0 {
+		t.Fatalf("cursor at the tail must return nothing, got %d", len(tail.Events))
+	}
+}
+
+func TestEventsAfterUnknownCursor(t *testing.T) {
+	hn := newHarness(t)
+	id := hn.mustCreate(t)
+	resp := hn.call(t, 1, "nabu.session.events_after", map[string]any{
+		"session_id":    id,
+		"last_event_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+	})
+	if resp == nil || resp.Error == nil {
+		t.Fatal("an unknown cursor must be an error")
+	}
+	if resp.Error.Code != protocol.CodeCursorUnknown {
+		t.Errorf("code: got %d, want %d", resp.Error.Code, protocol.CodeCursorUnknown)
+	}
+}
+
+func TestSessionState(t *testing.T) {
+	hn := newHarness(t)
+	id := hn.mustCreate(t)
+
+	var st protocol.State
+	result(t, hn.call(t, 1, "nabu.session.state", map[string]any{"session_id": id}), &st)
+	if st.State != protocol.StateIdle {
+		t.Errorf("state: got %q, want %q", st.State, protocol.StateIdle)
+	}
+	if st.Tasks == nil {
+		t.Error("tasks must be an empty array, not null")
+	}
+	if st.LastEventID == "" {
+		t.Error("last_event_id should be set after creation")
+	}
+}
+
+// ServeConn must answer requests in order and return when the peer goes away.
+func TestServeConnLoop(t *testing.T) {
+	hn := newHarness(t)
+	c := &scriptedConn{in: []string{
+		`{"jsonrpc":"2.0","id":1,"method":"nabu.session.list"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"nabu.session.list"}`,
+	}}
+	if err := hn.h.ServeConn(context.Background(), c); err != io.EOF {
+		t.Fatalf("ServeConn should end with the read error, got %v", err)
+	}
+	if len(c.out) != 2 {
+		t.Fatalf("responses: got %d, want 2", len(c.out))
+	}
+	for i, want := range []float64{1, 2} {
+		if c.out[i].ID != want {
+			t.Errorf("response %d id: got %#v, want %v", i, c.out[i].ID, want)
+		}
+	}
+}
+
+// scriptedConn replays canned requests and records responses.
+type scriptedConn struct {
+	in  []string
+	out []*jsonrpcResponse
+}
+
+func (c *scriptedConn) ReadJSON(_ context.Context, v any) error {
+	if len(c.in) == 0 {
+		return io.EOF
+	}
+	next := c.in[0]
+	c.in = c.in[1:]
+	return json.NewDecoder(strings.NewReader(next)).Decode(v)
+}
+
+func (c *scriptedConn) WriteJSON(_ context.Context, v any) error {
+	resp, ok := v.(*jsonrpcResponse)
+	if !ok {
+		return nil
+	}
+	c.out = append(c.out, resp)
+	return nil
+}
+
+func (c *scriptedConn) Close(websocket.StatusCode, string) {}
+func (c *scriptedConn) CloseNow()                          {}
