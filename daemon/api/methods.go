@@ -198,3 +198,19 @@ func (h *Handler) handleUpdateTasks(ctx context.Context, _ *connState, params js
 	}
 	return map[string]any{"event_id": s.State().LastEventID}, nil
 }
+
+// handleDaemonStop implements nabu.daemon.stop.
+//
+// This method is NOT in protocol/spec.md 7. Spec 8 requires that
+// "nabu daemon stop performs the graceful shutdown" and defines no mechanism
+// for it, and signalling by pid is not gracefully portable to Windows, which
+// is nabu's primary target. The spec's method list needs this added.
+func (h *Handler) handleDaemonStop(context.Context, *connState, json.RawMessage) (any, *protocol.RPCError) {
+	if h.OnShutdown == nil {
+		return nil, protocol.NewRPCError(protocol.CodeInternalError, "this daemon cannot stop itself")
+	}
+	// Shut down after replying, so the caller sees the acknowledgement rather
+	// than a dropped connection.
+	go h.OnShutdown()
+	return map[string]any{"stopping": true}, nil
+}

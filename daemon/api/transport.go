@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -130,7 +132,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.handler.ServeConn(ctx, newWSConn(c)); err != nil {
+	// A client closing cleanly, or going away, is not an error worth logging
+	// at that level: it is the ordinary end of every connection.
+	if err := s.handler.ServeConn(ctx, newWSConn(c)); err != nil && !normalClose(err) {
 		s.log.Error("connection ended with error", "error", err)
 	}
 }
@@ -192,6 +196,19 @@ func majorVersion(v string) (int, error) {
 		return 0, fmt.Errorf("version %q has no MAJOR.MINOR form", v)
 	}
 	return strconv.Atoi(major)
+}
+
+// normalClose reports whether err is the ordinary end of a connection rather
+// than a fault.
+func normalClose(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	switch websocket.CloseStatus(err) {
+	case websocket.StatusNormalClosure, websocket.StatusGoingAway, websocket.StatusNoStatusRcvd:
+		return true
+	}
+	return false
 }
 
 // isLoopback reports whether addr, with or without a port, is loopback.

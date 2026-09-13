@@ -41,6 +41,10 @@ type Handler struct {
 
 	reqMu   sync.Mutex
 	pending map[string]*pendingRequest
+
+	// OnShutdown, when set, is what nabu.daemon.stop calls. The daemon owns
+	// the shutdown; the API only exposes it.
+	OnShutdown func()
 }
 
 // NewHandler creates a Handler with the read-only session methods registered.
@@ -61,7 +65,17 @@ func NewHandler(m *agent.Manager, st *session.Store, log *slog.Logger) *Handler 
 	h.register("nabu.session.subscribe", h.handleSessionSubscribe)
 	h.register("nabu.session.unsubscribe", h.handleSessionUnsubscribe)
 	h.registerMutators()
+	h.register("nabu.daemon.stop", h.handleDaemonStop)
 	return h
+}
+
+// SetManager binds the agent manager after construction. The handler is the
+// manager's Asker and delta sink, so each needs the other and one of the two
+// links has to be made second.
+func (h *Handler) SetManager(m *agent.Manager) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.manager = m
 }
 
 // register adds a method to the dispatch table. Later tasks extend the table
@@ -225,6 +239,9 @@ func (h *Handler) handleSessionCreate(ctx context.Context, _ *connState, params 
 	var p struct {
 		Workspace string                `json:"workspace"`
 		Options   *CreateSessionOptions `json:"options,omitempty"`
+		// Budget is set at creation per spec 12, because a fresh session is
+		// idle rather than paused and resume cannot carry one.
+		Budget *protocol.BudgetData `json:"budget,omitempty"`
 	}
 	if rpcErr := decodeParams(params, &p); rpcErr != nil {
 		return nil, rpcErr
@@ -243,6 +260,12 @@ func (h *Handler) handleSessionCreate(ctx context.Context, _ *connState, params 
 	s, err := h.manager.Create(ctx, p.Workspace, co)
 	if err != nil {
 		return nil, protocol.NewRPCError(protocol.CodeInternalError, err.Error())
+	}
+
+	if p.Budget != nil {
+		if _, err := h.manager.SetBudget(ctx, s.ID(), *p.Budget); err != nil {
+			return nil, rpcErrOf(err)
+		}
 	}
 
 	events := s.Events()

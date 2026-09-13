@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/corporealshift/nabu/daemon/agent"
@@ -90,6 +91,12 @@ type Daemon struct {
 
 	listener net.Listener
 	logFile  *os.File
+
+	// shutdownDone closes when Shutdown has finished its work. Serve waits on
+	// it, because a shutdown triggered over the wire runs in its own goroutine
+	// and os.Exit would otherwise kill it mid-cleanup.
+	shutdownOnce sync.Once
+	shutdownDone chan struct{}
 }
 
 // New builds a Daemon over root without binding anything yet.
@@ -152,9 +159,15 @@ func New(opts Options) (*Daemon, error) {
 		isFirst = false
 	}
 
+	// The handler is built first because it is the manager's Asker and delta
+	// sink; the manager is bound into it once it exists.
+	handler := api.NewHandler(nil, store, log)
+
 	mgr, err := agent.New(agent.Deps{
 		Store: store, Providers: providers, Modules: registry,
 		Builtins: builtins, Root: root, Log: log,
+		Asker:  handler,
+		Deltas: handler.Deltas(),
 	}, agent.Config{
 		MaxConsecutiveVetoes: cfg.Budget.MaxConsecutiveVetoes,
 		NoProgressTurns:      cfg.Budget.NoProgressTurns,
@@ -164,12 +177,26 @@ func New(opts Options) (*Daemon, error) {
 		closeFile(logFile)
 		return nil, fmt.Errorf("daemon: building agent manager: %w", err)
 	}
+	handler.SetManager(mgr)
 
-	handler := api.NewHandler(mgr, store, log)
 	srv := api.NewServer(handler, &api.Config{Bind: cfg.Daemon.Bind, Token: cfg.Daemon.Token}, log)
 
-	return &Daemon{root: root, cfg: cfg, log: log, store: store,
-		mgr: mgr, api: srv, logFile: logFile}, nil
+	d := &Daemon{root: root, cfg: cfg, log: log, store: store,
+		mgr: mgr, api: srv, logFile: logFile,
+		shutdownDone: make(chan struct{})}
+
+	// The API exposes shutdown; the daemon owns it. nabu.daemon.stop is what
+	// "nabu daemon stop" calls, because signalling by pid is not gracefully
+	// portable to Windows.
+	handler.OnShutdown = func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := d.Shutdown(ctx); err != nil {
+			log.Error("shutdown", "error", err)
+		}
+	}
+
+	return d, nil
 }
 
 func closeFile(f *os.File) {
@@ -263,6 +290,9 @@ func (d *Daemon) Serve() error {
 	}
 	err := d.api.Serve(d.listener)
 	if errors.Is(err, http.ErrServerClosed) {
+		// A shutdown is under way. Wait for it to finish cleaning up before
+		// returning, or the caller exits and the pid and port files survive.
+		<-d.shutdownDone
 		return nil
 	}
 	return err
@@ -271,6 +301,7 @@ func (d *Daemon) Serve() error {
 // Shutdown cancels in-flight work, pauses live sessions, and releases the pid
 // and port files. Nothing is lost: the log holds every event up to the stop.
 func (d *Daemon) Shutdown(ctx context.Context) error {
+	defer d.shutdownOnce.Do(func() { close(d.shutdownDone) })
 	var errs []error
 	if err := d.api.Shutdown(ctx); err != nil {
 		errs = append(errs, err)
