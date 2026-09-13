@@ -290,8 +290,24 @@ func (m *Manager) SetOption(ctx context.Context, id, key string, value any) (pro
 	}
 	fb, _ := json.Marshal(from)
 	tb, _ := json.Marshal(value)
-	return h.s.Append(protocol.EventOptionsChange, protocol.OptionsChangeData{
+	ev, err := h.s.Append(protocol.EventOptionsChange, protocol.OptionsChangeData{
 		Key: key, From: fb, To: tb, Source: "client"})
+	if err != nil {
+		return ev, err
+	}
+
+	// Spec §8: bypass approves everything, so the log records that the session
+	// stopped being guarded. Without it, an unguarded run is invisible after
+	// the fact.
+	if key == "permission_mode" && value == string(protocol.PermissionBypass) {
+		if _, nerr := h.s.Append(protocol.EventNotice, protocol.NoticeData{
+			Source: "daemon", Level: "warn",
+			Message: "permission_mode set to bypass: every tool call is approved without asking",
+		}); nerr != nil {
+			m.log.Warn("appending the bypass notice", "session", id, "error", nerr)
+		}
+	}
+	return ev, nil
 }
 
 // SetBudget records a new loop bound.
