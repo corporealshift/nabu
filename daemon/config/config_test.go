@@ -402,3 +402,46 @@ func TestOverlayAtSpecPathUsesWorkspaceTrust(t *testing.T) {
 		t.Errorf("overlay provider defaults: max_in_flight got %d, want 1", p.MaxInFlight)
 	}
 }
+
+// Spec 12 fixes these two loop bounds, and config must be able to override
+// them. Without a home here, the agent's defaults were unreachable.
+func TestBudgetLoopBoundDefaults(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Budget.MaxConsecutiveVetoes != 5 {
+		t.Errorf("max_consecutive_vetoes: got %d, want 5", cfg.Budget.MaxConsecutiveVetoes)
+	}
+	if cfg.Budget.NoProgressTurns != 3 {
+		t.Errorf("no_progress_turns: got %d, want 3", cfg.Budget.NoProgressTurns)
+	}
+	if cfg.Budget.MaxTurns != 0 {
+		t.Errorf("max_turns should default to unlimited, got %d", cfg.Budget.MaxTurns)
+	}
+}
+
+func TestBudgetLoopBoundsOverridable(t *testing.T) {
+	root := t.TempDir()
+	body := `{"budget": {"max_turns": 12, "max_consecutive_vetoes": 9, "no_progress_turns": 1}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Budget.MaxTurns != 12 {
+		t.Errorf("max_turns: got %d, want 12", cfg.Budget.MaxTurns)
+	}
+	if cfg.Budget.MaxConsecutiveVetoes != 9 {
+		t.Errorf("max_consecutive_vetoes: got %d, want 9", cfg.Budget.MaxConsecutiveVetoes)
+	}
+	if cfg.Budget.NoProgressTurns != 1 {
+		t.Errorf("no_progress_turns: got %d, want 1", cfg.Budget.NoProgressTurns)
+	}
+}

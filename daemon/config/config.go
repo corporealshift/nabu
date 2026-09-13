@@ -48,11 +48,35 @@ func (c *ProviderConfig) withDefaults() {
 	}
 }
 
-// BudgetConfig holds the "budget" object.
+// BudgetConfig holds the "budget" object. Spec 12 makes turns the unit and
+// tokens and dollars optional caps, enforced only for providers that report
+// them. The two loop bounds live here too, because they bound the same loop.
 type BudgetConfig struct {
+	// MaxTurns is the interactive default. 0 means unlimited; "nabu run"
+	// overrides it to 60 at session creation, per spec 12.
 	MaxTurns  int     `json:"max_turns"`
 	MaxTokens int     `json:"max_tokens"`
 	MaxUSD    float64 `json:"max_usd"`
+
+	// MaxConsecutiveVetoes bounds veto rounds before the session blocks.
+	// Default 5.
+	MaxConsecutiveVetoes int `json:"max_consecutive_vetoes"`
+	// NoProgressTurns is how many identical veto rounds with no tool use end
+	// the loop. Default 3.
+	NoProgressTurns int `json:"no_progress_turns"`
+}
+
+// RunDefaultMaxTurns is the turn cap "nabu run" applies when config leaves
+// MaxTurns unlimited. Spec 12: unlimited interactively, 60 for a headless run.
+const RunDefaultMaxTurns = 60
+
+func (c *BudgetConfig) withDefaults() {
+	if c.MaxConsecutiveVetoes == 0 {
+		c.MaxConsecutiveVetoes = 5
+	}
+	if c.NoProgressTurns == 0 {
+		c.NoProgressTurns = 3
+	}
 }
 
 // Config is the top-level configuration.
@@ -96,6 +120,7 @@ func Load(root string) (*Config, error) {
 // variable alone would discard the defaults.
 func (c *Config) applyDefaults() {
 	c.Daemon.withDefaults()
+	c.Budget.withDefaults()
 	for name, p := range c.Providers {
 		p.withDefaults()
 		c.Providers[name] = p
