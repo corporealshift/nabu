@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/corporealshift/nabu/daemon/agent"
 	"github.com/corporealshift/nabu/daemon/session"
@@ -29,6 +30,17 @@ type Handler struct {
 
 	subMu   sync.Mutex
 	fanouts map[string]*fanout
+
+	// RequestTimeout bounds a daemon-to-client request. 0 uses the spec
+	// default of ten minutes.
+	RequestTimeout time.Duration
+
+	// ResolvedGrace is how long a resolved or timed-out request stays
+	// addressable so late answers are still recognised. 0 uses the default.
+	ResolvedGrace time.Duration
+
+	reqMu   sync.Mutex
+	pending map[string]*pendingRequest
 }
 
 // NewHandler creates a Handler with the read-only session methods registered.
@@ -40,6 +52,7 @@ func NewHandler(m *agent.Manager, st *session.Store, log *slog.Logger) *Handler 
 		manager: m, store: st, log: log,
 		methods: make(map[string]methodFunc),
 		fanouts: make(map[string]*fanout),
+		pending: make(map[string]*pendingRequest),
 	}
 	h.register("nabu.session.list", h.handleSessionList)
 	h.register("nabu.session.create", h.handleSessionCreate)
@@ -68,6 +81,16 @@ func (h *Handler) ServeConn(ctx context.Context, conn Conn) error {
 		if err := conn.ReadJSON(ctx, &raw); err != nil {
 			return err
 		}
+
+		// A message with no method is a response to a request the daemon
+		// sent, not a call. Route it to whoever is waiting.
+		var msg clientMessage
+		if err := json.Unmarshal(raw, &msg); err == nil && msg.Method == "" {
+			if h.routeResponse(ctx, cs, &msg) {
+				continue
+			}
+		}
+
 		if resp := h.dispatch(ctx, cs, raw); resp != nil {
 			if err := cs.write(resp); err != nil {
 				return err
@@ -123,6 +146,16 @@ type jsonrpcResponse struct {
 	ID      any       `json:"id"`
 	Result  any       `json:"result,omitempty"`
 	Error   *rpcError `json:"error,omitempty"`
+}
+
+// clientMessage is an inbound message that may be either a call or a response
+// to a request the daemon sent.
+type clientMessage struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      any             `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   *rpcError       `json:"error,omitempty"`
 }
 
 // jsonrpcNotification is a server-to-client message with no id and no reply.

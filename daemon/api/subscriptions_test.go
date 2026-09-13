@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,9 @@ import (
 // sleeping.
 type recordConn struct {
 	out chan jsonrpcNotification
+
+	mu      sync.Mutex
+	lastErr *rpcError
 }
 
 func newRecordConn() *recordConn {
@@ -27,10 +31,22 @@ func (c *recordConn) ReadJSON(ctx context.Context, _ any) error {
 }
 
 func (c *recordConn) WriteJSON(_ context.Context, v any) error {
-	if n, ok := v.(jsonrpcNotification); ok {
+	switch m := v.(type) {
+	case jsonrpcNotification:
 		select {
-		case c.out <- n:
+		case c.out <- m:
 		default:
+		}
+	case jsonrpcRequest:
+		select {
+		case c.out <- jsonrpcNotification{JSONRPC: m.JSONRPC, Method: m.Method, Params: m.Params}:
+		default:
+		}
+	case *jsonrpcResponse:
+		if m.Error != nil {
+			c.mu.Lock()
+			c.lastErr = m.Error
+			c.mu.Unlock()
 		}
 	}
 	return nil
