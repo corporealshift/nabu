@@ -16,7 +16,7 @@ import (
 // methodFunc handles one JSON-RPC method. The context is the connection's, so
 // a method that reaches the agent or the store is cancelled when the client
 // goes away.
-type methodFunc func(ctx context.Context, params json.RawMessage) (any, *protocol.RPCError)
+type methodFunc func(ctx context.Context, cs *connState, params json.RawMessage) (any, *protocol.RPCError)
 
 // Handler implements ConnHandler and dispatches JSON-RPC method calls.
 type Handler struct {
@@ -26,6 +26,9 @@ type Handler struct {
 
 	mu      sync.RWMutex
 	methods map[string]methodFunc
+
+	subMu   sync.Mutex
+	fanouts map[string]*fanout
 }
 
 // NewHandler creates a Handler with the read-only session methods registered.
@@ -33,11 +36,18 @@ func NewHandler(m *agent.Manager, st *session.Store, log *slog.Logger) *Handler 
 	if log == nil {
 		log = slog.Default()
 	}
-	h := &Handler{manager: m, store: st, log: log, methods: make(map[string]methodFunc)}
+	h := &Handler{
+		manager: m, store: st, log: log,
+		methods: make(map[string]methodFunc),
+		fanouts: make(map[string]*fanout),
+	}
 	h.register("nabu.session.list", h.handleSessionList)
 	h.register("nabu.session.create", h.handleSessionCreate)
 	h.register("nabu.session.events_after", h.handleSessionEventsAfter)
 	h.register("nabu.session.state", h.handleSessionState)
+	h.register("nabu.session.subscribe", h.handleSessionSubscribe)
+	h.register("nabu.session.unsubscribe", h.handleSessionUnsubscribe)
+	h.registerMutators()
 	return h
 }
 
@@ -51,13 +61,15 @@ func (h *Handler) register(name string, fn methodFunc) {
 
 // ServeConn implements ConnHandler: read a message, dispatch it, reply.
 func (h *Handler) ServeConn(ctx context.Context, conn Conn) error {
+	cs := &connState{conn: conn, ctx: ctx}
+	defer h.dropConn(cs)
 	for {
 		var raw json.RawMessage
 		if err := conn.ReadJSON(ctx, &raw); err != nil {
 			return err
 		}
-		if resp := h.dispatch(ctx, raw); resp != nil {
-			if err := conn.WriteJSON(ctx, resp); err != nil {
+		if resp := h.dispatch(ctx, cs, raw); resp != nil {
+			if err := cs.write(resp); err != nil {
 				return err
 			}
 		}
@@ -66,7 +78,7 @@ func (h *Handler) ServeConn(ctx context.Context, conn Conn) error {
 
 // dispatch parses one JSON-RPC request and returns the response envelope, or
 // nil for a notification, which by JSON-RPC 2.0 gets no reply.
-func (h *Handler) dispatch(ctx context.Context, raw json.RawMessage) *jsonrpcResponse {
+func (h *Handler) dispatch(ctx context.Context, cs *connState, raw json.RawMessage) *jsonrpcResponse {
 	var req jsonrpcRequest
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return errorResp(nil, protocol.CodeParseError, "parse error")
@@ -85,7 +97,7 @@ func (h *Handler) dispatch(ctx context.Context, raw json.RawMessage) *jsonrpcRes
 		return errorResp(req.ID, protocol.CodeMethodNotFound, req.Method)
 	}
 
-	result, rpcErr := fn(ctx, req.Params)
+	result, rpcErr := fn(ctx, cs, req.Params)
 
 	// A request without an id is a notification: act on it, answer nothing.
 	if req.ID == nil {
@@ -157,7 +169,7 @@ func (h *Handler) getSession(id string) (*session.Session, *protocol.RPCError) {
 }
 
 // handleSessionList implements nabu.session.list (spec 7.2).
-func (h *Handler) handleSessionList(context.Context, json.RawMessage) (any, *protocol.RPCError) {
+func (h *Handler) handleSessionList(context.Context, *connState, json.RawMessage) (any, *protocol.RPCError) {
 	summaries, err := h.store.List()
 	if err != nil {
 		return nil, protocol.NewRPCError(protocol.CodeInternalError, err.Error())
@@ -176,7 +188,7 @@ type CreateSessionOptions struct {
 }
 
 // handleSessionCreate implements nabu.session.create (spec 7.3).
-func (h *Handler) handleSessionCreate(ctx context.Context, params json.RawMessage) (any, *protocol.RPCError) {
+func (h *Handler) handleSessionCreate(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		Workspace string                `json:"workspace"`
 		Options   *CreateSessionOptions `json:"options,omitempty"`
@@ -208,7 +220,7 @@ func (h *Handler) handleSessionCreate(ctx context.Context, params json.RawMessag
 }
 
 // handleSessionEventsAfter implements nabu.session.events_after (spec 7.5, 4).
-func (h *Handler) handleSessionEventsAfter(_ context.Context, params json.RawMessage) (any, *protocol.RPCError) {
+func (h *Handler) handleSessionEventsAfter(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID   string  `json:"session_id"`
 		LastEventID *string `json:"last_event_id"`
@@ -238,7 +250,7 @@ func (h *Handler) handleSessionEventsAfter(_ context.Context, params json.RawMes
 // handleSessionState implements nabu.session.state (spec 7.10, 5). The State
 // projection carries the spec's field names in its own JSON tags, so it is
 // returned whole rather than copied into a map that could drift from it.
-func (h *Handler) handleSessionState(_ context.Context, params json.RawMessage) (any, *protocol.RPCError) {
+func (h *Handler) handleSessionState(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
 	}

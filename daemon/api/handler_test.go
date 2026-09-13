@@ -20,6 +20,7 @@ import (
 // harness wires a Handler over a temp dir and a scripted provider.
 type harness struct {
 	h     *Handler
+	cs    *connState
 	m     *agent.Manager
 	store *session.Store
 	dir   string
@@ -48,7 +49,9 @@ func newHarness(t *testing.T) *harness {
 	}
 	t.Cleanup(func() { _ = m.Shutdown(context.Background()) })
 
-	return &harness{h: NewHandler(m, store, discardLogger()), m: m, store: store, dir: dir}
+	hn := &harness{h: NewHandler(m, store, discardLogger()), m: m, store: store, dir: dir}
+	hn.cs = &connState{conn: &scriptedConn{}, ctx: context.Background()}
+	return hn
 }
 
 // call dispatches one request and returns the response envelope.
@@ -65,7 +68,7 @@ func (hn *harness) call(t *testing.T, id any, method string, params any) *jsonrp
 	if err != nil {
 		t.Fatal(err)
 	}
-	return hn.h.dispatch(context.Background(), raw)
+	return hn.h.dispatch(context.Background(), hn.cs, raw)
 }
 
 // result re-decodes a response result into v.
@@ -102,7 +105,7 @@ func (hn *harness) mustCreate(t *testing.T) string {
 
 func TestMalformedJSONReturnsParseError(t *testing.T) {
 	hn := newHarness(t)
-	resp := hn.h.dispatch(context.Background(), json.RawMessage(`{not json`))
+	resp := hn.h.dispatch(context.Background(), hn.cs, json.RawMessage(`{not json`))
 	if resp == nil || resp.Error == nil {
 		t.Fatal("want a parse error response")
 	}
@@ -113,7 +116,7 @@ func TestMalformedJSONReturnsParseError(t *testing.T) {
 
 func TestRejectsWrongJSONRPCVersion(t *testing.T) {
 	hn := newHarness(t)
-	resp := hn.h.dispatch(context.Background(),
+	resp := hn.h.dispatch(context.Background(), hn.cs,
 		json.RawMessage(`{"jsonrpc":"1.0","id":1,"method":"nabu.session.list"}`))
 	if resp == nil || resp.Error == nil {
 		t.Fatal("want an invalid-request response")
