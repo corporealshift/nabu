@@ -73,7 +73,7 @@ func TestCreateResolvesWorkspaceAndRunsSessionStart(t *testing.T) {
 		t.Fatalf("context: %+v", c)
 	}
 	sd := protocol.MustData[protocol.SessionData](ev[0])
-	if sd.WorkspaceKey == "" || sd.Options.Model != "fake/m" || sd.Options.PermissionMode != protocol.PermissionAsk {
+	if sd.WorkspaceKey == "" || sd.Options.Model != "fake/m" || sd.Options.PermissionMode != protocol.PermissionAuto {
 		t.Fatalf("session data: %+v", sd)
 	}
 }
