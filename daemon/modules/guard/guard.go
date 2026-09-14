@@ -89,19 +89,25 @@ func (m *Module) Init(_ module.Host, cfg module.Config) error {
 	return nil
 }
 
-// DefaultRules is the policy with no configuration: never destroy the machine,
-// never leave the workspace, and warn before a sweeping edit.
+// DefaultRules is the policy with no configuration: stop and ask before
+// anything destructive or anything outside the workspace, and let ordinary
+// work inside it through.
+//
+// These ask rather than deny on purpose. A refusal the human never sees makes
+// legitimate work impossible without editing config; a prompt puts the
+// decision where it belongs. Deny is reserved for rules someone configured
+// deliberately.
 func DefaultRules() []Rule {
 	high := TierHigh
 	return []Rule{
 		{
-			Decision: module.Deny,
-			Reason:   "the command is destructive, escalates privilege, or reaches the network",
+			Decision: module.Ask,
+			Reason:   "destructive, escalates privilege, or reaches the network",
 			Match:    Match{Tool: "bash", MinRisk: &high},
 		},
 		{
-			Decision: module.Deny,
-			Reason:   "the path is outside the workspace",
+			Decision: module.Ask,
+			Reason:   "outside the workspace",
 			Match:    Match{Path: outsideWorkspace},
 		},
 	}
@@ -137,9 +143,13 @@ func (m *Module) GateTool(_ context.Context, s module.Session, call protocol.Too
 		case module.Deny:
 			return module.Verdict{Decision: module.Deny, Reason: r.denyReason(info)}
 		case module.Ask:
+			summary := info.summary()
+			if r.Reason != "" {
+				summary = r.Reason + " — " + summary
+			}
 			return module.Verdict{
 				Decision: module.Ask,
-				Summary:  info.summary(),
+				Summary:  summary,
 				Risk:     info.tier.String(),
 			}
 		case module.Allow:
@@ -151,24 +161,20 @@ func (m *Module) GateTool(_ context.Context, s module.Session, call protocol.Too
 }
 
 // defaultVerdict is what happens when no rule matches.
+//
+// Spec 8: auto "lets the guard module approve edits inside the workspace and
+// low-risk commands without asking". So under auto the only thing that still
+// stops is high risk — a destructive command, or a path outside the workspace.
+// Everything else is ordinary work and goes through silently.
 func (m *Module) defaultVerdict(mode protocol.PermissionMode, info callInfo) module.Verdict {
 	ask := module.Verdict{Decision: module.Ask, Summary: info.summary(), Risk: info.tier.String()}
 	if mode != protocol.PermissionAuto {
 		return ask
 	}
-	// auto approves low-risk work and refuses high-risk work without asking;
-	// anything in between still goes to a human.
-	switch info.tier {
-	case TierLow:
-		return module.Verdict{Decision: module.Allow}
-	case TierHigh:
-		return module.Verdict{
-			Decision: module.Deny,
-			Reason:   "high-risk call refused automatically in auto permission mode",
-		}
-	default:
+	if info.tier == TierHigh {
 		return ask
 	}
+	return module.Verdict{Decision: module.Allow}
 }
 
 // denyReason prefers the rule's own reason and falls back to something the
