@@ -22,6 +22,7 @@ import (
 	"github.com/corporealshift/nabu/daemon/api"
 	"github.com/corporealshift/nabu/daemon/config"
 	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/daemon/modules"
 	"github.com/corporealshift/nabu/daemon/provider"
 	"github.com/corporealshift/nabu/daemon/session"
 	"github.com/corporealshift/nabu/daemon/tools"
@@ -140,7 +141,13 @@ func New(opts Options) (*Daemon, error) {
 	}
 
 	builtins := &tools.Builtins{}
-	mods := append([]module.Module{builtins}, opts.Modules...)
+	// Built-ins first, then the compiled-in modules. Options override the list
+	// so tests can run with a known set; nil means "whatever is registered".
+	registered := opts.Modules
+	if registered == nil {
+		registered = modules.All
+	}
+	mods := append([]module.Module{builtins}, registered...)
 	registry := module.NewRegistry(mods, module.Options{Log: log})
 
 	// Every configured provider gets a real OpenAI-compatible client. The
