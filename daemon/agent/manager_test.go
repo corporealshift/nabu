@@ -73,7 +73,7 @@ func TestCreateResolvesWorkspaceAndRunsSessionStart(t *testing.T) {
 		t.Fatalf("context: %+v", c)
 	}
 	sd := protocol.MustData[protocol.SessionData](ev[0])
-	if sd.WorkspaceKey == "" || sd.Options.Model != "fake/m" || sd.Options.PermissionMode != protocol.PermissionAsk {
+	if sd.WorkspaceKey == "" || sd.Options.Model != "fake/m" || sd.Options.PermissionMode != protocol.PermissionAuto {
 		t.Fatalf("session data: %+v", sd)
 	}
 }
@@ -345,4 +345,15 @@ func countNotices(events []protocol.Event) int {
 		}
 	}
 	return n
+}
+
+// Spec 8 amended 2026-09-14: a session with no explicit mode runs in auto.
+// Guard's rules already stop the dangerous calls, so ask on top of that
+// prompted for every read and every edit.
+func TestDefaultPermissionModeIsAuto(t *testing.T) {
+	h := newHarness(t, nil, nil)
+	s := h.create(t)
+	if got := s.State().Options.PermissionMode; got != protocol.PermissionAuto {
+		t.Errorf("default permission mode: got %q, want %q", got, protocol.PermissionAuto)
+	}
 }

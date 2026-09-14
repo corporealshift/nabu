@@ -445,3 +445,20 @@ func TestBudgetLoopBoundsOverridable(t *testing.T) {
 		t.Errorf("no_progress_turns: got %d, want 1", cfg.Budget.NoProgressTurns)
 	}
 }
+
+// Without this the daemon sent a placeholder model name on every request and
+// there was no way to say which model a session should use.
+func TestDefaultModelIsConfigurable(t *testing.T) {
+	root := t.TempDir()
+	body := `{"daemon": {"default_model": "local/qwen"}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Daemon.DefaultModel != "local/qwen" {
+		t.Errorf("default_model: got %q, want %q", cfg.Daemon.DefaultModel, "local/qwen")
+	}
+}

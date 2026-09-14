@@ -34,6 +34,11 @@ lifecycle/config/storage. Section 22 records the owner's answers of 2026-09-11.
 Changes made to this document after its 2026-09-11 approval are listed here and marked
 inline at the section they affect.
 
+- **2026-09-14 — §8 `auto` is the default permission mode, was `ask`.** Decided while
+  planning P2. `guard` ships compiled in and already stops the dangerous calls, so
+  `ask` prompted for every read and edit on top of that. Guard's default rules also
+  changed from deny to ask, so a dangerous call reaches a human instead of being
+  refused unseen. See §8 "Permission modes".
 - **2026-09-12 — §8 Configuration is JSON, not TOML.** Decided while planning P1b. Every
   Go TOML and YAML parser is a third-party dependency; `encoding/json` is standard
   library. The config loader stays dependency-free, at the cost of comments in the
@@ -358,10 +363,34 @@ in `nabu daemon --help` rather than inline.
 ### Permission modes
 
 A session option, `permission_mode: ask | auto | bypass`, set at creation and
-changeable mid-session through `set_option` (logged as `options_change`). `ask` is the
-default; `auto` lets the `guard` module approve edits inside the workspace and
-low-risk commands without asking; `bypass` approves everything and appends a
-`notice` when set. The mode is core state because clients render and toggle it; what
+changeable mid-session through `set_option` (logged as `options_change`).
+**`auto` is the default (amended 2026-09-14; was `ask`).** `auto` lets the `guard`
+module approve edits inside the workspace and low-risk commands without asking;
+`ask` asks about every call a rule does not already allow; `bypass` approves
+everything and appends a `notice` when set.
+
+**Why the default changed.** `guard` is always compiled in, and its own default rules
+already stop anything destructive, privilege-escalating, network-reaching, or outside
+the workspace, and put it to a human. `ask` on top of that prompted for every read and
+every edit as well, which made an agent tedious to watch and trained the habit of
+approving without looking. `auto` keeps the prompts for the calls that deserve one.
+`ask` remains for when you want to see everything.
+
+**Risk is judged by target, not by name.** A command with no benign form
+(`sudo`, `dd`, `mkfs`, `systemctl`, a system package manager, anything reaching
+another machine) is high risk on its name alone. A destructive *file* command
+(`rm`, `rmdir`, `del`, `chmod`, `chown`, `mv`, `ln`) is high risk only when one of its
+path arguments leaves the workspace. `rm -rf build` is ordinary work; `rm -rf ~/Documents`
+is not. Judging by name alone stopped routine cleanup and routine `chmod`, which trains
+the habit of approving without looking.
+
+This is a heuristic and a speed bump, not a security boundary — a command can always
+reach the filesystem in a way a word list will not catch. The exact boundary is the
+workspace path check on the file tools.
+
+**Guard's default rules ask rather than deny.** A refusal the human never sees makes
+legitimate work impossible without editing config; a prompt puts the decision where it
+belongs. `Deny` is reserved for rules someone configured deliberately. The mode is core state because clients render and toggle it; what
 each mode permits is the `guard` module's policy.
 
 ### Graceful restart

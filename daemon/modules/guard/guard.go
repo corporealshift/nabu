@@ -89,19 +89,25 @@ func (m *Module) Init(_ module.Host, cfg module.Config) error {
 	return nil
 }
 
-// DefaultRules is the policy with no configuration: never destroy the machine,
-// never leave the workspace, and warn before a sweeping edit.
+// DefaultRules is the policy with no configuration: stop and ask before
+// anything destructive or anything outside the workspace, and let ordinary
+// work inside it through.
+//
+// These ask rather than deny on purpose. A refusal the human never sees makes
+// legitimate work impossible without editing config; a prompt puts the
+// decision where it belongs. Deny is reserved for rules someone configured
+// deliberately.
 func DefaultRules() []Rule {
 	high := TierHigh
 	return []Rule{
 		{
-			Decision: module.Deny,
-			Reason:   "the command is destructive, escalates privilege, or reaches the network",
+			Decision: module.Ask,
+			Reason:   "destructive, escalates privilege, or reaches the network",
 			Match:    Match{Tool: "bash", MinRisk: &high},
 		},
 		{
-			Decision: module.Deny,
-			Reason:   "the path is outside the workspace",
+			Decision: module.Ask,
+			Reason:   "outside the workspace",
 			Match:    Match{Path: outsideWorkspace},
 		},
 	}
@@ -137,9 +143,13 @@ func (m *Module) GateTool(_ context.Context, s module.Session, call protocol.Too
 		case module.Deny:
 			return module.Verdict{Decision: module.Deny, Reason: r.denyReason(info)}
 		case module.Ask:
+			summary := info.summary()
+			if r.Reason != "" {
+				summary = r.Reason + " — " + summary
+			}
 			return module.Verdict{
 				Decision: module.Ask,
-				Summary:  info.summary(),
+				Summary:  summary,
 				Risk:     info.tier.String(),
 			}
 		case module.Allow:
@@ -151,24 +161,20 @@ func (m *Module) GateTool(_ context.Context, s module.Session, call protocol.Too
 }
 
 // defaultVerdict is what happens when no rule matches.
+//
+// Spec 8: auto "lets the guard module approve edits inside the workspace and
+// low-risk commands without asking". So under auto the only thing that still
+// stops is high risk — a destructive command, or a path outside the workspace.
+// Everything else is ordinary work and goes through silently.
 func (m *Module) defaultVerdict(mode protocol.PermissionMode, info callInfo) module.Verdict {
 	ask := module.Verdict{Decision: module.Ask, Summary: info.summary(), Risk: info.tier.String()}
 	if mode != protocol.PermissionAuto {
 		return ask
 	}
-	// auto approves low-risk work and refuses high-risk work without asking;
-	// anything in between still goes to a human.
-	switch info.tier {
-	case TierLow:
-		return module.Verdict{Decision: module.Allow}
-	case TierHigh:
-		return module.Verdict{
-			Decision: module.Deny,
-			Reason:   "high-risk call refused automatically in auto permission mode",
-		}
-	default:
+	if info.tier == TierHigh {
 		return ask
 	}
+	return module.Verdict{Decision: module.Allow}
 }
 
 // denyReason prefers the rule's own reason and falls back to something the
@@ -187,6 +193,9 @@ type callInfo struct {
 	path       string
 	replaceAll bool
 	tier       Tier
+	// workspace is the session's workspace, so a bash command's arguments can
+	// be judged against it.
+	workspace string
 	// inWorkspace is false when the call names a path outside the workspace.
 	// A call naming no path at all is treated as inside.
 	inWorkspace bool
@@ -223,6 +232,9 @@ type toolArgs struct {
 // not an error: the call is classified by tool name alone.
 func inspect(s module.Session, call protocol.ToolCallData) callInfo {
 	info := callInfo{tool: call.Tool, inWorkspace: true}
+	if s != nil {
+		info.workspace = s.Workspace().Path
+	}
 
 	var args toolArgs
 	if len(call.Arguments) > 0 {
@@ -233,7 +245,7 @@ func inspect(s module.Session, call protocol.ToolCallData) callInfo {
 	info.replaceAll = args.ReplaceAll
 
 	if info.path != "" && s != nil {
-		info.inWorkspace = withinWorkspace(s.Workspace().Path, info.path)
+		info.inWorkspace = withinWorkspace(info.workspace, info.path)
 	}
 	info.tier = classify(info)
 	return info
@@ -275,17 +287,30 @@ func normalizePath(p string) string {
 	return strings.TrimSuffix(filepath.ToSlash(filepath.Clean(p)), "/")
 }
 
-// Command families, matched against the first word of a bash command.
+// Command families.
+//
+// The split that matters is between commands with no benign form and commands
+// whose danger is entirely about what they are pointed at. "rm" is not
+// dangerous; "rm" pointed outside the workspace is. Treating the name alone as
+// the signal stopped "rm -rf build" and "chmod +x script.sh", which are
+// ordinary, and trained the habit of approving without looking.
 var (
-	// destructive, privilege-escalating, or network-reaching.
-	highRiskCommands = words(`rm del erase rmdir rd shred mkfs dd format
-		sudo su doas runas chown chmod icacls takeown
-		ssh scp rsync nc ncat netcat nmap telnet ftp
-		systemctl service launchctl reg regedit
-		apt apt-get yum dnf pacman apk brew choco winget`)
+	// alwaysDangerous escalates on the name alone: privilege escalation,
+	// raw devices, system state, and anything that reaches another machine.
+	alwaysDangerous = words(`sudo su doas runas
+		mkfs dd shred format fdisk diskpart
+		systemctl service launchctl reg regedit sc
+		apt apt-get yum dnf pacman apk brew choco winget snap
+		ssh scp rsync nc ncat netcat nmap telnet ftp`)
 
-	// writes, installs, or downloads.
-	mediumRiskCommands = words(`sed awk tee mkdir touch cp copy mv move ln mklink
+	// targetDependent is dangerous only when pointed outside the workspace.
+	// Inside it, these are ordinary file work.
+	targetDependent = words(`rm rmdir rd del erase
+		chmod chown icacls takeown
+		mv move ln mklink`)
+
+	// writes, installs, or downloads, but stays inside the workspace.
+	mediumRiskCommands = words(`sed awk tee mkdir touch cp copy
 		git npm yarn pnpm pip pip3 go cargo gem bundle make cmake ninja
 		curl wget docker podman kubectl helm terraform`)
 
@@ -317,7 +342,7 @@ func classify(info callInfo) Tier {
 		return TierHigh
 	}
 	if info.tool == "bash" {
-		return classifyCommand(info.command)
+		return classifyCommand(info.command, info.workspace)
 	}
 	// A sweeping edit is riskier than a targeted one.
 	if info.tool == "edit" && info.replaceAll {
@@ -329,48 +354,92 @@ func classify(info callInfo) Tier {
 	return TierLow
 }
 
-// classifyCommand rates a shell command by the riskiest word in it, so a
-// pipeline or a chain is judged by its worst part rather than its first.
-func classifyCommand(command string) Tier {
+// classifyCommand rates a shell command by its riskiest part, so a pipeline or
+// a chain is judged by its worst segment rather than its first. A
+// target-dependent command is only high risk when one of its path arguments
+// leaves the workspace.
+func classifyCommand(command, workspace string) Tier {
 	if strings.TrimSpace(command) == "" {
 		return TierLow
 	}
 	worst := TierLow
-	for _, w := range commandWords(command) {
+	for _, seg := range commandSegments(command) {
 		switch {
-		case highRiskCommands[w]:
+		case alwaysDangerous[seg.program]:
 			return TierHigh
-		case mediumRiskCommands[w]:
+		case targetDependent[seg.program]:
+			if escapesWorkspace(seg.args, workspace) {
+				return TierHigh
+			}
+			// Ordinary file work inside the workspace.
 			if worst < TierMedium {
 				worst = TierMedium
 			}
-		case lowRiskCommands[w]:
-			// leaves worst where it is
+		case mediumRiskCommands[seg.program]:
+			if worst < TierMedium {
+				worst = TierMedium
+			}
 		}
 	}
 	return worst
 }
 
-// commandWords splits a command into the words that could name a program:
-// the first word, and the first word after each separator.
-func commandWords(command string) []string {
+// escapesWorkspace reports whether any argument names a location outside the
+// workspace. A tilde is treated as an escape without expanding it: a command
+// reaching for a home directory is not doing workspace-local work.
+func escapesWorkspace(args []string, workspace string) bool {
+	for _, a := range args {
+		if a == "" || strings.HasPrefix(a, "-") {
+			continue // a flag, not a path
+		}
+		a = strings.Trim(a, `"'`)
+		if a == "" {
+			continue
+		}
+		if strings.HasPrefix(a, "~") {
+			return true
+		}
+		if !rooted(a) && !strings.Contains(a, "..") {
+			continue // plainly relative; it cannot leave
+		}
+		if !withinWorkspace(workspace, a) {
+			return true
+		}
+	}
+	return false
+}
+
+// segment is one command in a pipeline or chain: its program and arguments.
+type segment struct {
+	program string
+	args    []string
+}
+
+// commandSegments splits a command line into its segments. Arguments are kept,
+// because a target-dependent command is judged by what it points at.
+func commandSegments(command string) []segment {
 	seps := func(r rune) bool {
 		return r == '|' || r == ';' || r == '&' || r == '\n' || r == '(' || r == ')'
 	}
-	var out []string
-	for _, segment := range strings.FieldsFunc(command, seps) {
-		fields := strings.Fields(segment)
+	var out []segment
+	for _, part := range strings.FieldsFunc(command, seps) {
+		fields := strings.Fields(part)
 		if len(fields) == 0 {
 			continue
 		}
-		w := strings.ToLower(fields[0])
-		// Strip a path so /usr/bin/rm still reads as rm.
-		if i := strings.LastIndexAny(w, `/\`); i >= 0 {
-			w = w[i+1:]
-		}
-		out = append(out, strings.TrimSuffix(w, ".exe"))
+		out = append(out, segment{program: programName(fields[0]), args: fields[1:]})
 	}
 	return out
+}
+
+// programName reduces a program to its bare lowercase name, so /usr/bin/rm and
+// rm.exe both read as rm.
+func programName(w string) string {
+	w = strings.ToLower(strings.Trim(w, `"'`))
+	if i := strings.LastIndexAny(w, `/\`); i >= 0 {
+		w = w[i+1:]
+	}
+	return strings.TrimSuffix(w, ".exe")
 }
 
 // matches reports whether every populated criterion of the rule holds.

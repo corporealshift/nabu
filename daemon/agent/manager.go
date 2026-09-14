@@ -132,7 +132,12 @@ func (o CreateOptions) resolve(defaultModel string) protocol.Options {
 		out.Model = defaultModel
 	}
 	if out.PermissionMode == "" {
-		out.PermissionMode = protocol.PermissionAsk
+		// Spec 8 originally made ask the default. Amended 2026-09-14: auto.
+		// Guard's default rules already stop anything destructive or outside
+		// the workspace and put it to a human, so ask on top of that prompted
+		// for every read and every edit, which made the agent unusable to
+		// watch. auto keeps the prompts for the calls that deserve one.
+		out.PermissionMode = protocol.PermissionAuto
 	}
 	if o.CompactionEnabled != nil {
 		out.CompactionEnabled = *o.CompactionEnabled

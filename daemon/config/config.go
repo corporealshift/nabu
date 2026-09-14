@@ -16,6 +16,10 @@ type DaemonConfig struct {
 	Token    string `json:"token"`
 	LogFile  string `json:"log_file"`
 	LogLevel string `json:"log_level"`
+	// DefaultModel is what a session uses when it names none. Either
+	// "provider/model" or a bare model name, which goes to the default
+	// provider. Without it every request carries a placeholder name.
+	DefaultModel string `json:"default_model"`
 }
 
 func (c *DaemonConfig) withDefaults() {
