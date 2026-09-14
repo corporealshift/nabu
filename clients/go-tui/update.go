@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/corporealshift/nabu/clients/goclient"
@@ -50,12 +49,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if h < 1 {
 			h = 1
 		}
-		if !m.ready {
-			m.viewport = viewport.New(msg.Width, h)
-			m.ready = true
-		} else {
-			m.viewport.Width, m.viewport.Height = msg.Width, h
-		}
+		m.viewport.Width, m.viewport.Height = msg.Width, h
 		m.refresh()
 		return m, nil
 

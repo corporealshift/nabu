@@ -66,13 +66,26 @@ type model struct {
 	answers chan<- answer
 }
 
+// Default dimensions until the terminal reports its own. Waiting for a size
+// message before rendering anything leaves the screen blank if one is slow or
+// never comes, which is what happens when output is not a terminal.
+const (
+	defaultWidth  = 80
+	defaultHeight = 24
+)
+
 func newModel(sessionID string, answers chan<- answer) model {
-	return model{
+	m := model{
 		sessionID: sessionID,
 		conn:      connecting,
 		state:     protocol.StateIdle,
 		answers:   answers,
+		width:     defaultWidth,
+		height:    defaultHeight,
 	}
+	m.viewport = viewport.New(defaultWidth, defaultHeight-2)
+	m.ready = true
+	return m
 }
 
 // appendEvent renders an event into the transcript and advances the cursor.
