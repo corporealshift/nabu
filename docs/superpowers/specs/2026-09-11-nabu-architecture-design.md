@@ -376,6 +376,18 @@ every edit as well, which made an agent tedious to watch and trained the habit o
 approving without looking. `auto` keeps the prompts for the calls that deserve one.
 `ask` remains for when you want to see everything.
 
+**Risk is judged by target, not by name.** A command with no benign form
+(`sudo`, `dd`, `mkfs`, `systemctl`, a system package manager, anything reaching
+another machine) is high risk on its name alone. A destructive *file* command
+(`rm`, `rmdir`, `del`, `chmod`, `chown`, `mv`, `ln`) is high risk only when one of its
+path arguments leaves the workspace. `rm -rf build` is ordinary work; `rm -rf ~/Documents`
+is not. Judging by name alone stopped routine cleanup and routine `chmod`, which trains
+the habit of approving without looking.
+
+This is a heuristic and a speed bump, not a security boundary — a command can always
+reach the filesystem in a way a word list will not catch. The exact boundary is the
+workspace path check on the file tools.
+
 **Guard's default rules ask rather than deny.** A refusal the human never sees makes
 legitimate work impossible without editing config; a prompt puts the decision where it
 belongs. `Deny` is reserved for rules someone configured deliberately. The mode is core state because clients render and toggle it; what

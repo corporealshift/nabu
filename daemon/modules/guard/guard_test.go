@@ -66,6 +66,7 @@ func TestNameAndEmptyInit(t *testing.T) {
 }
 
 func TestClassifyCommandRiskTiers(t *testing.T) {
+	ws := t.TempDir()
 	for _, tc := range []struct {
 		command string
 		want    Tier
@@ -78,22 +79,22 @@ func TestClassifyCommandRiskTiers(t *testing.T) {
 		{"mkdir build", TierMedium},
 		{"git commit -m x", TierMedium},
 		{"npm install", TierMedium},
-		{"rm -rf /", TierHigh},
+		{"rm -rf /", TierHigh}, // rooted: leaves the workspace
 		{"sudo reboot", TierHigh},
-		{"chmod 777 x", TierHigh},
+		{"chmod 777 x", TierMedium}, // a relative target is ordinary work
 		{"ssh host", TierHigh},
 		{"", TierLow},
 
 		// The riskiest word in a pipeline decides, not the first.
 		{"cat x | sudo tee /etc/hosts", TierHigh},
-		{"ls && rm -rf build", TierHigh},
+		{"ls && rm -rf build", TierMedium}, // build/ is inside the workspace
 		{"echo hi; git push", TierMedium},
 
 		// A full path still names the program.
-		{"/usr/bin/rm -rf x", TierHigh},
-		{`C:\Windows\System32\rm.exe x`, TierHigh},
+		{"/usr/bin/rm -rf x", TierMedium}, // the program is rm; x is relative
+		{`C:\Windows\System32\rm.exe x`, TierMedium},
 	} {
-		if got := classifyCommand(tc.command); got != tc.want {
+		if got := classifyCommand(tc.command, ws); got != tc.want {
 			t.Errorf("classifyCommand(%q) = %v, want %v", tc.command, got, tc.want)
 		}
 	}
@@ -235,7 +236,9 @@ func TestAutoMode(t *testing.T) {
 		{"a read-only command is allowed", bashCall("ls -la"), module.Allow},
 		{"an edit inside the workspace is approved", call("write", map[string]any{"path": filepath.Join(ws, "a.txt")}), module.Allow},
 		{"a build command is approved", bashCall("go build ./..."), module.Allow},
-		{"a destructive command still asks", bashCall("rm -rf build"), module.Ask},
+		{"deleting inside the workspace is approved", bashCall("rm -rf build"), module.Allow},
+		{"deleting outside the workspace asks", bashCall("rm -rf /etc"), module.Ask},
+		{"privilege escalation asks", bashCall("sudo reboot"), module.Ask},
 		{"a path outside the workspace still asks", call("read", map[string]any{"path": "/etc/passwd"}), module.Ask},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -525,5 +528,104 @@ func TestDenyOnlyComesFromConfiguredRules(t *testing.T) {
 	}
 	if v := configured.GateTool(context.Background(), s, bashCall("ls")); v.Decision != module.Deny {
 		t.Errorf("a configured deny should deny, got %v", v.Decision)
+	}
+}
+
+// The split that matters: a command is judged by what it points at, not by
+// its name. "rm" is not dangerous; "rm" pointed outside the workspace is.
+func TestDestructiveCommandsAreJudgedByTarget(t *testing.T) {
+	ws := t.TempDir()
+	for _, tc := range []struct {
+		command string
+		want    Tier
+		why     string
+	}{
+		// Ordinary work inside the workspace.
+		{"rm -rf build", TierMedium, "a relative target cannot leave"},
+		{"rm -rf ./node_modules", TierMedium, "explicitly relative"},
+		{"rm dist/bundle.js", TierMedium, "nested but inside"},
+		{"chmod +x scripts/run.sh", TierMedium, "a mode is not a path"},
+		{"chmod 755 build/out", TierMedium, "a numeric mode is not a path"},
+		{"mv old.go new.go", TierMedium, "both inside"},
+		{"rmdir tmp", TierMedium, "inside"},
+
+		// Leaving the workspace.
+		{"rm -rf /", TierHigh, "the filesystem root"},
+		{"rm -rf /etc/nginx", TierHigh, "absolute and outside"},
+		{"rm -rf ~/Documents", TierHigh, "a home directory is not workspace work"},
+		{"rm -rf ../../other", TierHigh, "climbs out"},
+		{"chmod 777 /etc/passwd", TierHigh, "absolute and outside"},
+		{"mv secrets.txt /tmp/", TierHigh, "moving out of the workspace"},
+
+		// No benign form, whatever the arguments.
+		{"sudo anything", TierHigh, "privilege escalation"},
+		{"dd if=/dev/zero of=/dev/sda", TierHigh, "raw devices"},
+		{"ssh host", TierHigh, "reaches another machine"},
+		{"apt install x", TierHigh, "system package manager"},
+		{"systemctl restart nginx", TierHigh, "system state"},
+	} {
+		if got := classifyCommand(tc.command, ws); got != tc.want {
+			t.Errorf("classifyCommand(%q) = %v, want %v (%s)", tc.command, got, tc.want, tc.why)
+		}
+	}
+}
+
+// The commands this change exists for: a script or a patch over many files
+// must not stop.
+func TestOrdinaryWorkIsNeverHighRisk(t *testing.T) {
+	ws := t.TempDir()
+	for _, command := range []string{
+		"sed -i 's/a/b/g' **/*.go",
+		"awk '{print $1}' data.txt",
+		"git apply patch.diff",
+		"python scripts/parse.py",
+		"node tools/build.js",
+		"go test ./...",
+		"make build",
+		"npm install",
+		"find . -name '*.go' | xargs grep TODO",
+		"cat a.txt | sed 's/x/y/' | tee b.txt",
+	} {
+		if got := classifyCommand(command, ws); got == TierHigh {
+			t.Errorf("classifyCommand(%q) = high; ordinary work must not stop", command)
+		}
+	}
+}
+
+// A pipeline is judged by its worst segment, and the arguments of each
+// segment are read, not just the first word.
+func TestPipelineSegmentsAreJudgedSeparately(t *testing.T) {
+	ws := t.TempDir()
+	if got := classifyCommand("ls | rm -rf build", ws); got == TierHigh {
+		t.Error("a relative delete in a pipeline is still ordinary work")
+	}
+	if got := classifyCommand("ls | rm -rf /etc", ws); got != TierHigh {
+		t.Errorf("a rooted delete in a pipeline must be high, got %v", got)
+	}
+	if got := classifyCommand("cat x | sudo tee /etc/hosts", ws); got != TierHigh {
+		t.Errorf("privilege escalation anywhere in a pipeline is high, got %v", got)
+	}
+}
+
+func TestEscapesWorkspace(t *testing.T) {
+	ws := t.TempDir()
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"-rf", "build"}, false},
+		{[]string{"-rf", "./build"}, false},
+		{[]string{"+x", "script.sh"}, false},
+		{[]string{"755", "file"}, false},
+		{[]string{"-rf", "/"}, true},
+		{[]string{"-rf", "~/x"}, true},
+		{[]string{"-rf", "../../x"}, true},
+		{[]string{"-rf"}, false},
+		{[]string{}, false},
+		{[]string{""}, false},
+	} {
+		if got := escapesWorkspace(tc.args, ws); got != tc.want {
+			t.Errorf("escapesWorkspace(%v) = %v, want %v", tc.args, got, tc.want)
+		}
 	}
 }
