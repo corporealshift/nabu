@@ -1,0 +1,580 @@
+package verify
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os/exec"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/protocol"
+)
+
+// Defaults. Spec 10 fixes the behaviour; these fix the numbers.
+const (
+	// DefaultCommandTimeout bounds a mechanical check or the workspace gate.
+	DefaultCommandTimeout = 5 * time.Minute
+	// DefaultJudgeTurns is how much transcript the judge sees. It is a model
+	// call on every stop attempt, so this is a recurring cost.
+	DefaultJudgeTurns = 10
+	// maxCheckOutput is how much command output reaches a check event.
+	maxCheckOutput = 2000
+	// maxSummary is how much reaches a one-line summary.
+	maxSummary = 200
+)
+
+// Module is the verification policy: it refuses to let the loop stop while
+// work is demonstrably unfinished, and judges the run goal in a fresh context
+// rather than trusting the model that did the work.
+type Module struct {
+	// RequireDoneWhen forces every new task to carry a done_when. Spec 10.2
+	// puts it on under a headless run and whenever a goal is set, and off for
+	// casual interactive use unless configured on.
+	RequireDoneWhen *bool
+	// Command is the project's canonical gate, run at the stop gate.
+	Command string
+	// RequireCleanTree vetoes a stop while the tree has uncommitted changes.
+	RequireCleanTree bool
+	// JudgeModel overrides the model used for the goal judge.
+	JudgeModel string
+	// CommandTimeout bounds a check or gate command.
+	CommandTimeout time.Duration
+	// JudgeTurns is how many turns of transcript the judge sees.
+	JudgeTurns int
+
+	host module.Host
+}
+
+// Name implements module.Module.
+func (m *Module) Name() string { return "verify" }
+
+// Init implements module.Module.
+func (m *Module) Init(h module.Host, cfg module.Config) error {
+	m.host = h
+	m.Command = cfg.String("command", "")
+	m.JudgeModel = cfg.String("judge_model", "")
+	m.RequireCleanTree = cfg.Bool("require_clean_tree", true)
+
+	if raw, ok := cfg["require_done_when"]; ok {
+		b, ok := raw.(bool)
+		if !ok {
+			return fmt.Errorf("verify: require_done_when must be a boolean, got %T", raw)
+		}
+		m.RequireDoneWhen = &b
+	}
+
+	secs := cfg.Int("command_timeout", 0)
+	if secs > 0 {
+		m.CommandTimeout = time.Duration(secs) * time.Second
+	} else {
+		m.CommandTimeout = DefaultCommandTimeout
+	}
+
+	turns := cfg.Int("judge_turns", 0)
+	if turns > 0 {
+		m.JudgeTurns = turns
+	} else {
+		m.JudgeTurns = DefaultJudgeTurns
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// ToolGate: require_done_when, and mechanical checks on the way to done.
+
+// GateTool implements module.ToolGate. It only ever speaks about task.update;
+// everything else is guard's business.
+func (m *Module) GateTool(ctx context.Context, s module.Session, call protocol.ToolCallData) module.Verdict {
+	if call.Tool != "task.update" || s == nil {
+		return module.Verdict{Decision: module.Allow}
+	}
+
+	incoming, ok := tasksFrom(call.Arguments)
+	if !ok {
+		return module.Verdict{Decision: module.Allow}
+	}
+	state := s.State()
+	existing := byID(state.Tasks)
+
+	if m.requireDoneWhen(state) {
+		for _, t := range incoming {
+			if _, known := existing[t.ID]; known {
+				continue
+			}
+			if strings.TrimSpace(t.DoneWhen) == "" {
+				return module.Verdict{
+					Decision: module.Deny,
+					Reason: "every task needs a done_when: the observable condition " +
+						"that proves it finished. Task " + t.ID + " has none.",
+				}
+			}
+		}
+	}
+
+	// A task carrying a command may only reach done if that command passes.
+	for _, t := range incoming {
+		if t.Status != protocol.TaskDone || strings.TrimSpace(t.Check) == "" {
+			continue
+		}
+		if was, known := existing[t.ID]; known && was.Status == protocol.TaskDone {
+			continue // already done; not a transition
+		}
+		out, err := m.run(ctx, s.Workspace().Path, t.Check)
+		if err != nil {
+			_, _ = s.Append(protocol.EventCheck, protocol.CheckData{
+				Name: "task:" + t.ID, Kind: "command", TaskID: t.ID,
+				Status: "fail", Summary: truncate(err.Error(), maxSummary),
+				Output: tail(out, maxCheckOutput),
+			})
+			return module.Verdict{
+				Decision: module.Deny,
+				Reason: fmt.Sprintf("task %s is not done: its check %q failed (%v)\n%s",
+					t.ID, t.Check, err, tail(out, maxCheckOutput)),
+			}
+		}
+		_, _ = s.Append(protocol.EventCheck, protocol.CheckData{
+			Name: "task:" + t.ID, Kind: "command", TaskID: t.ID,
+			Status: "pass", Summary: "exit 0", Output: tail(out, maxCheckOutput),
+		})
+	}
+
+	return module.Verdict{Decision: module.Allow}
+}
+
+// requireDoneWhen reports whether the rule is on: configured explicitly, or
+// implied by a goal being set (spec 10.2).
+func (m *Module) requireDoneWhen(state protocol.State) bool {
+	if m.RequireDoneWhen != nil {
+		return *m.RequireDoneWhen
+	}
+	return state.GoalActive()
+}
+
+// tasksFrom pulls the task list out of a task.update call.
+func tasksFrom(args json.RawMessage) ([]protocol.Task, bool) {
+	if len(args) == 0 {
+		return nil, false
+	}
+	var p struct {
+		Tasks []protocol.Task `json:"tasks"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return nil, false
+	}
+	return p.Tasks, p.Tasks != nil
+}
+
+func byID(tasks []protocol.Task) map[string]protocol.Task {
+	out := make(map[string]protocol.Task, len(tasks))
+	for _, t := range tasks {
+		out[t.ID] = t
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// StopGate: deterministic checks first, then the judge.
+
+// BeforeStop implements module.StopGate. Spec 10.3 requires the cheap checks
+// to run before paying for a judge call, so the order here is load-bearing:
+// open tasks, undocumented blocks, failed checks, the gate, the tree, and only
+// then the judge.
+func (m *Module) BeforeStop(ctx context.Context, s module.Session, info module.StopInfo) module.StopVerdict {
+	if s == nil {
+		return module.StopVerdict{Allow: true}
+	}
+
+	if reason := openTaskVeto(info.Tasks); reason != "" {
+		return module.StopVerdict{Reason: reason}
+	}
+	if reason := failedCheckVeto(s); reason != "" {
+		return module.StopVerdict{Reason: reason}
+	}
+	if reason := m.gateVeto(ctx, s); reason != "" {
+		return module.StopVerdict{Reason: reason}
+	}
+	if reason := m.treeVeto(s); reason != "" {
+		return module.StopVerdict{Reason: reason}
+	}
+	if reason := m.judgeVeto(ctx, s, info); reason != "" {
+		return module.StopVerdict{Reason: reason}
+	}
+	return module.StopVerdict{Allow: true}
+}
+
+// openTaskVeto refuses a stop while work is outstanding. A blocked task must
+// carry a note; one without is undocumented and vetoes too.
+func openTaskVeto(tasks []protocol.Task) string {
+	var open, undocumented, blocked []string
+	for _, t := range tasks {
+		switch t.Status {
+		case protocol.TaskPending, protocol.TaskInProgress:
+			open = append(open, t.ID+" "+t.Title)
+		case protocol.TaskBlocked:
+			if strings.TrimSpace(t.Note) == "" {
+				undocumented = append(undocumented, t.ID+" "+t.Title)
+			} else {
+				blocked = append(blocked, t.ID+" "+t.Title+" — "+t.Note)
+			}
+		}
+	}
+	if len(open) == 0 && len(undocumented) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	if len(open) > 0 {
+		b.WriteString("these tasks are not finished:\n")
+		for _, t := range open {
+			b.WriteString("  - " + t + "\n")
+		}
+	}
+	if len(undocumented) > 0 {
+		b.WriteString("these tasks are blocked with no note saying why:\n")
+		for _, t := range undocumented {
+			b.WriteString("  - " + t + "\n")
+		}
+	}
+	if len(blocked) > 0 {
+		b.WriteString("(blocked and documented, not counted against you:\n")
+		for _, t := range blocked {
+			b.WriteString("  - " + t + "\n")
+		}
+		b.WriteString(")\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// failedCheckVeto refuses a stop while a mechanical check last failed.
+func failedCheckVeto(s module.Session) string {
+	events, err := s.Events(nil)
+	if err != nil {
+		return ""
+	}
+	// Last status per check name wins: a later pass clears an earlier failure.
+	status := map[string]protocol.CheckData{}
+	var order []string
+	for _, e := range events {
+		if e.Type != protocol.EventCheck {
+			continue
+		}
+		var d protocol.CheckData
+		if json.Unmarshal(e.Data, &d) != nil {
+			continue
+		}
+		if _, seen := status[d.Name]; !seen {
+			order = append(order, d.Name)
+		}
+		status[d.Name] = d
+	}
+
+	var failed []string
+	for _, name := range order {
+		if d := status[name]; d.Status == "fail" {
+			failed = append(failed, name+": "+d.Summary)
+		}
+	}
+	if len(failed) == 0 {
+		return ""
+	}
+	return "these checks are failing:\n  - " + strings.Join(failed, "\n  - ")
+}
+
+// gateVeto runs the project's canonical gate and refuses a stop if it fails.
+func (m *Module) gateVeto(ctx context.Context, s module.Session) string {
+	if strings.TrimSpace(m.Command) == "" {
+		return ""
+	}
+	out, err := m.run(ctx, s.Workspace().Path, m.Command)
+	status, summary := "pass", "exit 0"
+	if err != nil {
+		status, summary = "fail", truncate(err.Error(), maxSummary)
+	}
+	_, _ = s.Append(protocol.EventCheck, protocol.CheckData{
+		Name: "verify.command", Kind: "module", Status: status,
+		Summary: summary, Output: tail(out, maxCheckOutput),
+	})
+	if err == nil {
+		return ""
+	}
+	return fmt.Sprintf("the project gate failed: %s (%v)\n%s",
+		m.Command, err, tail(out, maxCheckOutput))
+}
+
+// treeVeto targets the failure this whole module exists for: the agent
+// reporting that tests pass while the fix sits uncommitted.
+func (m *Module) treeVeto(s module.Session) string {
+	if !m.RequireCleanTree {
+		return ""
+	}
+	dirty, ok := TreeDirty(s.Workspace().Path)
+	if !ok || !dirty {
+		return ""
+	}
+	return "the working tree has uncommitted changes: commit them or explain why they should stay uncommitted"
+}
+
+// judgeVeto asks the judge whether the goal is met. Unmet vetoes; met and
+// impossible append a goal event and allow.
+func (m *Module) judgeVeto(ctx context.Context, s module.Session, info module.StopInfo) string {
+	if info.Goal == nil || !s.State().GoalActive() {
+		return ""
+	}
+	if m.host == nil || m.host.Model() == nil {
+		// Without a model there is no way to judge. Say so rather than
+		// allowing a stop that was never actually judged.
+		return "the run goal could not be judged: this daemon has no model available"
+	}
+
+	verdict, reason := m.judge(ctx, s, info)
+	switch verdict {
+	case "met", "impossible":
+		_, _ = s.Append(protocol.EventGoal, protocol.GoalData{
+			Condition: info.Goal.Condition, State: verdict,
+			Reason: reason, Source: "module:verify",
+		})
+		return ""
+	default:
+		if reason == "" {
+			reason = "the goal is not met"
+		}
+		return "the run goal is not met: " + reason
+	}
+}
+
+// judge runs the goal judge in a fresh context and returns its verdict and
+// reason. A failed or unparseable call is deliberately reported as unmet: a
+// judge that fails open would make this whole mechanism theatre.
+func (m *Module) judge(ctx context.Context, s module.Session, info module.StopInfo) (string, string) {
+	prompt := m.judgePrompt(s, info)
+	resp, err := m.host.Model().Complete(ctx, s, module.CompletionRequest{
+		Model:  m.JudgeModel,
+		System: judgeSystem,
+		// A fresh context: the condition, the tasks, and a transcript window.
+		// The judge never sees the loop's own message history.
+		Messages:  []module.Message{{Role: "user", Content: prompt}},
+		MaxTokens: 400,
+	})
+	if err != nil {
+		return "unmet", "judge call failed: " + err.Error()
+	}
+	verdict, reason, ok := parseVerdict(resp.Content)
+	if !ok {
+		return "unmet", "the judge did not answer in the required form"
+	}
+	return verdict, reason
+}
+
+const judgeSystem = "You are an impartial judge. You did not do the work and you " +
+	"have no stake in it being finished. Decide only whether the stated condition is met."
+
+// judgePrompt builds the judge's single user message.
+func (m *Module) judgePrompt(s module.Session, info module.StopInfo) string {
+	var b strings.Builder
+	b.WriteString("The agent believes its work is done. Decide whether the goal is met.\n\n")
+	b.WriteString("## Condition\n")
+	b.WriteString(info.Goal.Condition + "\n\n")
+
+	b.WriteString("## Tasks\n")
+	if len(info.Tasks) == 0 {
+		b.WriteString("(none)\n")
+	}
+	for _, t := range info.Tasks {
+		evidence := t.Evidence
+		if evidence == "" {
+			evidence = "none"
+		}
+		fmt.Fprintf(&b, "- %s: %s — status: %s, evidence: %s\n", t.ID, t.Title, t.Status, evidence)
+	}
+
+	b.WriteString("\n## Recent transcript\n")
+	b.WriteString(m.transcript(s))
+
+	b.WriteString("\n## Verdict\nRespond with exactly one of these three lines, nothing else:\n")
+	b.WriteString("VERDICT: met\n")
+	b.WriteString("VERDICT: unmet - <one sentence reason>\n")
+	b.WriteString("VERDICT: impossible - <one sentence reason>\n")
+	return b.String()
+}
+
+// transcript renders the last JudgeTurns messages. It is a recurring cost, so
+// it is bounded rather than complete.
+func (m *Module) transcript(s module.Session) string {
+	events, err := s.Events(nil)
+	if err != nil {
+		return "(unavailable)\n"
+	}
+	var lines []string
+	for _, e := range events {
+		if e.Type != protocol.EventMessage {
+			continue
+		}
+		var d protocol.MessageData
+		if json.Unmarshal(e.Data, &d) != nil {
+			continue
+		}
+		lines = append(lines, d.Role+": "+truncate(strings.TrimSpace(d.Content), 1000))
+	}
+	if len(lines) == 0 {
+		return "(no messages)\n"
+	}
+	if n := m.JudgeTurns; n > 0 && len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// parseVerdict finds the first verdict line. The reason is whatever follows
+// the separator, which may be a hyphen or an em dash depending on what the
+// model produced.
+func parseVerdict(content string) (string, string, bool) {
+	lower := strings.ToLower(content)
+	best, at := "", -1
+	for _, v := range []string{"met", "unmet", "impossible"} {
+		i := strings.Index(lower, "verdict: "+v)
+		if i < 0 {
+			continue
+		}
+		// "met" also matches inside "unmet"; prefer the longest match at the
+		// same position and the earliest match overall.
+		if at < 0 || i < at || (i == at && len(v) > len(best)) {
+			best, at = v, i
+		}
+	}
+	if at < 0 {
+		return "", "", false
+	}
+
+	rest := content[at+len("verdict: ")+len(best):]
+	if i := strings.IndexAny(rest, "\r\n"); i >= 0 {
+		rest = rest[:i]
+	}
+	reason := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(rest), "-—–:"))
+	return best, strings.TrimSpace(reason), true
+}
+
+// ---------------------------------------------------------------------------
+// Reporter: the checks half of the run report.
+
+// Report implements module.Reporter. verify owns tree_dirty because it is the
+// module that vetoes on it; report reflects the same truth rather than
+// asserting a second one.
+func (m *Module) Report(_ context.Context, s module.Session) (module.ReportFields, error) {
+	var out module.ReportFields
+	if s == nil {
+		return out, nil
+	}
+	if dirty, ok := TreeDirty(s.Workspace().Path); ok {
+		out.TreeDirty = &dirty
+	}
+
+	events, err := s.Events(nil)
+	if err != nil {
+		return out, nil
+	}
+	latest := map[string]protocol.CheckData{}
+	var order []string
+	for _, e := range events {
+		if e.Type != protocol.EventCheck {
+			continue
+		}
+		var d protocol.CheckData
+		if json.Unmarshal(e.Data, &d) != nil {
+			continue
+		}
+		if _, seen := latest[d.Name]; !seen {
+			order = append(order, d.Name)
+		}
+		latest[d.Name] = d
+	}
+	for _, name := range order {
+		d := latest[name]
+		out.Checks = append(out.Checks, protocol.ReportCheck{
+			Name: d.Name, Status: d.Status, Summary: d.Summary,
+		})
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------------------
+// Running commands and reading the tree.
+
+// run executes a command in the workspace, returning its combined output. A
+// timeout is a failure like any other, named so the model can tell.
+func (m *Module) run(ctx context.Context, dir, command string) (string, error) {
+	timeout := m.CommandTimeout
+	if timeout <= 0 {
+		timeout = DefaultCommandTimeout
+	}
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	name, flag := shell()
+	cmd := exec.CommandContext(cctx, name, flag, command)
+	cmd.Dir = dir
+	cmd.WaitDelay = time.Second
+	out, err := cmd.CombinedOutput()
+	if cctx.Err() == context.DeadlineExceeded {
+		return string(out), fmt.Errorf("command timed out after %s", timeout)
+	}
+	return string(out), err
+}
+
+// shell picks an interpreter. A configured gate must work on both platforms,
+// so this prefers a POSIX shell where one exists and falls back to cmd.
+func shell() (string, string) {
+	for _, sh := range []string{"bash", "sh"} {
+		if p, err := exec.LookPath(sh); err == nil {
+			return p, "-c"
+		}
+	}
+	if runtime.GOOS == "windows" {
+		return "cmd", "/C"
+	}
+	return "sh", "-c"
+}
+
+// TreeDirty reports whether dir has uncommitted changes. The second result is
+// false when the question cannot be answered — no git, or not a repository —
+// which is a normal case rather than an error.
+func TreeDirty(dir string) (bool, bool) {
+	out, err := git(dir, "status", "--porcelain")
+	if err != nil {
+		return false, false
+	}
+	return strings.TrimSpace(out) != "", true
+}
+
+// git runs one git command in dir.
+func git(dir string, args ...string) (string, error) {
+	if dir == "" {
+		return "", fmt.Errorf("no workspace")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	return string(out), err
+}
+
+func truncate(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if n <= 0 || len(s) <= n {
+		return s
+	}
+	return strings.TrimSpace(s[:n]) + "…"
+}
+
+// tail keeps the end of command output, which is where a failure explains
+// itself.
+func tail(s string, n int) string {
+	s = strings.TrimRight(s, "\r\n")
+	if len(s) <= n {
+		return s
+	}
+	return "…" + s[len(s)-n:]
+}
