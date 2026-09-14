@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/corporealshift/nabu/clients/goclient"
 	"github.com/corporealshift/nabu/daemon"
 	"github.com/corporealshift/nabu/protocol"
 )
@@ -222,11 +223,11 @@ func TestRunSetsTheTurnBudgetAtCreation(t *testing.T) {
 		t.Fatal("daemon not discoverable")
 	}
 	ctx := context.Background()
-	c, err := dial(ctx, addr, "")
+	c, err := goclient.Dial(ctx, addr, "", "nabu-cli-test", version)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.close()
+	defer c.Close()
 
 	ws := t.TempDir()
 	var created struct {

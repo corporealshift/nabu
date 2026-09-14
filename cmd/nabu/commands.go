@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/corporealshift/nabu/clients/goclient"
 	"github.com/corporealshift/nabu/daemon"
 	"github.com/corporealshift/nabu/daemon/config"
 	"github.com/corporealshift/nabu/protocol"
@@ -51,7 +52,7 @@ func resolveRoot(flagValue string) (string, error) {
 // connect returns a client for the daemon under root, starting one detached if
 // none is listening. Claude Code's delegation must never fail with "daemon not
 // running" (spec 13).
-func connect(ctx context.Context, root string, stderr io.Writer) (*client, error) {
+func connect(ctx context.Context, root string, stderr io.Writer) (*goclient.Client, error) {
 	addr, ok := daemon.RunningAddr(root)
 	if !ok {
 		fmt.Fprintln(stderr, "nabu: no daemon listening, starting one")
@@ -68,9 +69,9 @@ func connect(ctx context.Context, root string, stderr io.Writer) (*client, error
 	if err != nil {
 		return nil, err
 	}
-	dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
+	dialCtx, cancel := context.WithTimeout(ctx, goclient.DialTimeout)
 	defer cancel()
-	return dial(dialCtx, addr, cfg.Daemon.Token)
+	return goclient.Dial(dialCtx, addr, cfg.Daemon.Token, "nabu-cli", version)
 }
 
 // startDetached spawns "nabu daemon" as a process that outlives this one.
@@ -142,8 +143,8 @@ func cmdDaemonStop(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
-	defer c.close()
-	if _, err := c.call(ctx, "nabu.daemon.stop", nil, nil); err != nil {
+	defer c.Close()
+	if _, err := c.Call(ctx, "nabu.daemon.stop", nil, nil); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
@@ -188,7 +189,7 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
-	defer c.close()
+	defer c.Close()
 
 	var created struct {
 		SessionID string `json:"session_id"`
@@ -212,7 +213,7 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 			return exitError
 		}
 	}
-	if _, err := c.call(ctx, "nabu.session.subscribe",
+	if _, err := c.Call(ctx, "nabu.session.subscribe",
 		map[string]any{"session_id": created.SessionID}, nil); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
@@ -232,9 +233,9 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 
 // follow streams a session's events until it reaches a terminal state, and
 // reports that state.
-func follow(ctx context.Context, c *client, stdout io.Writer, asJSON bool) protocol.SessionState {
+func follow(ctx context.Context, c *goclient.Client, stdout io.Writer, asJSON bool) protocol.SessionState {
 	final := protocol.StateIdle
-	_ = c.stream(ctx, func(m message) bool {
+	_ = c.Stream(ctx, func(m goclient.Message) bool {
 		switch m.Method {
 		case "nabu.session.event":
 			var p struct {
@@ -348,7 +349,7 @@ func cmdStatus(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
-	defer c.close()
+	defer c.Close()
 
 	if id := fs.Arg(0); id != "" {
 		var st protocol.State
@@ -417,9 +418,9 @@ func cmdAttach(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
-	defer c.close()
+	defer c.Close()
 
-	if _, err := c.call(ctx, "nabu.session.subscribe",
+	if _, err := c.Call(ctx, "nabu.session.subscribe",
 		map[string]any{"session_id": id}, nil); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
@@ -462,9 +463,9 @@ func simpleSessionCommand(name, method string, args []string, stdout, stderr io.
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
-	defer c.close()
+	defer c.Close()
 
-	if _, err := c.call(ctx, method, map[string]any{"session_id": id}, nil); err != nil {
+	if _, err := c.Call(ctx, method, map[string]any{"session_id": id}, nil); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
@@ -473,8 +474,8 @@ func simpleSessionCommand(name, method string, args []string, stdout, stderr io.
 }
 
 // callInto makes a call and decodes its result into out, which may be nil.
-func callInto(ctx context.Context, c *client, method string, params, out any) error {
-	raw, err := c.call(ctx, method, params, nil)
+func callInto(ctx context.Context, c *goclient.Client, method string, params, out any) error {
+	raw, err := c.Call(ctx, method, params, nil)
 	if err != nil {
 		return err
 	}
