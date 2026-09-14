@@ -38,3 +38,68 @@ func TestRegisteredNamesAreUnique(t *testing.T) {
 		seen[name] = true
 	}
 }
+
+// P1c registers all four policy modules. A module compiled in but left out of
+// this list is silently inert, which is how guard nearly shipped unused.
+func TestAllPolicyModulesAreRegistered(t *testing.T) {
+	want := []string{"skills", "guard", "verify", "report"}
+	got := map[string]bool{}
+	for _, m := range All {
+		got[m.Name()] = true
+	}
+	for _, name := range want {
+		if !got[name] {
+			t.Errorf("%q is not registered", name)
+		}
+	}
+}
+
+// The first Deny on a tool call wins, so broad safety policy must be asked
+// before narrow verification.
+func TestGuardIsAskedBeforeVerify(t *testing.T) {
+	guardAt, verifyAt := -1, -1
+	for i, m := range All {
+		switch m.Name() {
+		case "guard":
+			guardAt = i
+		case "verify":
+			verifyAt = i
+		}
+	}
+	if guardAt < 0 || verifyAt < 0 {
+		t.Skip("both gates must be registered for order to matter")
+	}
+	if guardAt > verifyAt {
+		t.Errorf("guard is at %d and verify at %d: guard must come first", guardAt, verifyAt)
+	}
+}
+
+// Each hook must actually be implemented, or the registry silently skips it.
+func TestModulesImplementTheirHooks(t *testing.T) {
+	for _, m := range All {
+		switch m.Name() {
+		case "guard":
+			if _, ok := m.(module.ToolGate); !ok {
+				t.Error("guard must be a ToolGate")
+			}
+		case "skills":
+			if _, ok := m.(module.SessionStarter); !ok {
+				t.Error("skills must be a SessionStarter")
+			}
+			if _, ok := m.(module.ToolProvider); !ok {
+				t.Error("skills must be a ToolProvider")
+			}
+		case "verify":
+			if _, ok := m.(module.StopGate); !ok {
+				t.Error("verify must be a StopGate")
+			}
+			if _, ok := m.(module.Reporter); !ok {
+				t.Error("verify must be a Reporter")
+			}
+		case "report":
+			if _, ok := m.(module.Reporter); !ok {
+				t.Error("report must be a Reporter")
+			}
+		}
+	}
+}
