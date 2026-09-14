@@ -21,9 +21,9 @@ func event(id string, t protocol.EventType, data any) protocol.Event {
 }
 
 // sized returns a model that has been given a window, so the viewport exists.
-func sized(t *testing.T, answers chan answer) model {
+func sized(t *testing.T, actions chan action) model {
 	t.Helper()
-	m := newModel("01ARZ3NDEKTSV4RRFFQ69G5FAV", answers)
+	m := newModel("01ARZ3NDEKTSV4RRFFQ69G5FAV", actions)
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	return next.(model)
 }
@@ -129,8 +129,10 @@ func TestStateChangeUpdatesTheBadge(t *testing.T) {
 	if m.state != protocol.StateRunning {
 		t.Errorf("state: got %q, want running", m.state)
 	}
-	if !strings.Contains(m.status(), "running") {
-		t.Error("the status bar should show the state")
+	// While running, the working indicator stands in for the state badge: it
+	// says the same thing and adds elapsed time.
+	if !strings.Contains(m.status(), "working") {
+		t.Errorf("a running session should show the working indicator, got %q", m.status())
 	}
 }
 
@@ -154,8 +156,8 @@ func TestPermissionOverlayTakesTheScreen(t *testing.T) {
 }
 
 func TestApprovingSendsAnAnswer(t *testing.T) {
-	answers := make(chan answer, 1)
-	m := sized(t, answers)
+	actions := make(chan action, 4)
+	m := sized(t, actions)
 	m, _ = send(m, promptMsg{p: prompt{id: "r1", req: goclient.PermissionRequest{
 		RequestID: "r1", Tool: "bash", Summary: "go test ./...", Risk: "low"}}})
 
@@ -166,7 +168,7 @@ func TestApprovingSendsAnAnswer(t *testing.T) {
 	cmd()
 
 	select {
-	case a := <-answers:
+	case a := <-actions:
 		if !a.approve {
 			t.Error("y should approve")
 		}
@@ -182,8 +184,8 @@ func TestApprovingSendsAnAnswer(t *testing.T) {
 }
 
 func TestDenyingSendsARefusalWithAReason(t *testing.T) {
-	answers := make(chan answer, 1)
-	m := sized(t, answers)
+	actions := make(chan action, 4)
+	m := sized(t, actions)
 	m, _ = send(m, promptMsg{p: prompt{id: "r1", req: goclient.PermissionRequest{
 		RequestID: "r1", Tool: "bash", Summary: "rm -rf /", Risk: "high"}}})
 
@@ -193,7 +195,7 @@ func TestDenyingSendsARefusalWithAReason(t *testing.T) {
 	}
 	cmd()
 
-	a := <-answers
+	a := <-actions
 	if a.approve {
 		t.Error("n should deny")
 	}
@@ -204,8 +206,8 @@ func TestDenyingSendsARefusalWithAReason(t *testing.T) {
 
 // Answering the wrong request would approve something the human never saw.
 func TestPromptsQueueAndAreAnsweredInOrder(t *testing.T) {
-	answers := make(chan answer, 2)
-	m := sized(t, answers)
+	actions := make(chan action, 4)
+	m := sized(t, actions)
 	m, _ = send(m, promptMsg{p: prompt{id: "r1", req: goclient.PermissionRequest{
 		RequestID: "r1", Tool: "bash", Summary: "first", Risk: "low"}}})
 	m, _ = send(m, promptMsg{p: prompt{id: "r2", req: goclient.PermissionRequest{
@@ -223,7 +225,7 @@ func TestPromptsQueueAndAreAnsweredInOrder(t *testing.T) {
 
 	m, cmd := send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 	cmd()
-	if a := <-answers; a.id != "r1" {
+	if a := <-actions; a.id != "r1" {
 		t.Errorf("the first answer should be for r1, got %v", a.id)
 	}
 	if m.pending == nil || m.pending.req.RequestID != "r2" {
@@ -232,7 +234,7 @@ func TestPromptsQueueAndAreAnsweredInOrder(t *testing.T) {
 
 	_, cmd = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 	cmd()
-	if a := <-answers; a.id != "r2" {
+	if a := <-actions; a.id != "r2" {
 		t.Errorf("the second answer should be for r2, got %v", a.id)
 	}
 }
