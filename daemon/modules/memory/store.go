@@ -290,7 +290,7 @@ func render(m Memory) string {
 	if m.Type != "" {
 		b.WriteString("  type: " + m.Type + "\n")
 	}
-	b.WriteString("  modified: " + m.Modified.UTC().Format(time.RFC3339) + "\n")
+	b.WriteString("  modified: " + m.Modified.UTC().Format(modifiedLayout) + "\n")
 	for _, k := range sortedKeys(m.extraMeta) {
 		b.WriteString("  " + k + ": " + m.extraMeta[k] + "\n")
 	}

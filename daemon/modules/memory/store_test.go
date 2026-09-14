@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // realFormat is copied from the shape of the owner's actual memory files. The
@@ -278,5 +279,36 @@ func TestParseMetadataWithTrailingSpace(t *testing.T) {
 	}
 	if m.Modified.IsZero() {
 		t.Error("a millisecond timestamp did not parse")
+	}
+}
+
+// TestModifiedIsWrittenWithMillisecondPrecision guards the reason the layout
+// exists. At second precision two saves of the same memory inside one second
+// are indistinguishable, and the field exists to say which version is current.
+func TestModifiedIsWrittenWithMillisecondPrecision(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir, ScopeGlobal, false)
+	if err := s.Save(Memory{Name: "dated", Type: "user", Description: "d", Body: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(s.Path("dated"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := ""
+	for _, l := range strings.Split(string(raw), "\n") {
+		if strings.Contains(l, "modified:") {
+			line = strings.TrimSpace(l)
+		}
+	}
+	if line == "" {
+		t.Fatalf("no modified line:\n%s", raw)
+	}
+	value := strings.TrimSpace(strings.TrimPrefix(line, "modified:"))
+	if !strings.Contains(value, ".") {
+		t.Errorf("modified = %q, want a fractional second", value)
+	}
+	if _, err := time.Parse(modifiedLayout, value); err != nil {
+		t.Errorf("modified = %q does not parse with the layout used to write it: %v", value, err)
 	}
 }
