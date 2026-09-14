@@ -192,7 +192,10 @@ func (st *Store) List() ([]Summary, error) {
 		}
 		out = append(out, s.Summary())
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].SessionID < out[j].SessionID })
+	// Newest first. Session ids are ULIDs, so this is reverse chronological,
+	// which is what every caller wants from a list of sessions: the one you
+	// were just working in is at the top.
+	sort.Slice(out, func(i, j int) bool { return out[i].SessionID > out[j].SessionID })
 	return out, errors.Join(errs...)
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 
@@ -57,13 +58,36 @@ type model struct {
 	turns     int
 	lastError string
 
+	// runningSince is when the current turn began, so the working indicator
+	// reports how long the model has actually been thinking rather than how
+	// long the program has been open. Zero when not running.
+	runningSince time.Time
+	// spinner advances on every tick, so a screen with no new output is still
+	// visibly alive.
+	spinner int
+
+	// tasks and goal are what the agent believes it is doing. They come from
+	// events but never reach the transcript: re-rendering a task list inline
+	// on every update would drown the conversation.
+	tasks []protocol.Task
+	goal  *protocol.GoalData
+
+	// composer
+	composing bool
+	input     string
+
+	// picker
+	picking  bool
+	sessions []goclient.SessionSummary
+	cursorAt int
+
 	width, height int
 	quitting      bool
 
-	// answers carries a human's decision out to the connection goroutine.
-	// Update is pure, so it cannot reply to the daemon itself; it sends here
-	// and the goroutine that owns the socket does the writing.
-	answers chan<- answer
+	// actions carries what the human asked for out to the connection
+	// goroutine. Update is pure, so it cannot touch the network itself; it
+	// sends here and the goroutine that owns the socket does the work.
+	actions chan<- action
 }
 
 // Default dimensions until the terminal reports its own. Waiting for a size
@@ -74,12 +98,12 @@ const (
 	defaultHeight = 24
 )
 
-func newModel(sessionID string, answers chan<- answer) model {
+func newModel(sessionID string, actions chan<- action) model {
 	m := model{
 		sessionID: sessionID,
 		conn:      connecting,
 		state:     protocol.StateIdle,
-		answers:   answers,
+		actions:   actions,
 		width:     defaultWidth,
 		height:    defaultHeight,
 	}
@@ -106,10 +130,71 @@ func (m *model) appendEvent(ev protocol.Event) {
 	}
 	if ev.Type == protocol.EventStateChange {
 		if st, ok := stateOf(ev); ok {
-			m.state = st
+			m.setState(st)
+		}
+	}
+	if ev.Type == protocol.EventTasks {
+		var d protocol.TasksData
+		if unmarshal(ev, &d) == nil {
+			m.tasks = d.Tasks
+		}
+	}
+	if ev.Type == protocol.EventGoal {
+		var d protocol.GoalData
+		if unmarshal(ev, &d) == nil {
+			if d.State == "cleared" {
+				m.goal = nil
+			} else {
+				m.goal = &d
+			}
 		}
 	}
 	m.transcript = append(m.transcript, renderEvent(ev)...)
+	m.refresh()
+}
+
+// setState records a state change and starts or stops the turn clock. The
+// clock runs from the transition into running, not from the prompt, so a
+// session that waited its turn does not appear to have been working the whole
+// time.
+func (m *model) setState(st protocol.SessionState) {
+	if st == protocol.StateRunning && m.state != protocol.StateRunning {
+		m.runningSince = time.Now()
+	}
+	if st != protocol.StateRunning {
+		m.runningSince = time.Time{}
+	}
+	m.state = st
+}
+
+// working reports whether the agent is mid-turn, which is what the indicator
+// answers.
+func (m model) working() bool {
+	return m.state == protocol.StateRunning
+}
+
+// elapsed is how long the current turn has run.
+func (m model) elapsed() time.Duration {
+	if m.runningSince.IsZero() {
+		return 0
+	}
+	return time.Since(m.runningSince).Truncate(time.Second)
+}
+
+// reset clears everything belonging to one session, in one operation. Doing it
+// field by field is how a transcript ends up under the wrong session's id.
+func (m *model) reset(sessionID string) {
+	m.sessionID = sessionID
+	m.transcript = nil
+	m.lastEventID = ""
+	m.streaming = ""
+	m.turnID = ""
+	m.tasks = nil
+	m.goal = nil
+	m.pending = nil
+	m.queued = nil
+	m.state = protocol.StateIdle
+	m.runningSince = time.Time{}
 	m.refresh()
 }
 
@@ -163,6 +248,26 @@ func (m *model) dropPrompt(requestID string) bool {
 		}
 	}
 	return false
+}
+
+// taskPaneWidth is the right-hand column. Below minWideTerminal the pane is
+// hidden instead of squeezed: two columns in eighty make both unreadable.
+const (
+	taskPaneWidth   = 34
+	minWideTerminal = 100
+)
+
+// showTasks reports whether there is both something to show and room to show it.
+func (m model) showTasks() bool {
+	return len(m.tasks) > 0 && m.width >= minWideTerminal
+}
+
+// transcriptWidth is what the transcript gets once the task pane has its share.
+func (m model) transcriptWidth() int {
+	if m.showTasks() {
+		return m.width - taskPaneWidth
+	}
+	return m.width
 }
 
 // body is the transcript plus the live streaming preview.

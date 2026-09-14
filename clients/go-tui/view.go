@@ -25,13 +25,99 @@ func (m model) View() string {
 	if m.quitting {
 		return ""
 	}
-	if !m.ready {
-		return "connecting…"
-	}
 	if m.pending != nil {
 		return m.overlay()
 	}
-	return m.viewport.View() + "\n" + m.status() + "\n" + m.help()
+	if m.picking {
+		return m.picker()
+	}
+
+	main := m.viewport.View()
+	if m.showTasks() {
+		main = lipgloss.JoinHorizontal(lipgloss.Top, main, m.taskPane())
+	}
+	return main + "\n" + m.composerLine() + "\n" + m.status() + "\n" + m.help()
+}
+
+// spinnerFrames is a braille cycle: it reads as motion in any terminal font.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// workingIndicator is what says the agent is alive while a slow model thinks.
+// Without it a screen that has stopped changing is indistinguishable from a
+// hang, and a local turn can take minutes before its first token.
+func (m model) workingIndicator() string {
+	if !m.working() {
+		return ""
+	}
+	frame := spinnerFrames[m.spinner%len(spinnerFrames)]
+	return badgeWarn.Render(frame + " working " + m.elapsed().String())
+}
+
+// composerLine is the input, or a hint about how to open it.
+func (m model) composerLine() string {
+	if m.composing {
+		return userStyle.Render("› ") + m.input + badgeOK.Render("▌")
+	}
+	return dim.Render("press i to type, s for sessions")
+}
+
+// taskPane shows what the agent believes it is doing.
+func (m model) taskPane() string {
+	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Tasks") + "\n\n")
+	for _, t := range m.tasks {
+		b.WriteString(taskLine(t) + "\n")
+	}
+	return lipgloss.NewStyle().
+		Width(taskPaneWidth).
+		BorderLeft(true).
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("8")).
+		PaddingLeft(1).
+		Height(m.viewport.Height).
+		Render(b.String())
+}
+
+// taskLine marks a task by status. The marks differ in shape, not only colour,
+// so the pane is readable without it.
+func taskLine(t protocol.Task) string {
+	mark, style := " ", dim
+	switch t.Status {
+	case protocol.TaskInProgress:
+		mark, style = "▸", toolStyle
+	case protocol.TaskDone:
+		mark, style = "✓", okStyle
+	case protocol.TaskBlocked:
+		mark, style = "!", warnStyle
+	case protocol.TaskFailed:
+		mark, style = "✗", errStyle
+	}
+	return style.Render(mark + " " + truncate(t.Title, taskPaneWidth-4))
+}
+
+// picker lists the sessions to switch between.
+func (m model) picker() string {
+	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Sessions") + "\n\n")
+	if len(m.sessions) == 0 {
+		b.WriteString(dim.Render("no sessions yet — start one with `nabu run`"))
+	}
+	for i, s := range m.sessions {
+		line := shortID(s.SessionID) + "  " + s.State + "  " + truncate(s.Workspace, 48)
+		if i == m.cursorAt {
+			b.WriteString(badgeOK.Render("› " + line))
+		} else {
+			b.WriteString(dim.Render("  " + line))
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("\n" + dim.Render("↑↓ move · enter attach · esc cancel"))
+
+	box := overlayBox.Render(b.String())
+	if m.width > 0 && m.height > 0 {
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	}
+	return box
 }
 
 // status is the one line that says what is happening: connection, session
@@ -54,7 +140,14 @@ func (m model) status() string {
 		parts = append(parts, badgeErr.Render("○")+" "+note)
 	}
 
-	parts = append(parts, stateBadge(m.state))
+	if ind := m.workingIndicator(); ind != "" {
+		parts = append(parts, ind)
+	} else {
+		parts = append(parts, stateBadge(m.state))
+	}
+	if g := m.goalBadge(); g != "" {
+		parts = append(parts, g)
+	}
 	if n := len(m.queued); n > 0 {
 		parts = append(parts, badgeWarn.Render(fmt.Sprintf("%d prompts queued", n)))
 	}
@@ -62,6 +155,23 @@ func (m model) status() string {
 		parts = append(parts, dim.Render(shortID(m.sessionID)))
 	}
 	return statusBar.Render(strings.Join(parts, "  "))
+}
+
+// goalBadge shows the run goal. An unmet goal is the interesting one: it means
+// the stop gate refused to let the run finish.
+func (m model) goalBadge() string {
+	if m.goal == nil {
+		return ""
+	}
+	label := "goal " + m.goal.State
+	switch m.goal.State {
+	case "unmet":
+		return badgeErr.Render(label)
+	case "met":
+		return badgeOK.Render(label)
+	default:
+		return dim.Render(label)
+	}
 }
 
 func stateBadge(s protocol.SessionState) string {
@@ -80,10 +190,13 @@ func stateBadge(s protocol.SessionState) string {
 }
 
 func (m model) help() string {
-	if terminal(m.state) {
-		return dim.Render("q quit · g/G top/bottom · ↑↓ scroll — the session has ended")
+	if m.composing {
+		return dim.Render("enter send · esc cancel · /help for commands")
 	}
-	return dim.Render("q quit (the run continues) · g/G top/bottom · ↑↓ scroll")
+	if terminal(m.state) {
+		return dim.Render("q quit · i type · s sessions · g/G top/bottom — the session has ended")
+	}
+	return dim.Render("q quit (the run continues) · i type · s sessions · ctrl+x interrupt")
 }
 
 // overlay is the permission prompt. It takes the whole screen deliberately:

@@ -48,11 +48,12 @@ func TestListAndRecover(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sums) != 2 || sums[0].SessionID != a.ID() || sums[1].SessionID != b.ID() {
+	// Newest first: b was created after a, so it leads.
+	if len(sums) != 2 || sums[0].SessionID != b.ID() || sums[1].SessionID != a.ID() {
 		t.Fatalf("list: %+v", sums)
 	}
-	if sums[1].State != protocol.StateRunning || sums[1].EventCount != 4 || sums[1].Goal == nil {
-		t.Fatalf("summary: %+v", sums[1])
+	if sums[0].State != protocol.StateRunning || sums[0].EventCount != 4 || sums[0].Goal == nil {
+		t.Fatalf("summary: %+v", sums[0])
 	}
 
 	paused, err := st.RecoverInterrupted()
@@ -71,5 +72,33 @@ func TestListAndRecover(t *testing.T) {
 	ev := b.Events()
 	if ev[len(ev)-2].Type != protocol.EventNotice {
 		t.Fatal("recovery must append a notice before the state change")
+	}
+}
+
+// A list of sessions is read newest first: the one you were just working in
+// belongs at the top, and clients take the head when given no session id.
+func TestListIsNewestFirst(t *testing.T) {
+	st := newStore(t)
+	var ids []string
+	for i := 0; i < 4; i++ {
+		s, err := st.Create("C:/w", "w-1", opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, s.ID())
+	}
+
+	sums, err := st.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sums) != len(ids) {
+		t.Fatalf("sessions: got %d, want %d", len(sums), len(ids))
+	}
+	for i, sum := range sums {
+		want := ids[len(ids)-1-i]
+		if sum.SessionID != want {
+			t.Fatalf("position %d: got %s, want %s", i, sum.SessionID, want)
+		}
 	}
 }
