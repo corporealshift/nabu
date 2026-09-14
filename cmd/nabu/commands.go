@@ -224,7 +224,19 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	state := follow(ctx, c, stdout, *asJSON)
+	state := follow(ctx, c, stdout, *asJSON, true)
+	if state == protocol.StateIdle {
+		// The turn is over and the session is waiting for a prompt that will
+		// never come, because this run is the only caller. Ending it here is
+		// also what emits the run report, which is how the caller verifies the
+		// outcome without trusting the model's narration.
+		if _, err := c.Call(ctx, "nabu.session.stop",
+			map[string]any{"session_id": created.SessionID}, nil); err != nil {
+			fmt.Fprintf(stderr, "nabu: %v\n", err)
+			return exitError
+		}
+		state = follow(ctx, c, stdout, *asJSON, false)
+	}
 	if state == protocol.StatePaused {
 		fmt.Fprintf(stderr, "nabu: paused. Resume with: nabu resume %s\n", created.SessionID)
 	}
@@ -233,7 +245,12 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 
 // follow streams a session's events until it reaches a terminal state, and
 // reports that state.
-func follow(ctx context.Context, c *goclient.Client, stdout io.Writer, asJSON bool) protocol.SessionState {
+//
+// stopOnIdle also returns on idle. The agent takes a session to idle when the
+// stop gates allow, which is right for an interactive session waiting on the
+// next prompt but is not a state a headless run can wait out: nothing else
+// will ever move it. Only the owner of a run sets this.
+func follow(ctx context.Context, c *goclient.Client, stdout io.Writer, asJSON, stopOnIdle bool) protocol.SessionState {
 	final := protocol.StateIdle
 	_ = c.Stream(ctx, func(m goclient.Message) bool {
 		switch m.Method {
@@ -252,7 +269,7 @@ func follow(ctx context.Context, c *goclient.Client, stdout io.Writer, asJSON bo
 			if p.Event.Type == protocol.EventStateChange {
 				var sc protocol.StateChangeData
 				if err := json.Unmarshal(p.Event.Data, &sc); err == nil {
-					if terminal(sc.To) {
+					if terminal(sc.To) || (stopOnIdle && sc.To == protocol.StateIdle) {
 						final = sc.To
 						return false
 					}
@@ -325,8 +342,39 @@ func summarize(ev protocol.Event) string {
 			}
 			return from + " -> " + string(d.To) + " " + d.Reason
 		}
+	case protocol.EventReport:
+		var d protocol.ReportData
+		if json.Unmarshal(ev.Data, &d) == nil {
+			return summarizeReport(d)
+		}
 	}
 	return ""
+}
+
+// summarizeReport renders the run report on one line. The report exists so a
+// caller can verify an outcome without trusting the model's narration, so the
+// parts that contradict a confident summary come first: an unmet goal, a
+// failed check, a dirty tree.
+func summarizeReport(d protocol.ReportData) string {
+	parts := []string{string(d.ExitStatus)}
+	if d.Goal != nil {
+		parts = append(parts, "goal "+d.Goal.State)
+	}
+	parts = append(parts, fmt.Sprintf("tasks %d/%d", d.Tasks.Done, d.Tasks.Total))
+
+	for _, c := range d.Checks {
+		parts = append(parts, c.Name+" "+c.Status)
+	}
+	if n := len(d.FilesTouched); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d files", n))
+	}
+	if n := len(d.Commits); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d commits", n))
+	}
+	if d.TreeDirty != nil && *d.TreeDirty {
+		parts = append(parts, "tree dirty")
+	}
+	return strings.Join(parts, " · ")
 }
 
 // cmdStatus prints one session's state, or lists sessions when given no id.
@@ -425,7 +473,9 @@ func cmdAttach(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
-	return exitCode(follow(ctx, c, stdout, *asJSON))
+	// An attached client is an observer, not the owner of the run: an idle
+	// session may yet receive another prompt, so it keeps watching.
+	return exitCode(follow(ctx, c, stdout, *asJSON, false))
 }
 
 func cmdStop(args []string, stdout, stderr io.Writer) int {
