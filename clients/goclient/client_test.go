@@ -326,3 +326,51 @@ func asRPCError(err error, target **RPCError) bool {
 	}
 	return false
 }
+
+// A notification arriving while a call waits for its response must not be
+// dropped. Subscribing and then streaming otherwise loses every event that
+// landed in between, including the state change that ends a run.
+func TestNotificationsDuringACallAreNotLost(t *testing.T) {
+	addr, m, dir := realDaemon(t)
+	c := dialTest(t, addr)
+	ctx := context.Background()
+
+	s, err := m.Create(ctx, dir, agent.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Subscribe(ctx, s.ID()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Append while nobody is streaming, so the events land in the socket
+	// buffer, then make a call that will read past them.
+	if _, err := m.SetGoal(ctx, s.ID(), "the gate is green"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond) // let the fan-out write them
+
+	if _, err := c.State(ctx, s.ID()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Whatever the call read past must still be delivered, in order.
+	got := make(chan string, 8)
+	go func() {
+		_ = c.Stream(ctx, func(msg Message) bool {
+			if ev, ok := ParseEvent(msg); ok {
+				got <- string(ev.Event.Type)
+			}
+			return true
+		})
+	}()
+
+	select {
+	case typ := <-got:
+		if typ != string(protocol.EventGoal) {
+			t.Errorf("first queued event: got %q, want %q", typ, protocol.EventGoal)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the event read past by the call was lost")
+	}
+}

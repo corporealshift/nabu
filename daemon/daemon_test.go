@@ -232,3 +232,21 @@ func TestServeAndShutdown(t *testing.T) {
 		t.Fatal("Serve did not return after Shutdown")
 	}
 }
+
+// session.Open appends "sessions" itself. Passing it the sessions directory
+// produced ~/.nabu/sessions/sessions, which no other component looks in.
+func TestSessionsLiveDirectlyUnderTheRoot(t *testing.T) {
+	d := newDaemon(t)
+	if err := d.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	defer d.Shutdown(context.Background())
+
+	nested := filepath.Join(d.Root(), SessionsDir, SessionsDir)
+	if _, err := os.Stat(nested); err == nil {
+		t.Fatalf("sessions must not nest: %s exists", nested)
+	}
+	if _, err := os.Stat(filepath.Join(d.Root(), SessionsDir)); err != nil {
+		t.Fatalf("the sessions directory should exist under the root: %v", err)
+	}
+}

@@ -134,7 +134,9 @@ func New(opts Options) (*Daemon, error) {
 	}
 	log := slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: levelOf(cfg.Daemon.LogLevel)}))
 
-	store, err := session.Open(filepath.Join(root, SessionsDir))
+	// session.Open appends "sessions" itself, so it takes the root. Passing
+	// the sessions directory produced ~/.nabu/sessions/sessions.
+	store, err := session.Open(root)
 	if err != nil {
 		closeFile(logFile)
 		return nil, fmt.Errorf("daemon: opening session store: %w", err)
@@ -176,6 +178,7 @@ func New(opts Options) (*Daemon, error) {
 		Asker:  handler,
 		Deltas: handler.Deltas(),
 	}, agent.Config{
+		DefaultModel:         cfg.Daemon.DefaultModel,
 		MaxConsecutiveVetoes: cfg.Budget.MaxConsecutiveVetoes,
 		NoProgressTurns:      cfg.Budget.NoProgressTurns,
 	})

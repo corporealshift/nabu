@@ -53,6 +53,10 @@ type Client struct {
 
 	mu     sync.Mutex
 	nextID int
+	// pending holds notifications and daemon requests that arrived while a
+	// call was waiting for its response. Dropping them loses events and
+	// permission prompts, so they are queued and delivered by Stream.
+	pending []Message
 }
 
 // Dial connects to addr and completes the nabu.hello handshake. A non-empty
@@ -132,8 +136,12 @@ func (c *Client) Call(ctx context.Context, method string, params any, onOther fu
 			return nil, err
 		}
 		if in.Method != "" {
+			// Not the response we are waiting for. Hand it over if the caller
+			// wants it now, and queue it either way so Stream still sees it.
 			if onOther != nil {
 				onOther(in)
+			} else {
+				c.queue(in)
 			}
 			continue
 		}
@@ -145,6 +153,22 @@ func (c *Client) Call(ctx context.Context, method string, params any, onOther fu
 		}
 		return in.Result, nil
 	}
+}
+
+// queue holds a message for Stream to deliver later.
+func (c *Client) queue(m Message) {
+	c.mu.Lock()
+	c.pending = append(c.pending, m)
+	c.mu.Unlock()
+}
+
+// drain takes everything queued during earlier calls.
+func (c *Client) drain() []Message {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := c.pending
+	c.pending = nil
+	return out
 }
 
 // CallInto makes a call and decodes its result into out, which may be nil.
@@ -162,6 +186,14 @@ func (c *Client) CallInto(ctx context.Context, method string, params, out any) e
 // Stream reads messages until the context ends, onMessage returns false, or
 // the connection drops.
 func (c *Client) Stream(ctx context.Context, onMessage func(Message) bool) error {
+	// Anything that arrived while an earlier call was waiting comes first, in
+	// order. Without this, subscribing and then streaming loses every event
+	// that landed in between — including the state change that ends a run.
+	for _, m := range c.drain() {
+		if !onMessage(m) {
+			return nil
+		}
+	}
 	for {
 		in, err := c.Read(ctx)
 		if err != nil {
