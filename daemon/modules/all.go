@@ -3,6 +3,7 @@ package modules
 import (
 	"github.com/corporealshift/nabu/daemon/module"
 	"github.com/corporealshift/nabu/daemon/modules/guard"
+	"github.com/corporealshift/nabu/daemon/modules/skills"
 )
 
 // All is the registration list: every module compiled into the daemon, in
@@ -10,4 +11,5 @@ import (
 // memory. Adding a module is one import and one line here.
 var All = []module.Module{
 	&guard.Module{},
+	&skills.Module{},
 }

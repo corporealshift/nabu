@@ -23,7 +23,12 @@ The spec leaves several policy details open. This plan decides them:
 The default search paths are:
 
 1. `~/.claude/skills` — Claude Code compatibility. This is mandatory.
-2. `<workspace>/.nabu/skills/` — per-workspace skills, one level below the workspace root under the `.nabu/` directory (consistent with how `~/.nabu/` is the user-level storage and `<workspace>/.nabu/` is the workspace overlay, per spec §8).
+2. `<nabu root>/skills` — nabu's own skill directory, alongside `sessions/` and `memory/`.
+
+Both are global. **Workspace-local skills are deliberately out of scope**: a
+workspace-dependent path makes the index differ per session, which contradicts
+discovering once at `Init` and would put per-session state on a module struct shared by
+every concurrent session. Spec 14.7 names configured paths and `~/.claude/skills` only.
 
 Each path may be overridden or extended via config:
 
@@ -56,7 +61,14 @@ The following skills are available. To read a skill's body, call `skill.load` wi
 - `agent-browser`: Browser automation CLI for AI agents. Use when the user needs to interact with websites...
 ```
 
-Each entry is one line: the skill name in backticks, a colon, a space, then the description (truncated to 200 characters if longer). The total block is capped at 8 KB; if the index would exceed that, the shortest descriptions are dropped first until it fits.
+Each entry is one line: the skill name in backticks, a colon, a space, then the
+description truncated to 200 characters.
+
+The whole block is capped at 8 KB. If the index would exceed that, descriptions are
+shortened before any skill is dropped — a name alone is still useful, because the model
+can load it. Only if names alone still exceed the cap are skills dropped, and then the
+block says how many were omitted, so the model knows the list is partial rather than
+believing it has seen everything.
 
 ### `skill.load` tool
 
