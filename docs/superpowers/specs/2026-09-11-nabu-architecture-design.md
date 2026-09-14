@@ -34,6 +34,11 @@ lifecycle/config/storage. Section 22 records the owner's answers of 2026-09-11.
 Changes made to this document after its 2026-09-11 approval are listed here and marked
 inline at the section they affect.
 
+- **2026-09-14 — §11.2 Memory lives under the module data directory, not `~/.nabu/memory/`.**
+  Decided while implementing P3. The module host API exposes `DataDir(name)` and nothing
+  else, so the literal path would mean a module reaching around the boundary for the
+  nabu root. Memory is at `<root>/modules/memory/` with `global/` and `ws/<key>/`
+  underneath, the same shape the section describes. See §11.2.
 - **2026-09-14 — §8 `auto` is the default permission mode, was `ask`.** Decided while
   planning P2. `guard` ships compiled in and already stops the dangerous calls, so
   `ask` prompted for every read and edit on top of that. Guard's default rules also
@@ -573,6 +578,11 @@ restarted with the daemon; the same reasoning makes memory a module without hesi
     MEMORY.md
     *.md
 ```
+
+**(amended 2026-09-14)** The root is the module's data directory,
+`~/.nabu/modules/memory/`, not `~/.nabu/memory/`: the host API gives a module its
+data directory and nothing else. The `global/` and `ws/<workspace-key>/` shape below
+is unchanged.
 
 `workspace-key` is a slug of the git common dir when the workspace is inside a
 repository (so worktrees and nested dirs share memory), else of the absolute path. The
