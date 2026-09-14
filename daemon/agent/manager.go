@@ -515,10 +515,9 @@ func (m *Manager) finish(ctx context.Context, h *sessionHandle, to protocol.Sess
 	m.deps.Modules.SessionEnd(ctx, h)
 	from := h.State().State
 
-	// The report goes first, so the terminal state change is genuinely the
-	// last event of a session. A client stops streaming the moment it sees a
-	// session end, so a report appended after that transition is one no
-	// follower ever sees, and verifying the outcome is the whole point of it.
+	// The report goes first so the terminal state change is the last event of
+	// a session: a client stops streaming as soon as it sees one, and would
+	// never see a report appended after it.
 	if err := m.emitReport(ctx, h, to); err != nil {
 		return err
 	}

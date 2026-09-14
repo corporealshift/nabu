@@ -354,9 +354,8 @@ func TestDefaultPermissionModeIsAuto(t *testing.T) {
 	}
 }
 
-// lastReport finds the run report in a session log. The report is emitted
-// before the terminal state change, so that the state change is the last event
-// of a session and no follower stops streaming before the report arrives.
+// lastReport finds the run report, which sits immediately before the terminal
+// state change rather than at the end of the log.
 func lastReport(t *testing.T, ev []protocol.Event) *protocol.ReportData {
 	t.Helper()
 	for i := len(ev) - 1; i >= 0; i-- {

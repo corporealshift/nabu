@@ -276,7 +276,7 @@ func TestResolveRootFallsBackToTheEnvironment(t *testing.T) {
 }
 
 // startDaemonWithModel runs a daemon whose only provider is scripted, so a
-// whole turn can be driven without a model server.
+// whole turn runs without a model server.
 func startDaemonWithModel(t *testing.T, replies ...string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -309,11 +309,8 @@ func startDaemonWithModel(t *testing.T, replies ...string) string {
 	return root
 }
 
-// TestRunExitsWhenTheTurnCompletes is the regression for a run that hung
-// forever. The agent takes a session to `idle` when the stop gates allow,
-// which is right for an interactive session waiting on the next prompt. A
-// headless run owns the session, so it has to end it rather than wait for a
-// terminal state that nothing will ever produce.
+// Regression: every successful run hung. The agent leaves a session idle and
+// a headless run was waiting for a terminal state nothing would produce.
 func TestRunExitsWhenTheTurnCompletes(t *testing.T) {
 	root := startDaemonWithModel(t, "The deploy command is make ship.")
 	ws := t.TempDir()
@@ -334,9 +331,8 @@ func TestRunExitsWhenTheTurnCompletes(t *testing.T) {
 	}
 }
 
-// TestRunLeavesTheSessionCompletedWithAReport guards the other half: the run
-// report is the caller's way to verify the outcome without trusting the
-// model's narration, and it is only emitted when the session actually ends.
+// The report is only emitted when a session actually ends, so it guards the
+// other half of the same defect.
 func TestRunLeavesTheSessionCompletedWithAReport(t *testing.T) {
 	root := startDaemonWithModel(t, "done")
 	ws := t.TempDir()
@@ -353,8 +349,7 @@ func TestRunLeavesTheSessionCompletedWithAReport(t *testing.T) {
 		t.Fatal("nabu run never exited")
 	}
 
-	// The report is the reason a run ends its own session, so reaching the log
-	// is not enough: the caller has to actually see it.
+	// Reaching the log is not enough; the caller has to see it.
 	if !strings.Contains(stdout, "report") {
 		t.Errorf("the run report was never rendered:\n%s", stdout)
 	}
@@ -402,8 +397,7 @@ func TestRunLeavesTheSessionCompletedWithAReport(t *testing.T) {
 		t.Errorf("got %d report events, want exactly one", reports)
 	}
 
-	// The report must precede the terminal state change. A client that stops
-	// streaming the moment a session ends would otherwise never see it.
+	// A follower stops at the terminal state change, so the report must precede it.
 	reportAt, terminalAt := -1, -1
 	for i, e := range events {
 		switch e.Type {
