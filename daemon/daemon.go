@@ -78,6 +78,9 @@ type Options struct {
 	LogWriter io.Writer
 	// Modules are registered alongside the built-in tools.
 	Modules []module.Module
+	// Providers overrides the registry built from config. Tests use it to
+	// drive a whole turn with a scripted model; nil builds from config.
+	Providers *provider.Registry
 }
 
 // Daemon owns the whole stack: config, store, provider registry, module
@@ -155,17 +158,20 @@ func New(opts Options) (*Daemon, error) {
 	// Every configured provider gets a real OpenAI-compatible client. The
 	// first one configured is the default, since the config object has no
 	// ordering of its own.
-	providers := provider.NewRegistry()
-	isFirst := true
-	for name, p := range cfg.Providers {
-		pc := provider.Config{
-			Name:        name,
-			BaseURL:     p.BaseURL,
-			APIKey:      p.APIKey,
-			MaxInFlight: p.MaxInFlight,
+	providers := opts.Providers
+	if providers == nil {
+		providers = provider.NewRegistry()
+		isFirst := true
+		for name, p := range cfg.Providers {
+			pc := provider.Config{
+				Name:        name,
+				BaseURL:     p.BaseURL,
+				APIKey:      p.APIKey,
+				MaxInFlight: p.MaxInFlight,
+			}
+			providers.Add(pc, provider.NewOpenAI(pc, nil), isFirst)
+			isFirst = false
 		}
-		providers.Add(pc, provider.NewOpenAI(pc, nil), isFirst)
-		isFirst = false
 	}
 
 	// The handler is built first because it is the manager's Asker and delta
