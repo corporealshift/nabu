@@ -3,8 +3,11 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/corporealshift/nabu/daemon/agent"
 	"github.com/corporealshift/nabu/daemon/module"
 	"github.com/corporealshift/nabu/daemon/modules/memory"
+	"github.com/corporealshift/nabu/protocol"
 	"io"
 	"net"
 	"os"
@@ -390,5 +393,92 @@ func TestTasksEnabledDefaultsToOn(t *testing.T) {
 	}
 	if pcfg.TasksEnabled == nil || !*pcfg.TasksEnabled {
 		t.Error("the default should be on")
+	}
+}
+
+// log_file is parsed by the config loader and, until now, read by nothing: the
+// daemon always wrote to <root>/daemon.log. Anyone who set it watched an empty
+// file while the real log went somewhere else.
+func TestTheConfiguredLogFileIsUsed(t *testing.T) {
+	root := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "elsewhere.log")
+	cfg := fmt.Sprintf(`{"daemon":{"log_file":%q}}`, filepath.ToSlash(logPath))
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	if _, err := os.Stat(logPath); err != nil {
+		t.Fatalf("the configured log file was not written: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, LogFile)); err == nil {
+		t.Error("it also wrote the default log, so the setting only half applied")
+	}
+}
+
+// Unset keeps the default beside the rest of the daemon's state.
+func TestTheDefaultLogFileIsUnderTheRoot(t *testing.T) {
+	root := t.TempDir()
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	if _, err := os.Stat(filepath.Join(root, LogFile)); err != nil {
+		t.Errorf("the default log is missing: %v", err)
+	}
+}
+
+// The configured budget caps were parsed and never read, so a session created
+// without one from the client had no budget at all and config could not change
+// that.
+func TestTheConfiguredBudgetAppliesToANewSession(t *testing.T) {
+	root := t.TempDir()
+	cfg := `{"budget":{"max_turns":42}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	s, err := d.mgr.Create(context.Background(), t.TempDir(), agent.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := protocol.Project(s.Events()).Budget.MaxTurns; got != 42 {
+		t.Errorf("max_turns = %d, want the configured 42", got)
+	}
+}
+
+// With nothing configured a session is unbudgeted, which spec 12 makes the
+// interactive default.
+func TestNoConfiguredBudgetLeavesASessionUnbounded(t *testing.T) {
+	d, err := New(Options{Root: t.TempDir(), Bind: "127.0.0.1:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	s, err := d.mgr.Create(context.Background(), t.TempDir(), agent.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := protocol.Project(s.Events()).Budget.MaxTurns; got != 0 {
+		t.Errorf("max_turns = %d, want unbounded", got)
 	}
 }
