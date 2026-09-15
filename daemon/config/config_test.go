@@ -463,9 +463,7 @@ func TestDefaultModelIsConfigurable(t *testing.T) {
 	}
 }
 
-// Without a context window the agent cannot tell how full the context is, so
-// size-based compaction never runs and a long session grows until the provider
-// refuses it. The window has to be configurable per provider.
+// Regression: with no window configured, compaction could never trigger.
 func TestProviderContextWindowIsConfigurable(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "config.json"),
@@ -482,8 +480,7 @@ func TestProviderContextWindowIsConfigurable(t *testing.T) {
 	}
 }
 
-// Unset means unknown, which is what turns size-based compaction off. That is
-// a real choice a provider without a published window needs.
+// Unset means unknown, which a provider without a published window needs.
 func TestAnUnsetContextWindowIsZero(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "config.json"),

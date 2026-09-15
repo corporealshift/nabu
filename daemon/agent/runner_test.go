@@ -176,10 +176,7 @@ func toolNamesIn(req provider.Request) []string {
 	return out
 }
 
-// Spec 8 makes tasks_enabled a per-provider setting: the owner turns task
-// tools off for frontier models, which spend about a quarter more tokens on
-// them. The field was parsed, defaulted and then read by nothing, so setting
-// it false changed nothing at all.
+// Regression: the field was parsed and read by nothing, so false did nothing.
 func TestTasksEnabledFalseWithholdsTheTaskTool(t *testing.T) {
 	off := false
 	h := newHarnessWithProvider(t, provider.Config{
@@ -200,7 +197,7 @@ func TestTasksEnabledFalseWithholdsTheTaskTool(t *testing.T) {
 	}
 }
 
-// The default is on, and the common case must keep working.
+// The default is on.
 func TestTasksAreOfferedByDefault(t *testing.T) {
 	h := newHarness(t, nil, []provider.Response{{Content: "done"}})
 	s := h.create(t)
@@ -222,7 +219,7 @@ func TestTasksAreOfferedByDefault(t *testing.T) {
 	}
 }
 
-// Every other tool is unaffected: this setting is about task tools only.
+// The setting is about task tools only.
 func TestDisablingTasksLeavesTheOtherToolsAlone(t *testing.T) {
 	off := false
 	h := newHarnessWithProvider(t, provider.Config{

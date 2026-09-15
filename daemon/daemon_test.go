@@ -324,10 +324,7 @@ func TestModuleConfigSectionsReachTheirModule(t *testing.T) {
 	}
 }
 
-// The configured context window has to reach the provider registry. It never
-// did, so provider.Config.ContextWindow was always zero, which is the value
-// that disables size-based compaction. Long sessions therefore grew until the
-// model refused them, and no compaction ever ran in a real daemon.
+// The registry is the layer that consumes it, and the value never got there.
 func TestTheConfiguredContextWindowReachesTheProvider(t *testing.T) {
 	root := t.TempDir()
 	cfg := `{"providers":{"local":{"base_url":"http://localhost:8033/v1","context_window":256000}}}`
@@ -350,9 +347,7 @@ func TestTheConfiguredContextWindowReachesTheProvider(t *testing.T) {
 	}
 }
 
-// tasks_enabled is parsed and defaulted by the config loader, and until now
-// nothing read it: setting it false changed nothing. It has to reach the
-// provider registry, which is where the request layer looks it up.
+// The request layer reads this off the registry, so it has to arrive there.
 func TestTasksEnabledReachesTheProvider(t *testing.T) {
 	root := t.TempDir()
 	cfg := `{"providers":{"frontier":{"base_url":"https://api.example/v1","tasks_enabled":false}}}`
@@ -374,7 +369,7 @@ func TestTasksEnabledReachesTheProvider(t *testing.T) {
 	}
 }
 
-// Left unset it defaults to on, which is what most providers want.
+// Unset defaults to on.
 func TestTasksEnabledDefaultsToOn(t *testing.T) {
 	root := t.TempDir()
 	cfg := `{"providers":{"local":{"base_url":"http://localhost:8033/v1"}}}`
@@ -396,9 +391,7 @@ func TestTasksEnabledDefaultsToOn(t *testing.T) {
 	}
 }
 
-// log_file is parsed by the config loader and, until now, read by nothing: the
-// daemon always wrote to <root>/daemon.log. Anyone who set it watched an empty
-// file while the real log went somewhere else.
+// Regression: the daemon always wrote <root>/daemon.log and ignored this.
 func TestTheConfiguredLogFileIsUsed(t *testing.T) {
 	root := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "elsewhere.log")
@@ -424,7 +417,7 @@ func TestTheConfiguredLogFileIsUsed(t *testing.T) {
 	}
 }
 
-// Unset keeps the default beside the rest of the daemon's state.
+// Unset keeps the default.
 func TestTheDefaultLogFileIsUnderTheRoot(t *testing.T) {
 	root := t.TempDir()
 	d, err := New(Options{Root: root, Bind: "127.0.0.1:0"})
@@ -441,9 +434,7 @@ func TestTheDefaultLogFileIsUnderTheRoot(t *testing.T) {
 	}
 }
 
-// The configured budget caps were parsed and never read, so a session created
-// without one from the client had no budget at all and config could not change
-// that.
+// Regression: a session with no client budget got none, whatever config said.
 func TestTheConfiguredBudgetAppliesToANewSession(t *testing.T) {
 	root := t.TempDir()
 	cfg := `{"budget":{"max_turns":42}}`

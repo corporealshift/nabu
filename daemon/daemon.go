@@ -224,9 +224,8 @@ func New(opts Options) (*Daemon, error) {
 	return d, nil
 }
 
-// logPath is where the daemon writes. A configured path wins; a relative one
-// is taken against the root, so a short name in config still lands with the
-// rest of the daemon's state rather than wherever it happened to be launched.
+// logPath is where the daemon writes. A relative configured path resolves
+// against the root, so a bare filename lands with the rest of its state.
 func logPath(root, configured string) string {
 	configured = strings.TrimSpace(configured)
 	if configured == "" {

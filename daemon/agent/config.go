@@ -40,9 +40,8 @@ type Config struct {
 	TasksEnabled *bool
 	// ModuleConfigs are the [modules.<name>] sections.
 	ModuleConfigs Modules
-	// DefaultBudget is applied to a session created without one. Spec 12
-	// leaves an interactive session unbounded, so an all-zero budget is
-	// recorded as no budget at all rather than as three zero caps.
+	// DefaultBudget is applied to a session created without one. All zero
+	// records no budget at all, which spec 12 makes the interactive default.
 	DefaultBudget protocol.BudgetData
 }
 

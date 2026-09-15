@@ -100,9 +100,8 @@ func New(deps Deps, cfg Config) (*Manager, error) {
 	return m, nil
 }
 
-// toolsFor is the tools offered to one provider's model. Everything is offered
-// except the task tools, which a provider may decline: spec 8 turns them off
-// for frontier models, which spend about a quarter more tokens on them.
+// toolsFor is the tools offered to one provider's model. A provider may
+// decline the task tools; see provider.Config.TasksEnabled.
 func (m *Manager) toolsFor(pcfg provider.Config) []provider.ToolSpec {
 	if pcfg.TasksEnabled == nil || *pcfg.TasksEnabled {
 		return m.toolSpecs

@@ -36,10 +36,9 @@ type ProviderConfig struct {
 	BaseURL     string `json:"base_url"`
 	APIKey      string `json:"api_key"`
 	MaxInFlight int    `json:"max_in_flight"`
-	// ContextWindow is the model's context size in tokens. Without it the
-	// agent cannot tell how full the context is, so size-based compaction
-	// never runs and a long session grows until the provider refuses it.
-	// Zero means unknown, which turns size-based compaction off.
+	// ContextWindow is the model's context size in tokens. Zero means unknown,
+	// which turns size-based compaction off and lets a session grow until the
+	// provider refuses it.
 	ContextWindow int   `json:"context_window"`
 	TasksEnabled  *bool `json:"tasks_enabled"`
 }
