@@ -186,6 +186,7 @@ func New(opts Options) (*Daemon, error) {
 		DefaultModel:         cfg.Daemon.DefaultModel,
 		MaxConsecutiveVetoes: cfg.Budget.MaxConsecutiveVetoes,
 		NoProgressTurns:      cfg.Budget.NoProgressTurns,
+		ModuleConfigs:        agent.Modules(cfg.Modules),
 	})
 	if err != nil {
 		_ = store.Close()

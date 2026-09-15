@@ -277,3 +277,46 @@ func TestMemoryLivesAtTheNabuRoot(t *testing.T) {
 		t.Error("memory is still buried under a modules directory")
 	}
 }
+
+// configSpy records the config section it was initialised with.
+type configSpy struct{ got module.Config }
+
+func (c *configSpy) Name() string { return "spy" }
+func (c *configSpy) Init(_ module.Host, cfg module.Config) error {
+	c.got = cfg
+	return nil
+}
+
+// The modules section of config.json has to reach the modules. Without this
+// every per-module setting is accepted by the config loader and then silently
+// ignored, which is worse than rejecting it.
+func TestModuleConfigSectionsReachTheirModule(t *testing.T) {
+	root := t.TempDir()
+	cfg := `{"modules":{"spy":{"enabled":true,"import_dirs":["/one","/two"],"depth":3}}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	spy := &configSpy{}
+	d, err := New(Options{
+		Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard,
+		Modules: []module.Module{spy},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	if len(spy.got) == 0 {
+		t.Fatal("the module was initialised with no config at all")
+	}
+	if dirs := spy.got.Strings("import_dirs", nil); len(dirs) != 2 || dirs[0] != "/one" {
+		t.Errorf("import_dirs = %v, want the two configured", dirs)
+	}
+	if n := spy.got.Int("depth", 0); n != 3 {
+		t.Errorf("depth = %d, want 3", n)
+	}
+	if !spy.got.Enabled() {
+		t.Error("enabled was not delivered")
+	}
+}
