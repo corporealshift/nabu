@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 // version is reported to the daemon during the handshake.
@@ -25,7 +26,8 @@ const (
 
 const usage = `nabu — coding-agent harness
 
-usage: nabu <command> [flags]
+usage: nabu [flags]              open the interactive UI on a new session
+       nabu <command> [flags]
 
   daemon            run the daemon in the foreground
   daemon stop       stop a running daemon
@@ -35,11 +37,19 @@ usage: nabu <command> [flags]
   stop <id>         stop a session
   resume <id>       resume a paused session
 
+A daemon is started automatically if none is listening.
+
+Interactive flags:
+  --session ID      attach to an existing session instead of starting one
+  --workspace DIR   workspace for the new session (default: current directory)
+
 Common flags:
   --json            emit one JSON object per line, flushed per event
   --done-when TEXT  set the run goal (run only)
   --max-turns N     turn budget (run only; default 60)
   --root DIR        nabu root (default ~/.nabu, or $NABU_ROOT)
+
+Keys in the UI: i type · s sessions · y/n answer a prompt · ctrl+x interrupt · q quit
 
 Exit codes: 0 completed, 1 blocked, 2 paused, 3 error.
 `
@@ -51,13 +61,18 @@ func main() {
 // run is the whole CLI behind an injectable writer and argument list, so every
 // command and every exit code is testable without spawning a binary.
 func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
-		return exitUsage
+	// No command at all, or only flags, means the interactive UI. That is the
+	// daily driver, so it is what the bare name does.
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+			fmt.Fprint(stdout, usage)
+			return exitOK
+		}
+		return cmdTUI(args, stdout, stderr)
 	}
 
 	switch args[0] {
-	case "-h", "--help", "help":
+	case "help":
 		fmt.Fprint(stdout, usage)
 		return exitOK
 	case "daemon":
