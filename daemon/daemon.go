@@ -170,6 +170,7 @@ func New(opts Options) (*Daemon, error) {
 				APIKey:        p.APIKey,
 				MaxInFlight:   p.MaxInFlight,
 				ContextWindow: p.ContextWindow,
+				TasksEnabled:  p.TasksEnabled,
 			}
 			providers.Add(pc, provider.NewOpenAI(pc, nil), isFirst)
 			isFirst = false

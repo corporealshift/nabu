@@ -59,10 +59,14 @@ type Config struct {
 	Name          string
 	BaseURL       string // e.g. http://localhost:8033/v1
 	APIKey        string
-	MaxInFlight   int           // 0 = 1
-	ContextWindow int           // tokens; 0 = unknown (size-based compaction off)
-	Timeout       time.Duration // per attempt; 0 = 10 minutes
-	Retries       int           // retries after the first attempt; 0 = 2
+	MaxInFlight   int // 0 = 1
+	ContextWindow int // tokens; 0 = unknown (size-based compaction off)
+	// TasksEnabled offers the task tools to this provider's model. Spec 8
+	// makes it per provider: the owner turns them off for frontier models,
+	// which spend about a quarter more tokens on them. nil means on.
+	TasksEnabled *bool
+	Timeout      time.Duration // per attempt; 0 = 10 minutes
+	Retries      int           // retries after the first attempt; 0 = 2
 }
 
 func (c Config) withDefaults() Config {
