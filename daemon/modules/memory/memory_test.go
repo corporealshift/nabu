@@ -20,8 +20,16 @@ type fakeSession struct {
 
 func (f *fakeSession) ID() string                  { return f.id }
 func (f *fakeSession) Workspace() module.Workspace { return f.ws }
-func (f *fakeSession) Events(*string) ([]protocol.Event, error) {
-	return nil, nil
+func (f *fakeSession) Events(after *string) ([]protocol.Event, error) {
+	if after == nil {
+		return f.events, nil
+	}
+	for i, e := range f.events {
+		if e.ID == *after {
+			return f.events[i+1:], nil
+		}
+	}
+	return f.events, nil
 }
 func (f *fakeSession) State() protocol.State { return protocol.State{} }
 func (f *fakeSession) Append(t protocol.EventType, data any) (protocol.Event, error) {

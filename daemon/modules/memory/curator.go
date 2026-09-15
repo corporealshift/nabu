@@ -1,10 +1,12 @@
 package memory
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/corporealshift/nabu/daemon/module"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -258,4 +260,81 @@ func jsonArray(s string) string {
 		return ""
 	}
 	return s[start : end+1]
+}
+
+// curate runs one pass: decide whether it is worth asking, ask, and write what
+// comes back through the tool API.
+//
+// Nothing here can fail a session. Memory filling itself is a convenience on
+// top of a session, not a step in it, so every failure is logged and the pass
+// simply ends.
+func (m *Module) curate(ctx context.Context, s module.Session) {
+	if !m.enabled || !m.Curator || s == nil || m.host == nil {
+		return
+	}
+	if m.host.Model() == nil || m.host.Tools() == nil {
+		return // nothing to ask, or no way to write what it says
+	}
+
+	events, err := s.Events(nil)
+	if err != nil {
+		m.log.Warn("memory: cannot read the session log", "error", err)
+		return
+	}
+	w := window(events, m.cursorFor(s.ID()))
+	if !w.worthAPass() {
+		return
+	}
+
+	existing := append(m.globalCorpus(), m.workspaceCorpus(s)...)
+	resp, err := m.host.Model().Complete(ctx, s, module.CompletionRequest{
+		Model:     m.CuratorModel,
+		System:    curatorSystem,
+		Messages:  []module.Message{{Role: "user", Content: curatorPrompt(existing, w)}},
+		MaxTokens: 1200,
+	})
+	// The cursor advances either way. A pass that failed still saw these
+	// events, and retrying them doubles the cost of a question already asked.
+	m.setCursor(s.ID(), w.last)
+	if err != nil {
+		m.log.Warn("memory: the curator pass failed", "error", err)
+		return
+	}
+
+	for _, p := range parseProposals(resp.Content, m.CuratorMaxPerPass) {
+		m.write(ctx, s, p)
+	}
+}
+
+// write saves one proposal through the host's tool API. Spec 11.4 requires it:
+// a curator that writes files directly is an invisible actor, and going
+// through the tool makes every write a logged, gateable, reversible call.
+func (m *Module) write(ctx context.Context, s module.Session, p proposal) {
+	args, err := json.Marshal(p)
+	if err != nil {
+		return
+	}
+	if _, err := m.host.Tools().Call(ctx, s, "memory.save", args); err != nil {
+		// One refused write is not a reason to abandon the others.
+		m.log.Warn("memory: the curator could not save", "name", p.Name, "error", err)
+	}
+}
+
+// cursorFor is the last event a pass saw for this session.
+func (m *Module) cursorFor(id string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cursors[id]
+}
+
+func (m *Module) setCursor(id, last string) {
+	if last == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.cursors == nil {
+		m.cursors = map[string]string{}
+	}
+	m.cursors[id] = last
 }
