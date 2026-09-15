@@ -295,5 +295,6 @@ func (m *Module) SessionEnd(ctx context.Context, s module.Session) {
 	// Curating first puts the pass's own writes inside this session's commit
 	// rather than trailing them into the next one.
 	m.curate(ctx, s)
+	m.recordProgress(ctx, s)
 	m.commitSession(ctx, s, m.takeWrites(s.ID()))
 }
