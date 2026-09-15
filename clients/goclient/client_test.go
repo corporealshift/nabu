@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -372,5 +373,71 @@ func TestNotificationsDuringACallAreNotLost(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the event read past by the call was lost")
+	}
+}
+
+// A TUI streams events on one goroutine while answering prompts and sending
+// input on another. The websocket library forbids concurrent reads and
+// concurrent writes, and doing either corrupts the frame stream: the symptom
+// is "unexpected rsv bits set" and JSON that starts mid-value.
+func TestCallsAndStreamCanRunTogether(t *testing.T) {
+	addr, m, dir := realDaemon(t)
+	c := dialTest(t, addr)
+	ctx := context.Background()
+
+	s, err := m.Create(ctx, dir, agent.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Subscribe(ctx, s.ID()); err != nil {
+		t.Fatal(err)
+	}
+
+	streamCtx, stopStream := context.WithCancel(ctx)
+	defer stopStream()
+	streamed := make(chan struct{}, 64)
+	go func() {
+		_ = c.Stream(streamCtx, func(Message) bool {
+			select {
+			case streamed <- struct{}{}:
+			default:
+			}
+			return true
+		})
+	}()
+
+	// Hammer the same connection with calls while the stream is live.
+	var wg sync.WaitGroup
+	errs := make(chan error, 64)
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 8; j++ {
+				if _, err := c.State(ctx, s.ID()); err != nil {
+					errs <- err
+					return
+				}
+				if _, err := c.List(ctx); err != nil {
+					errs <- err
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("a call failed while streaming: %v", err)
+	}
+
+	// The connection is still usable and still delivering.
+	if _, err := m.SetGoal(ctx, s.ID(), "tests pass"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-streamed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the stream stopped delivering after concurrent calls")
 	}
 }

@@ -206,19 +206,19 @@ func perform(ctx context.Context, c *goclient.Client, p *tea.Program, a action) 
 		err = c.AnswerPermission(ctx, a.id, a.approve, a.reason)
 	case actPrompt:
 		_, err = c.Call(ctx, "nabu.session.send_prompt",
-			map[string]any{"session_id": a.sessionID, "content": a.text}, nil)
+			map[string]any{"session_id": a.sessionID, "content": a.text})
 	case actInterrupt:
 		_, err = c.Call(ctx, "nabu.session.interrupt",
-			map[string]any{"session_id": a.sessionID}, nil)
+			map[string]any{"session_id": a.sessionID})
 	case actStop:
 		_, err = c.Call(ctx, "nabu.session.stop",
-			map[string]any{"session_id": a.sessionID}, nil)
+			map[string]any{"session_id": a.sessionID})
 	case actSetGoal:
 		_, err = c.Call(ctx, "nabu.session.set_goal",
-			map[string]any{"session_id": a.sessionID, "condition": a.text}, nil)
+			map[string]any{"session_id": a.sessionID, "condition": a.text})
 	case actClearGoal:
 		_, err = c.Call(ctx, "nabu.session.clear_goal",
-			map[string]any{"session_id": a.sessionID}, nil)
+			map[string]any{"session_id": a.sessionID})
 	case actListSessions:
 		var sessions []goclient.SessionSummary
 		if sessions, err = c.List(ctx); err == nil {

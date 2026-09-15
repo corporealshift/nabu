@@ -48,15 +48,32 @@ func (m Message) IsNotification() bool { return m.Method != "" && m.ID == nil }
 func (m Message) IsRequest() bool { return m.Method != "" && m.ID != nil }
 
 // Client is a connection to the daemon.
+//
+// One goroutine owns the socket. The websocket library forbids concurrent
+// reads and concurrent writes, and a TUI does both: it streams events on one
+// goroutine while sending prompts and permission answers from another. Two
+// readers or two writers corrupt the frame stream rather than failing
+// cleanly, so reads happen in readLoop alone and writes hold writeMu.
 type Client struct {
 	conn *websocket.Conn
 
+	// writeMu serialises writes. Every write goes through it.
+	writeMu sync.Mutex
+
 	mu     sync.Mutex
 	nextID int
-	// pending holds notifications and daemon requests that arrived while a
-	// call was waiting for its response. Dropping them loses events and
-	// permission prompts, so they are queued and delivered by Stream.
+	// waiting maps a call id to the channel its response is delivered on.
+	waiting map[int]chan Message
+	// pending holds notifications and daemon requests until Stream takes
+	// them. Dropping them loses events and permission prompts.
 	pending []Message
+
+	// signal wakes Stream when pending grows. Buffered, so readLoop never
+	// blocks on a Stream that is busy.
+	signal chan struct{}
+	// done closes when the reader stops; readErr says why.
+	done    chan struct{}
+	readErr error
 }
 
 // Dial connects to addr and completes the nabu.hello handshake. A non-empty
@@ -71,7 +88,12 @@ func Dial(ctx context.Context, addr, token, clientName, version string) (*Client
 	if err != nil {
 		return nil, fmt.Errorf("connecting to the daemon at %s: %w", addr, err)
 	}
-	c := &Client{conn: conn}
+	c := &Client{
+		conn:    conn,
+		waiting: map[int]chan Message{},
+		signal:  make(chan struct{}, 1),
+		done:    make(chan struct{}),
+	}
 
 	if err := c.write(ctx, Message{
 		JSONRPC: "2.0", ID: 0, Method: "nabu.hello",
@@ -93,7 +115,59 @@ func Dial(ctx context.Context, addr, token, clientName, version string) (*Client
 		c.Close()
 		return nil, fmt.Errorf("handshake refused: %w", hello.Error)
 	}
+
+	// The handshake is the last read anyone else does; from here the reader
+	// owns the socket.
+	go c.readLoop()
 	return c, nil
+}
+
+// readLoop is the only reader. It routes responses to the call waiting for
+// them and queues everything else for Stream.
+func (c *Client) readLoop() {
+	for {
+		var m Message
+		if err := wsjson.Read(context.Background(), c.conn, &m); err != nil {
+			c.mu.Lock()
+			c.readErr = err
+			for _, ch := range c.waiting {
+				close(ch)
+			}
+			c.waiting = map[int]chan Message{}
+			c.mu.Unlock()
+			close(c.done)
+			return
+		}
+		if m.Method == "" {
+			c.deliver(m)
+			continue
+		}
+		c.queue(m)
+	}
+}
+
+// deliver hands a response to the call waiting on its id. A response nobody
+// is waiting for is dropped: the caller gave up, which is not an error.
+func (c *Client) deliver(m Message) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for id, ch := range c.waiting {
+		if sameID(m.ID, id) {
+			ch <- m
+			delete(c.waiting, id)
+			return
+		}
+	}
+}
+
+// err reports why the reader stopped.
+func (c *Client) err() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.readErr != nil {
+		return c.readErr
+	}
+	return fmt.Errorf("the connection closed")
 }
 
 // Close ends the connection.
@@ -102,25 +176,26 @@ func (c *Client) Close() {
 }
 
 func (c *Client) write(ctx context.Context, m Message) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	return wsjson.Write(ctx, c.conn, m)
-}
-
-// Read returns the next message from the daemon. Callers that also make calls
-// should use Call instead, which routes responses for them.
-func (c *Client) Read(ctx context.Context) (Message, error) {
-	var m Message
-	err := wsjson.Read(ctx, c.conn, &m)
-	return m, err
 }
 
 // Call makes one request and waits for its response. Anything arriving first —
 // a notification, or a request from the daemon — is handed to onOther, so a
 // caller never loses a permission prompt while waiting for a reply.
-func (c *Client) Call(ctx context.Context, method string, params any, onOther func(Message)) (json.RawMessage, error) {
+func (c *Client) Call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	ch := make(chan Message, 1)
 	c.mu.Lock()
 	c.nextID++
 	id := c.nextID
+	c.waiting[id] = ch
 	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		delete(c.waiting, id)
+		c.mu.Unlock()
+	}()
 
 	m := Message{JSONRPC: "2.0", ID: id, Method: method}
 	if params != nil {
@@ -130,36 +205,31 @@ func (c *Client) Call(ctx context.Context, method string, params any, onOther fu
 		return nil, err
 	}
 
-	for {
-		in, err := c.Read(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if in.Method != "" {
-			// Not the response we are waiting for. Hand it over if the caller
-			// wants it now, and queue it either way so Stream still sees it.
-			if onOther != nil {
-				onOther(in)
-			} else {
-				c.queue(in)
-			}
-			continue
-		}
-		if !sameID(in.ID, id) {
-			continue
+	select {
+	case in, ok := <-ch:
+		if !ok {
+			return nil, c.err()
 		}
 		if in.Error != nil {
 			return nil, in.Error
 		}
 		return in.Result, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.done:
+		return nil, c.err()
 	}
 }
 
-// queue holds a message for Stream to deliver later.
+// queue holds a message for Stream and wakes it.
 func (c *Client) queue(m Message) {
 	c.mu.Lock()
 	c.pending = append(c.pending, m)
 	c.mu.Unlock()
+	select {
+	case c.signal <- struct{}{}:
+	default:
+	}
 }
 
 // drain takes everything queued during earlier calls.
@@ -173,7 +243,7 @@ func (c *Client) drain() []Message {
 
 // CallInto makes a call and decodes its result into out, which may be nil.
 func (c *Client) CallInto(ctx context.Context, method string, params, out any) error {
-	raw, err := c.Call(ctx, method, params, nil)
+	raw, err := c.Call(ctx, method, params)
 	if err != nil {
 		return err
 	}
@@ -186,24 +256,32 @@ func (c *Client) CallInto(ctx context.Context, method string, params, out any) e
 // Stream reads messages until the context ends, onMessage returns false, or
 // the connection drops.
 func (c *Client) Stream(ctx context.Context, onMessage func(Message) bool) error {
-	// Anything that arrived while an earlier call was waiting comes first, in
-	// order. Without this, subscribing and then streaming loses every event
-	// that landed in between — including the state change that ends a run.
-	for _, m := range c.drain() {
-		if !onMessage(m) {
-			return nil
-		}
-	}
 	for {
-		in, err := c.Read(ctx)
-		if err != nil {
-			return err
+		// Anything that arrived while an earlier call was waiting comes
+		// first, in order. Without this, subscribing and then streaming loses
+		// every event that landed in between, including the state change that
+		// ends a run.
+		batch := c.drain()
+		for _, m := range batch {
+			if !onMessage(m) {
+				return nil
+			}
 		}
-		if in.Method == "" {
-			continue // a response to a call nobody is waiting for
+		if len(batch) > 0 {
+			continue
 		}
-		if !onMessage(in) {
-			return nil
+		select {
+		case <-c.signal:
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-c.done:
+			// Deliver whatever the reader queued before it stopped.
+			for _, m := range c.drain() {
+				if !onMessage(m) {
+					return nil
+				}
+			}
+			return c.err()
 		}
 	}
 }
@@ -217,7 +295,7 @@ func (c *Client) Respond(ctx context.Context, id any, result any) error {
 // Subscribe asks for a session's events and deltas.
 func (c *Client) Subscribe(ctx context.Context, sessionID string) error {
 	_, err := c.Call(ctx, "nabu.session.subscribe",
-		map[string]any{"session_id": sessionID}, nil)
+		map[string]any{"session_id": sessionID})
 	return err
 }
 

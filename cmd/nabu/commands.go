@@ -126,7 +126,7 @@ func cmdDaemonStop(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 	defer c.Close()
-	if _, err := c.Call(ctx, "nabu.daemon.stop", nil, nil); err != nil {
+	if _, err := c.Call(ctx, "nabu.daemon.stop", nil); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
@@ -196,7 +196,7 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if _, err := c.Call(ctx, "nabu.session.subscribe",
-		map[string]any{"session_id": created.SessionID}, nil); err != nil {
+		map[string]any{"session_id": created.SessionID}); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
@@ -211,7 +211,7 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 		// A run owns its session, so it ends it. That is also what emits the
 		// report.
 		if _, err := c.Call(ctx, "nabu.session.stop",
-			map[string]any{"session_id": created.SessionID}, nil); err != nil {
+			map[string]any{"session_id": created.SessionID}); err != nil {
 			fmt.Fprintf(stderr, "nabu: %v\n", err)
 			return exitError
 		}
@@ -443,7 +443,7 @@ func cmdAttach(args []string, stdout, stderr io.Writer) int {
 	defer c.Close()
 
 	if _, err := c.Call(ctx, "nabu.session.subscribe",
-		map[string]any{"session_id": id}, nil); err != nil {
+		map[string]any{"session_id": id}); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
@@ -488,7 +488,7 @@ func simpleSessionCommand(name, method string, args []string, stdout, stderr io.
 	}
 	defer c.Close()
 
-	if _, err := c.Call(ctx, method, map[string]any{"session_id": id}, nil); err != nil {
+	if _, err := c.Call(ctx, method, map[string]any{"session_id": id}); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
@@ -498,7 +498,7 @@ func simpleSessionCommand(name, method string, args []string, stdout, stderr io.
 
 // callInto makes a call and decodes its result into out, which may be nil.
 func callInto(ctx context.Context, c *goclient.Client, method string, params, out any) error {
-	raw, err := c.Call(ctx, method, params, nil)
+	raw, err := c.Call(ctx, method, params)
 	if err != nil {
 		return err
 	}
