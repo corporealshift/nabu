@@ -19,6 +19,10 @@ const SaveInstructions = "Save a memory when the user corrects you, confirms an 
 	"you had to be told about. Do not save architecture, file layout, or anything the " +
 	"repository already records: that goes stale and the code does not."
 
+// DefaultCuratorMaxPerPass is spec 11.4's cap: at most three memories per
+// pass, so a pass that judges badly does so in a small way.
+const DefaultCuratorMaxPerPass = 3
+
 // Module is the memory module.
 type Module struct {
 	// Root is the memory directory. Empty means the host's data directory.
@@ -27,15 +31,24 @@ type Module struct {
 	ImportDirs []string
 	// NoGit disables versioning. Tests set it; so does a machine without git.
 	NoGit bool
+	// Curator turns the automatic passes on. Default on.
+	Curator bool
+	// CuratorModel overrides the model a pass uses.
+	CuratorModel string
+	// CuratorMaxPerPass caps how many memories one pass may write.
+	CuratorMaxPerPass int
 
 	enabled bool
+	host    module.Host
 	global  *Store
 	imports []*Store
 	log     logger
 
 	// wrote counts what each session changed, for the commit at session end.
-	mu    sync.Mutex
-	wrote map[string]*writes
+	// cursors is the last event each session's curator pass saw.
+	mu      sync.Mutex
+	wrote   map[string]*writes
+	cursors map[string]string
 }
 
 // writes is one session's changes to memory.
@@ -63,7 +76,14 @@ func (m *Module) Init(h module.Host, cfg module.Config) error {
 		m.log = h.Log()
 	}
 	m.enabled = cfg.Enabled()
+	m.host = h
 	m.wrote = map[string]*writes{}
+	m.cursors = map[string]string{}
+	m.Curator = cfg.Bool("curator", true)
+	m.CuratorModel = cfg.String("curator_model", "")
+	if m.CuratorMaxPerPass = cfg.Int("curator_max_per_pass", 0); m.CuratorMaxPerPass <= 0 {
+		m.CuratorMaxPerPass = DefaultCuratorMaxPerPass
+	}
 
 	if m.Root == "" {
 		// ~/.nabu/memory, per spec 11.2.
@@ -181,9 +201,10 @@ func (m *Module) AfterCompaction(_ context.Context, s module.Session) ([]module.
 	return m.blocks(s), nil
 }
 
-// BeforeCompaction implements module.CompactionHook. Nothing needs preserving
-// in the summary: the index is re-injected afterwards instead.
-func (m *Module) BeforeCompaction(context.Context, module.Session, module.Range) []string {
+// BeforeCompaction implements module.CompactionHook. A compaction is about to
+// retire events, so this is the last chance to learn anything from them.
+func (m *Module) BeforeCompaction(ctx context.Context, s module.Session, _ module.Range) []string {
+	m.curate(ctx, s)
 	return nil
 }
 
@@ -271,5 +292,9 @@ func (m *Module) SessionEnd(ctx context.Context, s module.Session) {
 	if s == nil {
 		return
 	}
+	// Curating first puts the pass's own writes inside this session's commit
+	// rather than trailing them into the next one.
+	m.curate(ctx, s)
+	m.recordProgress(ctx, s)
 	m.commitSession(ctx, s, m.takeWrites(s.ID()))
 }

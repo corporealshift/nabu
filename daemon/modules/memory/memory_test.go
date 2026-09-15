@@ -16,14 +16,23 @@ type fakeSession struct {
 	id     string
 	ws     module.Workspace
 	events []protocol.Event
+	state  protocol.State
 }
 
 func (f *fakeSession) ID() string                  { return f.id }
 func (f *fakeSession) Workspace() module.Workspace { return f.ws }
-func (f *fakeSession) Events(*string) ([]protocol.Event, error) {
-	return nil, nil
+func (f *fakeSession) Events(after *string) ([]protocol.Event, error) {
+	if after == nil {
+		return f.events, nil
+	}
+	for i, e := range f.events {
+		if e.ID == *after {
+			return f.events[i+1:], nil
+		}
+	}
+	return f.events, nil
 }
-func (f *fakeSession) State() protocol.State { return protocol.State{} }
+func (f *fakeSession) State() protocol.State { return f.state }
 func (f *fakeSession) Append(t protocol.EventType, data any) (protocol.Event, error) {
 	e := protocol.Event{Type: t}
 	f.events = append(f.events, e)
@@ -262,4 +271,25 @@ func TestDisabledModuleInjectsNothing(t *testing.T) {
 	if len(m.Tools()) != 0 {
 		t.Errorf("a disabled module offered %d tools", len(m.Tools()))
 	}
+}
+
+// mustLoad is the workspace store's memories, for tests that only care what
+// ended up on disk.
+func (m *Module) mustLoad(t *testing.T, s module.Session) []Memory {
+	t.Helper()
+	mems, err := m.WorkspaceStore(s).Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	return mems
+}
+
+// mustLoadGlobal is the global store's memories.
+func (m *Module) mustLoadGlobal(t *testing.T) []Memory {
+	t.Helper()
+	mems, err := m.GlobalStore().Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	return mems
 }
