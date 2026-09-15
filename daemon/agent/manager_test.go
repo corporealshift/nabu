@@ -398,3 +398,27 @@ func lastReport(t *testing.T, ev []protocol.Event) *protocol.ReportData {
 	t.Fatal("the session produced no report")
 	return nil
 }
+
+// newHarnessWithProvider is newHarness with a provider config of its own, for
+// the settings that are resolved per provider rather than per daemon.
+func newHarnessWithProvider(t *testing.T, pcfg provider.Config, script []provider.Response) *harness {
+	t.Helper()
+	dir := t.TempDir()
+	store, err := session.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	fake := &provider.Fake{Script: script}
+	pr := provider.NewRegistry()
+	pr.Add(pcfg, fake, true)
+	builtins := &tools.Builtins{}
+	mr := module.NewRegistry([]module.Module{builtins}, module.Options{Log: testLogger()})
+	m, err := New(Deps{Store: store, Providers: pr, Modules: mr, Builtins: builtins,
+		Root: dir, Log: testLogger()}, Config{DefaultModel: pcfg.Name + "/m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { m.Shutdown(context.Background()) })
+	return &harness{m: m, fake: fake, store: store, dir: dir}
+}

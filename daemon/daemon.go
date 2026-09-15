@@ -27,6 +27,7 @@ import (
 	"github.com/corporealshift/nabu/daemon/provider"
 	"github.com/corporealshift/nabu/daemon/session"
 	"github.com/corporealshift/nabu/daemon/tools"
+	"github.com/corporealshift/nabu/protocol"
 )
 
 // File and directory names under the nabu root.
@@ -91,6 +92,8 @@ type Daemon struct {
 	store *session.Store
 	mgr   *agent.Manager
 	api   *api.Server
+	// providers is kept so the daemon can answer what a model resolves to.
+	providers *provider.Registry
 
 	listener net.Listener
 	logFile  *os.File
@@ -127,7 +130,7 @@ func New(opts Options) (*Daemon, error) {
 	w := opts.LogWriter
 	var logFile *os.File
 	if w == nil {
-		f, err := os.OpenFile(filepath.Join(root, LogFile),
+		f, err := os.OpenFile(logPath(root, cfg.Daemon.LogFile),
 			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			return nil, fmt.Errorf("daemon: opening log: %w", err)
@@ -163,10 +166,12 @@ func New(opts Options) (*Daemon, error) {
 		isFirst := true
 		for name, p := range cfg.Providers {
 			pc := provider.Config{
-				Name:        name,
-				BaseURL:     p.BaseURL,
-				APIKey:      p.APIKey,
-				MaxInFlight: p.MaxInFlight,
+				Name:          name,
+				BaseURL:       p.BaseURL,
+				APIKey:        p.APIKey,
+				MaxInFlight:   p.MaxInFlight,
+				ContextWindow: p.ContextWindow,
+				TasksEnabled:  p.TasksEnabled,
 			}
 			providers.Add(pc, provider.NewOpenAI(pc, nil), isFirst)
 			isFirst = false
@@ -187,6 +192,10 @@ func New(opts Options) (*Daemon, error) {
 		MaxConsecutiveVetoes: cfg.Budget.MaxConsecutiveVetoes,
 		NoProgressTurns:      cfg.Budget.NoProgressTurns,
 		ModuleConfigs:        agent.Modules(cfg.Modules),
+		DefaultBudget: protocol.BudgetData{
+			MaxTurns: cfg.Budget.MaxTurns, MaxTokens: cfg.Budget.MaxTokens,
+			MaxUSD: cfg.Budget.MaxUSD, Source: "daemon",
+		},
 	})
 	if err != nil {
 		_ = store.Close()
@@ -198,7 +207,7 @@ func New(opts Options) (*Daemon, error) {
 	srv := api.NewServer(handler, &api.Config{Bind: cfg.Daemon.Bind, Token: cfg.Daemon.Token}, log)
 
 	d := &Daemon{root: root, cfg: cfg, log: log, store: store,
-		mgr: mgr, api: srv, logFile: logFile,
+		mgr: mgr, api: srv, providers: providers, logFile: logFile,
 		shutdownDone: make(chan struct{})}
 
 	// The API exposes shutdown; the daemon owns it. nabu.daemon.stop is what
@@ -213,6 +222,19 @@ func New(opts Options) (*Daemon, error) {
 	}
 
 	return d, nil
+}
+
+// logPath is where the daemon writes. A relative configured path resolves
+// against the root, so a bare filename lands with the rest of its state.
+func logPath(root, configured string) string {
+	configured = strings.TrimSpace(configured)
+	if configured == "" {
+		return filepath.Join(root, LogFile)
+	}
+	if filepath.IsAbs(configured) || strings.HasPrefix(configured, "/") {
+		return filepath.Clean(configured)
+	}
+	return filepath.Join(root, configured)
 }
 
 func closeFile(f *os.File) {

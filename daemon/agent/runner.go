@@ -53,7 +53,7 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 	m.appendContexts(h, m.deps.Modules.BeforeRequest(ctx, h))
 	log = h.s.Events()
 
-	req := buildRequest(log, m.cfg.SystemPrompt, modelName, m.toolSpecs, m.cfg.MaxTokens)
+	req := buildRequest(log, m.cfg.SystemPrompt, modelName, m.toolsFor(pcfg), m.cfg.MaxTokens)
 	turnID := protocol.NewULID()
 	onDelta := func(text string) {
 		if m.deps.Deltas != nil {

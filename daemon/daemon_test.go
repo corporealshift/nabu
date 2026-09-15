@@ -3,8 +3,11 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/corporealshift/nabu/daemon/agent"
 	"github.com/corporealshift/nabu/daemon/module"
 	"github.com/corporealshift/nabu/daemon/modules/memory"
+	"github.com/corporealshift/nabu/protocol"
 	"io"
 	"net"
 	"os"
@@ -318,5 +321,155 @@ func TestModuleConfigSectionsReachTheirModule(t *testing.T) {
 	}
 	if !spy.got.Enabled() {
 		t.Error("enabled was not delivered")
+	}
+}
+
+// The registry is the layer that consumes it, and the value never got there.
+func TestTheConfiguredContextWindowReachesTheProvider(t *testing.T) {
+	root := t.TempDir()
+	cfg := `{"providers":{"local":{"base_url":"http://localhost:8033/v1","context_window":256000}}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	_, _, pcfg, err := d.providers.Resolve("local/anything")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if pcfg.ContextWindow != 256000 {
+		t.Errorf("ContextWindow = %d, want 256000: compaction cannot trigger at zero",
+			pcfg.ContextWindow)
+	}
+}
+
+// The request layer reads this off the registry, so it has to arrive there.
+func TestTasksEnabledReachesTheProvider(t *testing.T) {
+	root := t.TempDir()
+	cfg := `{"providers":{"frontier":{"base_url":"https://api.example/v1","tasks_enabled":false}}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	_, _, pcfg, err := d.providers.Resolve("frontier/anything")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if pcfg.TasksEnabled == nil || *pcfg.TasksEnabled {
+		t.Error("tasks_enabled false did not reach the provider")
+	}
+}
+
+// Unset defaults to on.
+func TestTasksEnabledDefaultsToOn(t *testing.T) {
+	root := t.TempDir()
+	cfg := `{"providers":{"local":{"base_url":"http://localhost:8033/v1"}}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	_, _, pcfg, err := d.providers.Resolve("local/anything")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pcfg.TasksEnabled == nil || !*pcfg.TasksEnabled {
+		t.Error("the default should be on")
+	}
+}
+
+// Regression: the daemon always wrote <root>/daemon.log and ignored this.
+func TestTheConfiguredLogFileIsUsed(t *testing.T) {
+	root := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "elsewhere.log")
+	cfg := fmt.Sprintf(`{"daemon":{"log_file":%q}}`, filepath.ToSlash(logPath))
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	if _, err := os.Stat(logPath); err != nil {
+		t.Fatalf("the configured log file was not written: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, LogFile)); err == nil {
+		t.Error("it also wrote the default log, so the setting only half applied")
+	}
+}
+
+// Unset keeps the default.
+func TestTheDefaultLogFileIsUnderTheRoot(t *testing.T) {
+	root := t.TempDir()
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	if _, err := os.Stat(filepath.Join(root, LogFile)); err != nil {
+		t.Errorf("the default log is missing: %v", err)
+	}
+}
+
+// Regression: a session with no client budget got none, whatever config said.
+func TestTheConfiguredBudgetAppliesToANewSession(t *testing.T) {
+	root := t.TempDir()
+	cfg := `{"budget":{"max_turns":42}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	s, err := d.mgr.Create(context.Background(), t.TempDir(), agent.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := protocol.Project(s.Events()).Budget.MaxTurns; got != 42 {
+		t.Errorf("max_turns = %d, want the configured 42", got)
+	}
+}
+
+// With nothing configured a session is unbudgeted, which spec 12 makes the
+// interactive default.
+func TestNoConfiguredBudgetLeavesASessionUnbounded(t *testing.T) {
+	d, err := New(Options{Root: t.TempDir(), Bind: "127.0.0.1:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	s, err := d.mgr.Create(context.Background(), t.TempDir(), agent.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := protocol.Project(s.Events()).Budget.MaxTurns; got != 0 {
+		t.Errorf("max_turns = %d, want unbounded", got)
 	}
 }

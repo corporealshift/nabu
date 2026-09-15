@@ -100,6 +100,22 @@ func New(deps Deps, cfg Config) (*Manager, error) {
 	return m, nil
 }
 
+// toolsFor is the tools offered to one provider's model. A provider may
+// decline the task tools; see provider.Config.TasksEnabled.
+func (m *Manager) toolsFor(pcfg provider.Config) []provider.ToolSpec {
+	if pcfg.TasksEnabled == nil || *pcfg.TasksEnabled {
+		return m.toolSpecs
+	}
+	out := make([]provider.ToolSpec, 0, len(m.toolSpecs))
+	for _, t := range m.toolSpecs {
+		if strings.HasPrefix(t.Name, "task.") {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
 // toolNames lists registered tools, sorted, for error messages.
 func (m *Manager) toolNames() []string {
 	out := make([]string, 0, len(m.toolsByName))
@@ -157,6 +173,11 @@ func (m *Manager) Create(ctx context.Context, workspacePath string, co CreateOpt
 		return nil, err
 	}
 	h := m.attach(s, module.Workspace{Path: ws.Path, Key: ws.Key})
+	if b := m.cfg.DefaultBudget; b.MaxTurns > 0 || b.MaxTokens > 0 || b.MaxUSD > 0 {
+		if _, err := h.s.Append(protocol.EventBudget, b); err != nil {
+			m.log.Error("default budget append failed", "session", h.ID(), "err", err)
+		}
+	}
 	m.appendContexts(h, m.deps.Modules.SessionStart(ctx, h))
 	return s, nil
 }

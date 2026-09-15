@@ -166,3 +166,81 @@ func TestHistoryIsCarriedIntoLaterRequests(t *testing.T) {
 		t.Fatalf("history not carried: %+v", h.fake.Calls[1].Messages[1])
 	}
 }
+
+// toolNamesIn is the tools a request offered the model.
+func toolNamesIn(req provider.Request) []string {
+	var out []string
+	for _, t := range req.Tools {
+		out = append(out, t.Name)
+	}
+	return out
+}
+
+// Regression: the field was parsed and read by nothing, so false did nothing.
+func TestTasksEnabledFalseWithholdsTheTaskTool(t *testing.T) {
+	off := false
+	h := newHarnessWithProvider(t, provider.Config{
+		Name: "frontier", ContextWindow: 8000, TasksEnabled: &off,
+	}, []provider.Response{{Content: "done"}})
+	s := h.create(t)
+
+	h.m.Prompt(context.Background(), s.ID(), "hello")
+	h.m.WaitIdle(s.ID())
+
+	if len(h.fake.Calls) == 0 {
+		t.Fatal("the model was never called")
+	}
+	for _, name := range toolNamesIn(h.fake.Calls[0]) {
+		if strings.HasPrefix(name, "task.") {
+			t.Errorf("offered %s to a provider with tasks disabled", name)
+		}
+	}
+}
+
+// The default is on.
+func TestTasksAreOfferedByDefault(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{{Content: "done"}})
+	s := h.create(t)
+
+	h.m.Prompt(context.Background(), s.ID(), "hello")
+	h.m.WaitIdle(s.ID())
+
+	if len(h.fake.Calls) == 0 {
+		t.Fatal("the model was never called")
+	}
+	var found bool
+	for _, name := range toolNamesIn(h.fake.Calls[0]) {
+		if name == "task.update" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("task.update was not offered by default: %v", toolNamesIn(h.fake.Calls[0]))
+	}
+}
+
+// The setting is about task tools only.
+func TestDisablingTasksLeavesTheOtherToolsAlone(t *testing.T) {
+	off := false
+	h := newHarnessWithProvider(t, provider.Config{
+		Name: "frontier", ContextWindow: 8000, TasksEnabled: &off,
+	}, []provider.Response{{Content: "done"}})
+	s := h.create(t)
+
+	h.m.Prompt(context.Background(), s.ID(), "hello")
+	h.m.WaitIdle(s.ID())
+
+	names := toolNamesIn(h.fake.Calls[0])
+	if len(names) == 0 {
+		t.Fatal("no tools were offered at all")
+	}
+	var sawRead bool
+	for _, n := range names {
+		if n == "read" {
+			sawRead = true
+		}
+	}
+	if !sawRead {
+		t.Errorf("disabling tasks removed unrelated tools: %v", names)
+	}
+}

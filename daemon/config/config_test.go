@@ -462,3 +462,37 @@ func TestDefaultModelIsConfigurable(t *testing.T) {
 		t.Errorf("default_model: got %q, want %q", cfg.Daemon.DefaultModel, "local/qwen")
 	}
 }
+
+// Regression: with no window configured, compaction could never trigger.
+func TestProviderContextWindowIsConfigurable(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "config.json"),
+		[]byte(`{"providers":{"local":{"base_url":"http://localhost:8033/v1","context_window":256000}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Providers["local"].ContextWindow; got != 256000 {
+		t.Errorf("context_window = %d, want 256000", got)
+	}
+}
+
+// Unset means unknown, which a provider without a published window needs.
+func TestAnUnsetContextWindowIsZero(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "config.json"),
+		[]byte(`{"providers":{"local":{"base_url":"http://localhost:8033/v1"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Providers["local"].ContextWindow; got != 0 {
+		t.Errorf("context_window = %d, want 0 for unset", got)
+	}
+}
