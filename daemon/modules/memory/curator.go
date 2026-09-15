@@ -304,6 +304,10 @@ func (m *Module) curate(ctx context.Context, s module.Session) {
 	for _, p := range parseProposals(resp.Content, m.CuratorMaxPerPass) {
 		m.write(ctx, s, p)
 	}
+
+	// Writing is what pushes the index over its cap, so this is the moment to
+	// check. It costs nothing while the index still fits.
+	m.consolidate(ctx, s)
 }
 
 // write saves one proposal through the host's tool API. Spec 11.4 requires it:

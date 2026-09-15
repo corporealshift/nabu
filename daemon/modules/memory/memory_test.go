@@ -283,3 +283,13 @@ func (m *Module) mustLoad(t *testing.T, s module.Session) []Memory {
 	}
 	return mems
 }
+
+// mustLoadGlobal is the global store's memories.
+func (m *Module) mustLoadGlobal(t *testing.T) []Memory {
+	t.Helper()
+	mems, err := m.GlobalStore().Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	return mems
+}
