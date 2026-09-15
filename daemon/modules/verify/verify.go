@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/corporealshift/nabu/daemon/module"
@@ -46,6 +48,42 @@ type Module struct {
 	JudgeTurns int
 
 	host module.Host
+
+	// baselines is the dirty tree each session started with, by session id.
+	// The gate answers for what a session changed, never for what it found.
+	mu        sync.Mutex
+	baselines map[string]map[string]bool
+}
+
+// SessionStart implements module.SessionStarter. It records the tree the
+// session inherited. Nothing is injected; this hook exists for the baseline.
+func (m *Module) SessionStart(_ context.Context, s module.Session) ([]module.ContextBlock, error) {
+	m.baseline(s)
+	return nil, nil
+}
+
+// SessionResume implements module.ResumeHook. Resuming re-baselines: whatever
+// is on disk when a human picks the session back up is the new start point.
+func (m *Module) SessionResume(_ context.Context, s module.Session) error {
+	m.baseline(s)
+	return nil
+}
+
+// baseline records the currently dirty paths for a session.
+func (m *Module) baseline(s module.Session) {
+	if s == nil {
+		return
+	}
+	paths, ok := dirtyPaths(s.Workspace().Path)
+	if !ok {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.baselines == nil {
+		m.baselines = map[string]map[string]bool{}
+	}
+	m.baselines[s.ID()] = paths
 }
 
 // Name implements module.Module.
@@ -306,15 +344,65 @@ func (m *Module) gateVeto(ctx context.Context, s module.Session) string {
 
 // treeVeto targets the failure this whole module exists for: the agent
 // reporting that tests pass while the fix sits uncommitted.
+//
+// Only what the session changed counts. A session that walks into a dirty
+// tree and is asked a read-only question has nothing to answer for, and
+// vetoing there blocks work that was already finished.
 func (m *Module) treeVeto(s module.Session) string {
 	if !m.RequireCleanTree {
 		return ""
 	}
-	dirty, ok := TreeDirty(s.Workspace().Path)
-	if !ok || !dirty {
+	now, ok := dirtyPaths(s.Workspace().Path)
+	if !ok || len(now) == 0 {
 		return ""
 	}
-	return "the working tree has uncommitted changes: commit them or explain why they should stay uncommitted"
+
+	m.mu.Lock()
+	before, known := m.baselines[s.ID()]
+	m.mu.Unlock()
+	if !known {
+		// No baseline, so there is no way to tell whose changes these are.
+		// Staying quiet is the safe direction: the alternative blames the
+		// session for the whole tree.
+		return ""
+	}
+
+	var changed []string
+	for p := range now {
+		if !before[p] {
+			changed = append(changed, p)
+		}
+	}
+	if len(changed) == 0 {
+		return ""
+	}
+	sort.Strings(changed)
+	return "this session left uncommitted changes: " + strings.Join(changed, ", ") +
+		" — commit them or say why they should stay uncommitted"
+}
+
+// dirtyPaths is the set of paths git reports as changed or untracked. The
+// second result is false when the question cannot be answered.
+func dirtyPaths(dir string) (map[string]bool, bool) {
+	out, err := git(dir, "status", "--porcelain")
+	if err != nil {
+		return nil, false
+	}
+	paths := map[string]bool{}
+	for _, line := range strings.Split(out, "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		// "XY <path>", and a rename is "XY <old> -> <new>".
+		p := strings.TrimSpace(line[3:])
+		if i := strings.Index(p, " -> "); i >= 0 {
+			p = p[i+4:]
+		}
+		if p = strings.Trim(strings.TrimSpace(p), `"`); p != "" {
+			paths[p] = true
+		}
+	}
+	return paths, true
 }
 
 // judgeVeto asks the judge whether the goal is met. Unmet vetoes; met and
