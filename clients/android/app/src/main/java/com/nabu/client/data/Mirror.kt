@@ -1,0 +1,162 @@
+package com.nabu.client.data
+
+import androidx.room.ColumnInfo
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.RoomDatabase
+import androidx.room.Transaction
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * A session as this device knows it.
+ *
+ * [cursor] is the last event id mirrored and [synced] whether the mirror had
+ * caught up when it was last written. Both are stored rather than derived: the
+ * app has to be able to say it is behind while offline, when there is nothing
+ * to compare against.
+ */
+@Entity(tableName = "sessions")
+data class SessionRow(
+    @PrimaryKey val id: String,
+    val workspace: String = "",
+    @ColumnInfo(name = "workspace_key") val workspaceKey: String = "",
+    val state: String = "idle",
+    val cursor: String = "",
+    val synced: Boolean = false,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long = 0,
+)
+
+/**
+ * One mirrored event. [ordinal] preserves log order independently of the id,
+ * so a replay that arrives out of order still renders in the order the daemon
+ * appended it.
+ */
+@Entity(
+    tableName = "events",
+    foreignKeys = [ForeignKey(
+        entity = SessionRow::class,
+        parentColumns = ["id"],
+        childColumns = ["session_id"],
+        onDelete = ForeignKey.CASCADE,
+    )],
+    indices = [Index("session_id"), Index(value = ["session_id", "ordinal"])],
+)
+data class EventRow(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "session_id") val sessionId: String,
+    val ordinal: Long,
+    val type: String,
+    /** The event verbatim, so a type this version cannot render is not lost. */
+    val raw: String,
+)
+
+/**
+ * A prompt composed on this device.
+ *
+ * It exists before any send is attempted, which is the whole point: a prompt
+ * the user believes was sent and was not is the failure an outbox exists to
+ * prevent. [clientId] is what makes a retry safe, because the daemon returns
+ * the original event rather than appending a second message.
+ */
+@Entity(tableName = "outbox", indices = [Index("session_id")])
+data class OutboxRow(
+    @PrimaryKey @ColumnInfo(name = "client_id") val clientId: String,
+    @ColumnInfo(name = "session_id") val sessionId: String,
+    val content: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    /** The event the daemon assigned. Non-null means delivered. */
+    @ColumnInfo(name = "event_id") val eventId: String? = null,
+    @ColumnInfo(name = "last_error") val lastError: String? = null,
+)
+
+@Dao
+interface SessionDao {
+    @Query("SELECT * FROM sessions ORDER BY updated_at DESC")
+    fun watchAll(): Flow<List<SessionRow>>
+
+    @Query("SELECT * FROM sessions WHERE id = :id")
+    fun watch(id: String): Flow<SessionRow?>
+
+    @Query("SELECT * FROM sessions WHERE id = :id")
+    suspend fun get(id: String): SessionRow?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: SessionRow)
+
+    @Query("UPDATE sessions SET cursor = :cursor, synced = :synced, updated_at = :at WHERE id = :id")
+    suspend fun markSynced(id: String, cursor: String, synced: Boolean, at: Long)
+
+    @Query("UPDATE sessions SET state = :state WHERE id = :id")
+    suspend fun setState(id: String, state: String)
+
+    @Query("DELETE FROM sessions WHERE id = :id")
+    suspend fun delete(id: String)
+}
+
+@Dao
+interface EventDao {
+    @Query("SELECT * FROM events WHERE session_id = :sessionId ORDER BY ordinal ASC")
+    fun watch(sessionId: String): Flow<List<EventRow>>
+
+    @Query("SELECT * FROM events WHERE session_id = :sessionId ORDER BY ordinal ASC")
+    suspend fun all(sessionId: String): List<EventRow>
+
+    @Query("SELECT COUNT(*) FROM events WHERE session_id = :sessionId")
+    suspend fun count(sessionId: String): Int
+
+    @Query("SELECT MAX(ordinal) FROM events WHERE session_id = :sessionId")
+    suspend fun lastOrdinal(sessionId: String): Long?
+
+    /** IGNORE, not REPLACE: an event is immutable, so a repeat is a no-op. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(rows: List<EventRow>)
+}
+
+@Dao
+interface OutboxDao {
+    @Query("SELECT * FROM outbox WHERE event_id IS NULL ORDER BY created_at ASC")
+    fun watchPending(): Flow<List<OutboxRow>>
+
+    @Query("SELECT * FROM outbox WHERE session_id = :sessionId AND event_id IS NULL ORDER BY created_at ASC")
+    fun watchPendingFor(sessionId: String): Flow<List<OutboxRow>>
+
+    @Query("SELECT * FROM outbox WHERE event_id IS NULL ORDER BY created_at ASC")
+    suspend fun pending(): List<OutboxRow>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(row: OutboxRow)
+
+    @Query("UPDATE outbox SET event_id = :eventId, last_error = NULL WHERE client_id = :clientId")
+    suspend fun markSent(clientId: String, eventId: String)
+
+    @Query("UPDATE outbox SET last_error = :error WHERE client_id = :clientId")
+    suspend fun markFailed(clientId: String, error: String)
+}
+
+@Database(
+    entities = [SessionRow::class, EventRow::class, OutboxRow::class],
+    version = 1,
+    exportSchema = false,
+)
+abstract class MirrorDb : RoomDatabase() {
+    abstract fun sessions(): SessionDao
+    abstract fun events(): EventDao
+    abstract fun outbox(): OutboxDao
+
+    /**
+     * Appends events and advances the cursor together, so a reader never sees
+     * a cursor claiming more than the events table holds.
+     */
+    @Transaction
+    open suspend fun append(sessionId: String, rows: List<EventRow>, cursor: String, synced: Boolean) {
+        if (rows.isNotEmpty()) events().insert(rows)
+        sessions().markSynced(sessionId, cursor, synced, System.currentTimeMillis())
+    }
+}
