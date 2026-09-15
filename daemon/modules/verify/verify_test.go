@@ -377,12 +377,15 @@ func TestWorkspaceGateVetoesOnFailure(t *testing.T) {
 // This is the failure the whole module exists for: tests pass, fix uncommitted.
 func TestDirtyTreeVetoes(t *testing.T) {
 	ws := gitRepo(t)
+	m := newVerify(t, module.Config{})
+	s := &fakeSession{workspace: ws}
+	m.SessionStart(context.Background(), s)
+
+	// The session's own uncommitted work, made after it started.
 	if err := os.WriteFile(filepath.Join(ws, "new.txt"), []byte("uncommitted"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	m := newVerify(t, module.Config{})
-	s := &fakeSession{workspace: ws}
 	v := m.BeforeStop(context.Background(), s, module.StopInfo{})
 	if v.Allow {
 		t.Fatal("a dirty tree must veto")
@@ -633,6 +636,12 @@ func TestReportInANonRepoOmitsTreeState(t *testing.T) {
 
 func TestImplementsItsHooks(t *testing.T) {
 	var m any = &Module{}
+	if _, ok := m.(module.SessionStarter); !ok {
+		t.Error("not a SessionStarter, so it never captures a baseline")
+	}
+	if _, ok := m.(module.ResumeHook); !ok {
+		t.Error("not a ResumeHook, so resuming never re-baselines")
+	}
 	for name, ok := range map[string]bool{
 		"Module":   func() bool { _, ok := m.(module.Module); return ok }(),
 		"ToolGate": func() bool { _, ok := m.(module.ToolGate); return ok }(),
@@ -686,4 +695,85 @@ func gitRepo(t *testing.T) string {
 		}
 	}
 	return dir
+}
+
+// ---------------------------------------------------------------------------
+// The tree veto answers for what the session changed, not what it walked into.
+
+// dirtyFile writes an untracked file into a repository.
+func dirtyFile(t *testing.T, ws, name string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(ws, name), []byte("data\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A session that walked into a dirty tree and changed nothing has nothing to
+// answer for. Vetoing here punished the agent for the human's own uncommitted
+// work and left a read-only question unable to finish.
+func TestPreexistingDirtDoesNotVeto(t *testing.T) {
+	ws := gitRepo(t)
+	dirtyFile(t, ws, "notes.txt")
+	dirtyFile(t, ws, "export.csv")
+
+	m := newVerify(t, module.Config{})
+	s := &fakeSession{workspace: ws}
+	m.SessionStart(context.Background(), s)
+
+	if v := m.BeforeStop(context.Background(), s, module.StopInfo{}); !v.Allow {
+		t.Errorf("vetoed over dirt it did not create: %s", v.Reason)
+	}
+}
+
+// What the session actually changed is still its responsibility.
+func TestChangesMadeDuringTheSessionStillVeto(t *testing.T) {
+	ws := gitRepo(t)
+	dirtyFile(t, ws, "notes.txt")
+
+	m := newVerify(t, module.Config{})
+	s := &fakeSession{workspace: ws}
+	m.SessionStart(context.Background(), s)
+
+	dirtyFile(t, ws, "src.go") // the agent's own work
+
+	v := m.BeforeStop(context.Background(), s, module.StopInfo{})
+	if v.Allow {
+		t.Fatal("a change the session made must still be answered for")
+	}
+	if !strings.Contains(v.Reason, "src.go") {
+		t.Errorf("reason should name what changed, got %q", v.Reason)
+	}
+	if strings.Contains(v.Reason, "notes.txt") {
+		t.Errorf("reason names pre-existing dirt: %q", v.Reason)
+	}
+}
+
+// Without a baseline the gate cannot tell whose changes these are, so it stays
+// quiet rather than guessing. A daemon restart mid-session lands here.
+func TestNoBaselineDoesNotVeto(t *testing.T) {
+	ws := gitRepo(t)
+	dirtyFile(t, ws, "whatever.txt")
+
+	m := newVerify(t, module.Config{})
+	s := &fakeSession{workspace: ws}
+
+	if v := m.BeforeStop(context.Background(), s, module.StopInfo{}); !v.Allow {
+		t.Errorf("vetoed with no baseline to compare against: %s", v.Reason)
+	}
+}
+
+// Resuming re-baselines: whatever is on disk at that point is the new start.
+func TestResumeRebaselines(t *testing.T) {
+	ws := gitRepo(t)
+	m := newVerify(t, module.Config{})
+	s := &fakeSession{workspace: ws}
+	m.SessionStart(context.Background(), s)
+
+	dirtyFile(t, ws, "left-behind.txt")
+	if err := m.SessionResume(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	if v := m.BeforeStop(context.Background(), s, module.StopInfo{}); !v.Allow {
+		t.Errorf("resume did not re-baseline: %s", v.Reason)
+	}
 }

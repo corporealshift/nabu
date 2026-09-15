@@ -1,13 +1,11 @@
-// Command nabu-tui attaches to a nabu session, renders its transcript live,
-// and answers the daemon's permission prompts. It holds no session state: the
-// daemon owns the log, and closing this does not stop the run.
-package main
+// Package tui renders a nabu session live and answers the daemon's permission
+// prompts. It holds no session state: the daemon owns the log, and closing the
+// TUI does not stop the run.
+package tui
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"os"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,57 +24,39 @@ const (
 	maxBackoff = 10 * time.Second
 )
 
-const usage = `nabu-tui — watch a nabu session and answer its prompts
-
-usage: nabu-tui [flags] [session-id]
-
-With no session id, the most recently updated session is attached.
-
-  --root DIR   nabu root (default ~/.nabu, or $NABU_ROOT)
-
-Keys: y approve · n deny · q quit (the run continues) · g/G top/bottom
-`
-
-func main() {
-	fs := flag.NewFlagSet("nabu-tui", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
-	root := fs.String("root", "", "nabu root")
-	if err := fs.Parse(os.Args[1:]); err != nil {
-		os.Exit(2)
-	}
-
-	if err := run(*root, fs.Arg(0)); err != nil {
-		fmt.Fprintf(os.Stderr, "nabu-tui: %v\n", err)
-		os.Exit(1)
-	}
+// Options are what the TUI needs to attach. SessionID is required: choosing
+// or creating a session is the caller's job, because that is session lifecycle
+// and this package only renders one.
+type Options struct {
+	Root      string
+	SessionID string
 }
 
-func run(root, sessionID string) error {
-	dir := root
+// Run attaches to a session and renders it until the human quits. It starts a
+// daemon if none is listening, so opening the TUI is always one step.
+func Run(ctx context.Context, opts Options) error {
+	dir := opts.Root
 	if dir == "" {
 		var err error
 		if dir, err = daemon.DefaultRoot(); err != nil {
 			return err
 		}
 	}
-	addr, ok := daemon.RunningAddr(dir)
-	if !ok {
-		return fmt.Errorf("no daemon is listening under %s — start one with `nabu daemon`", dir)
+	sessionID := opts.SessionID
+	if sessionID == "" {
+		return fmt.Errorf("tui: a session id is required")
+	}
+	addr, err := daemon.EnsureRunning(ctx, dir)
+	if err != nil {
+		return err
 	}
 	cfg, err := config.Load(dir)
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
-	if sessionID == "" {
-		if sessionID, err = latestSession(ctx, addr, cfg.Daemon.Token); err != nil {
-			return err
-		}
-	}
 
 	// The action channel outlives any single connection, so a decision made
 	// while reconnecting is not dropped on the floor.
@@ -89,28 +69,6 @@ func run(root, sessionID string) error {
 
 	_, err = p.Run()
 	return err
-}
-
-// latestSession picks the most recently updated session, so attaching with no
-// argument does the obvious thing.
-func latestSession(ctx context.Context, addr, token string) (string, error) {
-	dctx, cancel := context.WithTimeout(ctx, goclient.DialTimeout)
-	defer cancel()
-	c, err := goclient.Dial(dctx, addr, token, "nabu-tui", version)
-	if err != nil {
-		return "", err
-	}
-	defer c.Close()
-
-	sessions, err := c.List(ctx)
-	if err != nil {
-		return "", err
-	}
-	if len(sessions) == 0 {
-		return "", fmt.Errorf("no sessions yet — start one with `nabu run`")
-	}
-	// The store lists newest first; take the head.
-	return sessions[0].SessionID, nil
 }
 
 // connectLoop keeps a connection up for the life of the program. On a drop it
@@ -248,19 +206,19 @@ func perform(ctx context.Context, c *goclient.Client, p *tea.Program, a action) 
 		err = c.AnswerPermission(ctx, a.id, a.approve, a.reason)
 	case actPrompt:
 		_, err = c.Call(ctx, "nabu.session.send_prompt",
-			map[string]any{"session_id": a.sessionID, "content": a.text}, nil)
+			map[string]any{"session_id": a.sessionID, "content": a.text})
 	case actInterrupt:
 		_, err = c.Call(ctx, "nabu.session.interrupt",
-			map[string]any{"session_id": a.sessionID}, nil)
+			map[string]any{"session_id": a.sessionID})
 	case actStop:
 		_, err = c.Call(ctx, "nabu.session.stop",
-			map[string]any{"session_id": a.sessionID}, nil)
+			map[string]any{"session_id": a.sessionID})
 	case actSetGoal:
 		_, err = c.Call(ctx, "nabu.session.set_goal",
-			map[string]any{"session_id": a.sessionID, "condition": a.text}, nil)
+			map[string]any{"session_id": a.sessionID, "condition": a.text})
 	case actClearGoal:
 		_, err = c.Call(ctx, "nabu.session.clear_goal",
-			map[string]any{"session_id": a.sessionID}, nil)
+			map[string]any{"session_id": a.sessionID})
 	case actListSessions:
 		var sessions []goclient.SessionSummary
 		if sessions, err = c.List(ctx); err == nil {

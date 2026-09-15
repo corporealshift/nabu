@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	tui "github.com/corporealshift/nabu/clients/go-tui"
 	"github.com/corporealshift/nabu/clients/goclient"
 	"github.com/corporealshift/nabu/daemon"
 	"github.com/corporealshift/nabu/daemon/module"
@@ -46,13 +47,20 @@ func startDaemon(t *testing.T) string {
 	return root
 }
 
-func TestNoArgsPrintsUsage(t *testing.T) {
-	code, _, stderr := runCLI()
-	if code != exitUsage {
-		t.Errorf("exit: got %d, want %d", code, exitUsage)
+// TestMain keeps the real TUI out of the suite. Without it any test that
+// reaches the default command blocks forever waiting on a terminal.
+func TestMain(m *testing.M) {
+	launchTUI = func(context.Context, tui.Options) error { return nil }
+	os.Exit(m.Run())
+}
+
+func TestHelpWordPrintsUsage(t *testing.T) {
+	code, stdout, _ := runCLI("help")
+	if code != exitOK {
+		t.Errorf("exit: got %d, want 0", code)
 	}
-	if !strings.Contains(stderr, "usage: nabu") {
-		t.Errorf("stderr should carry usage, got %q", stderr)
+	if !strings.Contains(stdout, "usage: nabu") {
+		t.Errorf("stdout should carry usage, got %q", stdout)
 	}
 }
 
@@ -415,5 +423,105 @@ func TestRunLeavesTheSessionCompletedWithAReport(t *testing.T) {
 	}
 	if reportAt > terminalAt {
 		t.Errorf("the report comes after the session ended, so no follower sees it")
+	}
+}
+
+// stubTUI replaces the launcher so the default command can be driven without a
+// terminal, and records what it was asked to open.
+func stubTUI(t *testing.T) *tui.Options {
+	t.Helper()
+	var got tui.Options
+	prev := launchTUI
+	launchTUI = func(_ context.Context, o tui.Options) error {
+		got = o
+		return nil
+	}
+	t.Cleanup(func() { launchTUI = prev })
+	return &got
+}
+
+// No arguments opens the interactive UI, which is the daily driver. Needing a
+// second command to get a session first is the thing this replaces.
+func TestNoArgsOpensTheTUIOnAFreshSession(t *testing.T) {
+	root := startDaemon(t)
+	opened := stubTUI(t)
+	ws := t.TempDir()
+
+	code, _, stderr := runCLI("--root", root, "--workspace", ws)
+	if code != exitOK {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	if opened.SessionID == "" {
+		t.Fatal("the TUI was opened without a session")
+	}
+	if opened.Root != root {
+		t.Errorf("root = %q, want %q", opened.Root, root)
+	}
+
+	// The session is real, and in the workspace that was asked for.
+	addr, ok := daemon.RunningAddr(root)
+	if !ok {
+		t.Fatal("daemon not discoverable")
+	}
+	ctx := context.Background()
+	c, err := goclient.Dial(ctx, addr, "", "nabu-cli-test", version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	sessions, err := c.List(ctx)
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("List: %v %+v", err, sessions)
+	}
+	if sessions[0].SessionID != opened.SessionID {
+		t.Errorf("opened %q, daemon has %q", opened.SessionID, sessions[0].SessionID)
+	}
+	if !strings.EqualFold(sessions[0].Workspace, ws) {
+		t.Errorf("workspace = %q, want %q", sessions[0].Workspace, ws)
+	}
+}
+
+// --session attaches instead of creating, for getting back to a run.
+func TestSessionFlagAttachesInsteadOfCreating(t *testing.T) {
+	root := startDaemon(t)
+	opened := stubTUI(t)
+	ws := t.TempDir()
+
+	if code, _, stderr := runCLI("--root", root, "--workspace", ws); code != exitOK {
+		t.Fatalf("first open: exit %d, %s", code, stderr)
+	}
+	first := opened.SessionID
+
+	code, _, stderr := runCLI("--root", root, "--session", first)
+	if code != exitOK {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	if opened.SessionID != first {
+		t.Errorf("opened %q, want the session asked for %q", opened.SessionID, first)
+	}
+
+	addr, _ := daemon.RunningAddr(root)
+	c, err := goclient.Dial(context.Background(), addr, "", "nabu-cli-test", version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	sessions, err := c.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Errorf("attaching created a second session: %d exist", len(sessions))
+	}
+}
+
+func TestHelpStillPrintsUsage(t *testing.T) {
+	stubTUI(t)
+	code, stdout, _ := runCLI("--help")
+	if code != exitOK {
+		t.Errorf("exit: got %d, want 0", code)
+	}
+	if !strings.Contains(stdout, "usage: nabu") {
+		t.Error("--help should print usage, not open the TUI")
 	}
 }

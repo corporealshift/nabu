@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
-	"time"
 
+	tui "github.com/corporealshift/nabu/clients/go-tui"
 	"github.com/corporealshift/nabu/clients/goclient"
 	"github.com/corporealshift/nabu/daemon"
 	"github.com/corporealshift/nabu/daemon/config"
@@ -53,17 +52,12 @@ func resolveRoot(flagValue string) (string, error) {
 // none is listening. Claude Code's delegation must never fail with "daemon not
 // running" (spec 13).
 func connect(ctx context.Context, root string, stderr io.Writer) (*goclient.Client, error) {
-	addr, ok := daemon.RunningAddr(root)
-	if !ok {
+	if _, ok := daemon.RunningAddr(root); !ok {
 		fmt.Fprintln(stderr, "nabu: no daemon listening, starting one")
-		if err := startDetached(root); err != nil {
-			return nil, fmt.Errorf("starting a daemon: %w", err)
-		}
-		var err error
-		addr, err = daemon.WaitForDaemon(ctx, root, 20*time.Second)
-		if err != nil {
-			return nil, err
-		}
+	}
+	addr, err := daemon.EnsureRunning(ctx, root)
+	if err != nil {
+		return nil, err
 	}
 	cfg, err := config.Load(root)
 	if err != nil {
@@ -72,18 +66,6 @@ func connect(ctx context.Context, root string, stderr io.Writer) (*goclient.Clie
 	dialCtx, cancel := context.WithTimeout(ctx, goclient.DialTimeout)
 	defer cancel()
 	return goclient.Dial(dialCtx, addr, cfg.Daemon.Token, "nabu-cli", version)
-}
-
-// startDetached spawns "nabu daemon" as a process that outlives this one.
-func startDetached(root string) error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(exe, "daemon", "--root", root)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
-	detach(cmd)
-	return cmd.Start()
 }
 
 // cmdDaemon runs the daemon in the foreground, or stops a running one.
@@ -144,7 +126,7 @@ func cmdDaemonStop(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 	defer c.Close()
-	if _, err := c.Call(ctx, "nabu.daemon.stop", nil, nil); err != nil {
+	if _, err := c.Call(ctx, "nabu.daemon.stop", nil); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
@@ -214,7 +196,7 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if _, err := c.Call(ctx, "nabu.session.subscribe",
-		map[string]any{"session_id": created.SessionID}, nil); err != nil {
+		map[string]any{"session_id": created.SessionID}); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
@@ -229,7 +211,7 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 		// A run owns its session, so it ends it. That is also what emits the
 		// report.
 		if _, err := c.Call(ctx, "nabu.session.stop",
-			map[string]any{"session_id": created.SessionID}, nil); err != nil {
+			map[string]any{"session_id": created.SessionID}); err != nil {
 			fmt.Fprintf(stderr, "nabu: %v\n", err)
 			return exitError
 		}
@@ -461,7 +443,7 @@ func cmdAttach(args []string, stdout, stderr io.Writer) int {
 	defer c.Close()
 
 	if _, err := c.Call(ctx, "nabu.session.subscribe",
-		map[string]any{"session_id": id}, nil); err != nil {
+		map[string]any{"session_id": id}); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
@@ -506,7 +488,7 @@ func simpleSessionCommand(name, method string, args []string, stdout, stderr io.
 	}
 	defer c.Close()
 
-	if _, err := c.Call(ctx, method, map[string]any{"session_id": id}, nil); err != nil {
+	if _, err := c.Call(ctx, method, map[string]any{"session_id": id}); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
@@ -516,7 +498,7 @@ func simpleSessionCommand(name, method string, args []string, stdout, stderr io.
 
 // callInto makes a call and decodes its result into out, which may be nil.
 func callInto(ctx context.Context, c *goclient.Client, method string, params, out any) error {
-	raw, err := c.Call(ctx, method, params, nil)
+	raw, err := c.Call(ctx, method, params)
 	if err != nil {
 		return err
 	}
@@ -524,4 +506,66 @@ func callInto(ctx context.Context, c *goclient.Client, method string, params, ou
 		return nil
 	}
 	return json.Unmarshal(raw, out)
+}
+
+// launchTUI is a variable so the default command is testable without a
+// terminal.
+var launchTUI = tui.Run
+
+// cmdTUI is the default command: the interactive UI on a new session in the
+// current directory. Opening the UI is one step, because needing a second
+// command to produce a session first is the thing it replaces.
+func cmdTUI(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("nabu", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	root := rootFlag(fs)
+	workspace := fs.String("workspace", "", "workspace path (default: the current directory)")
+	sessionID := fs.String("session", "", "attach to this session instead of starting one")
+	if err := fs.Parse(args); err != nil {
+		return exitUsage
+	}
+	dir, err := resolveRoot(*root)
+	if err != nil {
+		fmt.Fprintf(stderr, "nabu: %v\n", err)
+		return exitError
+	}
+
+	ctx := context.Background()
+	id := *sessionID
+	if id == "" {
+		if id, err = createSession(ctx, dir, *workspace, stderr); err != nil {
+			fmt.Fprintf(stderr, "nabu: %v\n", err)
+			return exitError
+		}
+	}
+	if err := launchTUI(ctx, tui.Options{Root: dir, SessionID: id}); err != nil {
+		fmt.Fprintf(stderr, "nabu: %v\n", err)
+		return exitError
+	}
+	return exitOK
+}
+
+// createSession starts a session in the workspace, defaulting to the current
+// directory.
+func createSession(ctx context.Context, root, workspace string, stderr io.Writer) (string, error) {
+	if workspace == "" {
+		var err error
+		if workspace, err = os.Getwd(); err != nil {
+			return "", err
+		}
+	}
+	c, err := connect(ctx, root, stderr)
+	if err != nil {
+		return "", err
+	}
+	defer c.Close()
+
+	var created struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := callInto(ctx, c, "nabu.session.create",
+		map[string]any{"workspace": workspace}, &created); err != nil {
+		return "", err
+	}
+	return created.SessionID, nil
 }

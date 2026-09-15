@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -185,6 +186,7 @@ func New(opts Options) (*Daemon, error) {
 		DefaultModel:         cfg.Daemon.DefaultModel,
 		MaxConsecutiveVetoes: cfg.Budget.MaxConsecutiveVetoes,
 		NoProgressTurns:      cfg.Budget.NoProgressTurns,
+		ModuleConfigs:        agent.Modules(cfg.Modules),
 	})
 	if err != nil {
 		_ = store.Close()
@@ -399,4 +401,34 @@ func WaitForDaemon(ctx context.Context, root string, timeout time.Duration) (str
 		case <-time.After(25 * time.Millisecond):
 		}
 	}
+}
+
+// EnsureRunning returns the address of the daemon under root, starting one
+// detached if none is listening. Every entry point uses it, so no command ever
+// asks a person to start a daemon by hand.
+func EnsureRunning(ctx context.Context, root string) (string, error) {
+	if addr, ok := RunningAddr(root); ok {
+		return addr, nil
+	}
+	if err := startDetached(root); err != nil {
+		return "", fmt.Errorf("daemon: starting one: %w", err)
+	}
+	return WaitForDaemon(ctx, root, StartTimeout)
+}
+
+// StartTimeout bounds the wait for a daemon this process just spawned.
+const StartTimeout = 20 * time.Second
+
+// startDetached spawns "<this binary> daemon" as a process that outlives us.
+// The binary is always nabu itself, which is why the CLI and the TUI can share
+// one implementation.
+func startDetached(root string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, "daemon", "--root", root)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
+	detach(cmd)
+	return cmd.Start()
 }
