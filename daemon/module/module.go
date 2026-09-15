@@ -216,7 +216,7 @@ type Host interface {
 	Model() Model
 	Tools() ToolCaller
 	UI() UI
-	// DataDir returns ~/.nabu/modules/<name>/, created on first call.
+	// DataDir returns ~/.nabu/<name>/, created on first call.
 	DataDir(module string) (string, error)
 	Log() *slog.Logger
 }

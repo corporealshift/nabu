@@ -33,7 +33,6 @@ const (
 	ConfigFile  = "config.json"
 	SessionsDir = "sessions"
 	MemoryDir   = "memory"
-	ModulesDir  = "modules"
 	LogFile     = "daemon.log"
 	PIDFile     = "daemon.pid"
 	PortFile    = "daemon.port"
@@ -59,7 +58,6 @@ func EnsureLayout(root string) error {
 	for _, dir := range []string{root,
 		filepath.Join(root, SessionsDir),
 		filepath.Join(root, MemoryDir),
-		filepath.Join(root, ModulesDir),
 	} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("daemon: creating %s: %w", dir, err)
