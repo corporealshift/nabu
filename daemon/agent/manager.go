@@ -157,6 +157,11 @@ func (m *Manager) Create(ctx context.Context, workspacePath string, co CreateOpt
 		return nil, err
 	}
 	h := m.attach(s, module.Workspace{Path: ws.Path, Key: ws.Key})
+	if b := m.cfg.DefaultBudget; b.MaxTurns > 0 || b.MaxTokens > 0 || b.MaxUSD > 0 {
+		if _, err := h.s.Append(protocol.EventBudget, b); err != nil {
+			m.log.Error("default budget append failed", "session", h.ID(), "err", err)
+		}
+	}
 	m.appendContexts(h, m.deps.Modules.SessionStart(ctx, h))
 	return s, nil
 }

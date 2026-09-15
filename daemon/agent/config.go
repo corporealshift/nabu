@@ -1,6 +1,9 @@
 package agent
 
-import "github.com/corporealshift/nabu/daemon/module"
+import (
+	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/protocol"
+)
 
 // CompactionConfig sets when and how the loop shrinks the request (spec §6).
 type CompactionConfig struct {
@@ -37,6 +40,10 @@ type Config struct {
 	TasksEnabled *bool
 	// ModuleConfigs are the [modules.<name>] sections.
 	ModuleConfigs Modules
+	// DefaultBudget is applied to a session created without one. Spec 12
+	// leaves an interactive session unbounded, so an all-zero budget is
+	// recorded as no budget at all rather than as three zero caps.
+	DefaultBudget protocol.BudgetData
 }
 
 func (c Config) withDefaults() Config {

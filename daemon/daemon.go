@@ -27,6 +27,7 @@ import (
 	"github.com/corporealshift/nabu/daemon/provider"
 	"github.com/corporealshift/nabu/daemon/session"
 	"github.com/corporealshift/nabu/daemon/tools"
+	"github.com/corporealshift/nabu/protocol"
 )
 
 // File and directory names under the nabu root.
@@ -127,7 +128,7 @@ func New(opts Options) (*Daemon, error) {
 	w := opts.LogWriter
 	var logFile *os.File
 	if w == nil {
-		f, err := os.OpenFile(filepath.Join(root, LogFile),
+		f, err := os.OpenFile(logPath(root, cfg.Daemon.LogFile),
 			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			return nil, fmt.Errorf("daemon: opening log: %w", err)
@@ -187,6 +188,10 @@ func New(opts Options) (*Daemon, error) {
 		MaxConsecutiveVetoes: cfg.Budget.MaxConsecutiveVetoes,
 		NoProgressTurns:      cfg.Budget.NoProgressTurns,
 		ModuleConfigs:        agent.Modules(cfg.Modules),
+		DefaultBudget: protocol.BudgetData{
+			MaxTurns: cfg.Budget.MaxTurns, MaxTokens: cfg.Budget.MaxTokens,
+			MaxUSD: cfg.Budget.MaxUSD, Source: "daemon",
+		},
 	})
 	if err != nil {
 		_ = store.Close()
@@ -213,6 +218,20 @@ func New(opts Options) (*Daemon, error) {
 	}
 
 	return d, nil
+}
+
+// logPath is where the daemon writes. A configured path wins; a relative one
+// is taken against the root, so a short name in config still lands with the
+// rest of the daemon's state rather than wherever it happened to be launched.
+func logPath(root, configured string) string {
+	configured = strings.TrimSpace(configured)
+	if configured == "" {
+		return filepath.Join(root, LogFile)
+	}
+	if filepath.IsAbs(configured) || strings.HasPrefix(configured, "/") {
+		return filepath.Clean(configured)
+	}
+	return filepath.Join(root, configured)
 }
 
 func closeFile(f *os.File) {
