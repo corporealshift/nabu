@@ -514,13 +514,19 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 func (m *Manager) finish(ctx context.Context, h *sessionHandle, to protocol.SessionState, reason string) error {
 	m.deps.Modules.SessionEnd(ctx, h)
 	from := h.State().State
-	if from != to {
-		if _, err := h.s.Append(protocol.EventStateChange, protocol.StateChangeData{
-			From: &from, To: to, Reason: reason}); err != nil {
-			return err
-		}
+
+	// The report goes first so the terminal state change is the last event of
+	// a session: a client stops streaming as soon as it sees one, and would
+	// never see a report appended after it.
+	if err := m.emitReport(ctx, h, to); err != nil {
+		return err
 	}
-	return m.emitReport(ctx, h, to)
+	if from == to {
+		return nil
+	}
+	_, err := h.s.Append(protocol.EventStateChange, protocol.StateChangeData{
+		From: &from, To: to, Reason: reason})
+	return err
 }
 
 // emitReport builds the run report: core fills the log-derived fields,

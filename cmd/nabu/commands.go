@@ -224,7 +224,17 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	state := follow(ctx, c, stdout, *asJSON)
+	state := follow(ctx, c, stdout, *asJSON, true)
+	if state == protocol.StateIdle {
+		// A run owns its session, so it ends it. That is also what emits the
+		// report.
+		if _, err := c.Call(ctx, "nabu.session.stop",
+			map[string]any{"session_id": created.SessionID}, nil); err != nil {
+			fmt.Fprintf(stderr, "nabu: %v\n", err)
+			return exitError
+		}
+		state = follow(ctx, c, stdout, *asJSON, false)
+	}
 	if state == protocol.StatePaused {
 		fmt.Fprintf(stderr, "nabu: paused. Resume with: nabu resume %s\n", created.SessionID)
 	}
@@ -232,8 +242,9 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 }
 
 // follow streams a session's events until it reaches a terminal state, and
-// reports that state.
-func follow(ctx context.Context, c *goclient.Client, stdout io.Writer, asJSON bool) protocol.SessionState {
+// reports that state. stopOnIdle also returns on idle, which a headless run
+// needs because nothing will move a session out of it on its own.
+func follow(ctx context.Context, c *goclient.Client, stdout io.Writer, asJSON, stopOnIdle bool) protocol.SessionState {
 	final := protocol.StateIdle
 	_ = c.Stream(ctx, func(m goclient.Message) bool {
 		switch m.Method {
@@ -252,7 +263,7 @@ func follow(ctx context.Context, c *goclient.Client, stdout io.Writer, asJSON bo
 			if p.Event.Type == protocol.EventStateChange {
 				var sc protocol.StateChangeData
 				if err := json.Unmarshal(p.Event.Data, &sc); err == nil {
-					if terminal(sc.To) {
+					if terminal(sc.To) || (stopOnIdle && sc.To == protocol.StateIdle) {
 						final = sc.To
 						return false
 					}
@@ -325,8 +336,37 @@ func summarize(ev protocol.Event) string {
 			}
 			return from + " -> " + string(d.To) + " " + d.Reason
 		}
+	case protocol.EventReport:
+		var d protocol.ReportData
+		if json.Unmarshal(ev.Data, &d) == nil {
+			return summarizeReport(d)
+		}
 	}
 	return ""
+}
+
+// summarizeReport renders the run report on one line, leading with whatever
+// contradicts a confident summary: an unmet goal, a failed check, a dirty tree.
+func summarizeReport(d protocol.ReportData) string {
+	parts := []string{string(d.ExitStatus)}
+	if d.Goal != nil {
+		parts = append(parts, "goal "+d.Goal.State)
+	}
+	parts = append(parts, fmt.Sprintf("tasks %d/%d", d.Tasks.Done, d.Tasks.Total))
+
+	for _, c := range d.Checks {
+		parts = append(parts, c.Name+" "+c.Status)
+	}
+	if n := len(d.FilesTouched); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d files", n))
+	}
+	if n := len(d.Commits); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d commits", n))
+	}
+	if d.TreeDirty != nil && *d.TreeDirty {
+		parts = append(parts, "tree dirty")
+	}
+	return strings.Join(parts, " · ")
 }
 
 // cmdStatus prints one session's state, or lists sessions when given no id.
@@ -425,7 +465,8 @@ func cmdAttach(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)
 		return exitError
 	}
-	return exitCode(follow(ctx, c, stdout, *asJSON))
+	// An observer is not the owner: an idle session may yet get another prompt.
+	return exitCode(follow(ctx, c, stdout, *asJSON, false))
 }
 
 func cmdStop(args []string, stdout, stderr io.Writer) int {
