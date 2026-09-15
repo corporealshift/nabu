@@ -647,7 +647,17 @@ func (m *Manager) ask(ctx context.Context, h *sessionHandle, question string, ch
 	return m.deps.Asker.Ask(ctx, h.ID(), question, choices)
 }
 
+// reservedDirs are directories of the nabu root that core owns. A module
+// handed one of these would be writing over the daemon's own state.
+var reservedDirs = map[string]bool{"sessions": true, "modules": true}
+
+// dataDir is a module's directory, at the top level of the nabu root and named
+// for the module. Nabu's data is organised by what it is, not buried a level
+// down under the module that happens to write it.
 func (m *Manager) dataDir(name string) (string, error) {
-	d := filepath.Join(m.deps.Root, "modules", name)
+	if name == "" || reservedDirs[name] || strings.ContainsAny(name, `/\.`) {
+		return "", fmt.Errorf("agent: %q is not a usable module data directory", name)
+	}
+	d := filepath.Join(m.deps.Root, name)
 	return d, os.MkdirAll(d, 0o755)
 }

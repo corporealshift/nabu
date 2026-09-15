@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -355,5 +357,32 @@ func TestDefaultPermissionModeIsAuto(t *testing.T) {
 	s := h.create(t)
 	if got := s.State().Options.PermissionMode; got != protocol.PermissionAuto {
 		t.Errorf("default permission mode: got %q, want %q", got, protocol.PermissionAuto)
+	}
+}
+
+// A module's data directory is a top-level directory of the nabu root, named
+// for the module. Nabu's data is organised by what it is, not hidden one level
+// down under an implementation detail.
+func TestDataDirIsTopLevel(t *testing.T) {
+	h := newHarness(t, nil, nil)
+
+	dir, err := h.m.dataDir("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(h.dir, "memory"); dir != want {
+		t.Errorf("dataDir = %q, want %q", dir, want)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("dataDir did not create it: %v", err)
+	}
+}
+
+// The session store owns its directory, so a module may not be handed it.
+func TestDataDirRefusesAReservedName(t *testing.T) {
+	h := newHarness(t, nil, nil)
+
+	if _, err := h.m.dataDir("sessions"); err == nil {
+		t.Error("a module was handed the session store's directory")
 	}
 }

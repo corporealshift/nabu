@@ -3,11 +3,14 @@ package daemon
 import (
 	"context"
 	"errors"
+	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/daemon/modules/memory"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -28,7 +31,7 @@ func TestEnsureLayoutCreatesTheTree(t *testing.T) {
 	if err := EnsureLayout(root); err != nil {
 		t.Fatal(err)
 	}
-	for _, dir := range []string{SessionsDir, MemoryDir, ModulesDir} {
+	for _, dir := range []string{SessionsDir, MemoryDir} {
 		info, err := os.Stat(filepath.Join(root, dir))
 		if err != nil {
 			t.Errorf("%s: %v", dir, err)
@@ -248,5 +251,29 @@ func TestSessionsLiveDirectlyUnderTheRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(d.Root(), SessionsDir)); err != nil {
 		t.Fatalf("the sessions directory should exist under the root: %v", err)
+	}
+}
+
+// Memory lands at <root>/memory, per spec 11.2. This is the join between the
+// host's data directory and the module's own layout, which neither package's
+// tests can see on its own.
+func TestMemoryLivesAtTheNabuRoot(t *testing.T) {
+	root := t.TempDir()
+	mem := &memory.Module{}
+	d, err := New(Options{
+		Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard,
+		Modules: []module.Module{mem},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	want := filepath.Join(root, "memory", "global")
+	if got := mem.GlobalStore().Dir(); got != want {
+		t.Errorf("global memory at %q, want %q", got, want)
+	}
+	if strings.Contains(mem.GlobalStore().Dir(), "modules") {
+		t.Error("memory is still buried under a modules directory")
 	}
 }

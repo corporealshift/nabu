@@ -34,11 +34,11 @@ lifecycle/config/storage. Section 22 records the owner's answers of 2026-09-11.
 Changes made to this document after its 2026-09-11 approval are listed here and marked
 inline at the section they affect.
 
-- **2026-09-14 — §11.2 Memory lives under the module data directory, not `~/.nabu/memory/`.**
-  Decided while implementing P3. The module host API exposes `DataDir(name)` and nothing
-  else, so the literal path would mean a module reaching around the boundary for the
-  nabu root. Memory is at `<root>/modules/memory/` with `global/` and `ws/<key>/`
-  underneath, the same shape the section describes. See §11.2.
+- **2026-09-14 — §8/§14.2 A module's data directory is `~/.nabu/<name>/`, not
+  `~/.nabu/modules/<name>/`.** Decided while implementing P3, on the owner's call: nabu's
+  data belongs in `~/.nabu` organised by what it is, not buried under the module that
+  happens to write it. Memory therefore sits at `~/.nabu/memory/` exactly as §11.2 always
+  said. Core reserves `sessions`, so a module cannot be handed the session store.
 - **2026-09-14 — §8 `auto` is the default permission mode, was `ask`.** Decided while
   planning P2. `guard` ships compiled in and already stops the dangerous calls, so
   `ask` prompted for every read and edit on top of that. Guard's default rules also
@@ -337,9 +337,9 @@ asks the stop gate (§10.1). Every transition appends to the log.
   its handshake. Claude Code's delegation must never fail with "daemon not running."
   `nabu daemon stop` performs the graceful shutdown below.
 - Storage lives under `~/.nabu/`: `config.json`, `sessions/<id>.jsonl` (one
-  append-only file per session) plus `sessions/index.json`, `memory/`,
-  `modules/<name>/`, `daemon.log` (structured, `log/slog`), `daemon.pid`, and
-  `daemon.port`.
+  append-only file per session) plus `sessions/index.json`, `memory/`, one
+  directory per module that keeps data, `daemon.log` (structured, `log/slog`),
+  `daemon.pid`, and `daemon.port`. **(amended 2026-09-14)**
 - Session and event ids are ULIDs: time-ordered, unique without coordination, and
   safe to generate on any client for outbox items before the daemon assigns the
   canonical id.
@@ -579,11 +579,6 @@ restarted with the daemon; the same reasoning makes memory a module without hesi
     *.md
 ```
 
-**(amended 2026-09-14)** The root is the module's data directory,
-`~/.nabu/modules/memory/`, not `~/.nabu/memory/`: the host API gives a module its
-data directory and nothing else. The `global/` and `ws/<workspace-key>/` shape below
-is unchanged.
-
 `workspace-key` is a slug of the git common dir when the workspace is inside a
 repository (so worktrees and nested dirs share memory), else of the absolute path. The
 `workspace` package computes it once per session.
@@ -744,7 +739,7 @@ Modules see the daemon only through `Host`:
 | `Session` | Read events after a cursor; append `check`, `goal` verdicts, `notice`; current goal, tasks, budget |
 | `Tools` | Call any registered tool as `source: module:<name>`, through the same gate the model's calls go through |
 | `UI` | `Ask(ctx, prompt)` → `nabu.rpc.ui.ask` to attached clients, first responder wins |
-| `Workspace` | Path, workspace key, per-module data dir `~/.nabu/modules/<name>/` |
+| `Workspace` | Path, workspace key, per-module data dir `~/.nabu/<name>/` |
 | `Config` | The module's config section |
 
 ### 14.3 Isolation and ordering

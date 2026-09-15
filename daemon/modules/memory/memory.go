@@ -66,8 +66,7 @@ func (m *Module) Init(h module.Host, cfg module.Config) error {
 	m.wrote = map[string]*writes{}
 
 	if m.Root == "" {
-		// Not the spec's ~/.nabu/memory: the host exposes DataDir and nothing
-		// else, and the module boundary is worth more than the path.
+		// ~/.nabu/memory, per spec 11.2.
 		if h == nil {
 			return nil
 		}
