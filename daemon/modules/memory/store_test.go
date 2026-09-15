@@ -8,10 +8,8 @@ import (
 	"time"
 )
 
-// realFormat is copied from the shape of the owner's actual memory files. The
-// spec summarises the format as flat frontmatter; the real files nest `type`
-// under `metadata` and quote the description. A parser written from the summary
-// reads every one of these as typeless, so this fixture is the point.
+// realFormat is copied from the shape of the owner's actual memory files, which
+// nest `type` under `metadata` and quote the description.
 const realFormat = `---
 name: llm-prompts-need-data-not-rules
 description: "When an LLM's output is vague, Kyle wants more data given to it, not more restrictions."
@@ -80,8 +78,7 @@ func TestRoundTripPreservesUnknownKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
-	// nabu is not the only writer of these files: node_type is Claude Code's
-	// and must survive nabu rewriting the file.
+	// node_type is Claude Code's and must survive nabu rewriting the file.
 	if !strings.Contains(string(raw), "node_type: memory") {
 		t.Errorf("unknown key was dropped:\n%s", raw)
 	}
@@ -253,9 +250,8 @@ func TestSlug(t *testing.T) {
 	}
 }
 
-// TestParseMetadataWithTrailingSpace guards a detail of the real files: the
-// writer emits "metadata: " with a trailing space, and an extra key nabu does
-// not know about. Neither may stop the block being recognised as nested.
+// The real writer emits "metadata: " with a trailing space and an unknown key.
+// Neither may stop the block being recognised as nested.
 func TestParseMetadataWithTrailingSpace(t *testing.T) {
 	const content = "---\n" +
 		"name: nabu-project\n" +
@@ -282,9 +278,8 @@ func TestParseMetadataWithTrailingSpace(t *testing.T) {
 	}
 }
 
-// TestModifiedIsWrittenWithMillisecondPrecision guards the reason the layout
-// exists. At second precision two saves of the same memory inside one second
-// are indistinguishable, and the field exists to say which version is current.
+// Regression: the writer used a second-precision layout while the constant
+// beside it promised milliseconds.
 func TestModifiedIsWrittenWithMillisecondPrecision(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir, ScopeGlobal, false)

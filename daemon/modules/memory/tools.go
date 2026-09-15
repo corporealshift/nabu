@@ -10,9 +10,8 @@ import (
 	"github.com/corporealshift/nabu/protocol"
 )
 
-// maxRecall is how many memories one recall returns. Five short files is a few
-// hundred lines at most, which is affordable once and on demand in a way that
-// injecting the whole corpus would not be.
+// maxRecall is how many memories one recall returns. A few hundred lines is
+// affordable on demand in a way that injecting the whole corpus is not.
 const maxRecall = 5
 
 // toolSet is the memory tools: recall reads, save and forget write.
@@ -67,8 +66,8 @@ func (m *Module) runRecall(_ context.Context, s module.Session, args json.RawMes
 		return "", fmt.Errorf("memory.recall: query is required")
 	}
 
-	// The default is both. A caller asking about a subject does not care which
-	// store holds the answer, and every hit names its scope anyway.
+	// A caller asking about a subject does not care which store answers, and
+	// every hit names its scope.
 	scope := Scope(strings.TrimSpace(p.Scope))
 	if scope == "" {
 		scope = ScopeAll
@@ -123,8 +122,8 @@ func (m *Module) runSave(_ context.Context, s module.Session, args json.RawMessa
 		return "", fmt.Errorf("memory.save: %w", err)
 	}
 
-	// A save always targets one store. `all` is a query scope, never a
-	// storage one: a fact belongs either to the owner or to this repository.
+	// A save always targets one store: a fact belongs either to the owner or
+	// to this repository.
 	store, err := m.writableStore(s, p.Scope)
 	if err != nil {
 		return "", err
@@ -163,8 +162,7 @@ func (m *Module) runForget(_ context.Context, s module.Session, args json.RawMes
 		return "", fmt.Errorf("memory.forget: name is required")
 	}
 
-	// Workspace first: a name present in both is more likely the one this
-	// repository just wrote.
+	// Workspace first: a name in both is likely the one this repository wrote.
 	for _, store := range []*Store{m.WorkspaceStore(s), m.global} {
 		if store == nil {
 			continue
@@ -194,8 +192,7 @@ func (m *Module) writableStore(s module.Session, scope string) (*Store, error) {
 	}
 }
 
-// reindex rewrites a store's MEMORY.md and reports any cap breach, so the
-// index on disk always matches the files beside it.
+// reindex rewrites a store's MEMORY.md so it matches the files beside it.
 func (m *Module) reindex(s module.Session, store *Store) {
 	notice, err := WriteIndex(store)
 	if err != nil {

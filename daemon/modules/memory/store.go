@@ -37,14 +37,13 @@ type Memory struct {
 
 	// Scope is where it was loaded from.
 	Scope Scope
-	// Imported marks a memory read from another tool's directory. Those are
-	// never written.
+	// Imported marks a memory read from another tool's directory, never written.
 	Imported bool
 	// Path is the file it came from.
 	Path string
 
-	// extra holds frontmatter keys this parser does not use, so a
-	// load-then-save round trip does not strip another writer's fields.
+	// extra holds frontmatter keys this parser does not use, so a round trip
+	// does not strip them.
 	extra map[string]string
 	// extraMeta is the same for keys under the metadata block.
 	extraMeta map[string]string
@@ -69,8 +68,7 @@ func NewStore(dir string, scope Scope, imported bool) *Store {
 func (s *Store) Dir() string { return s.dir }
 
 // Load reads every memory in the directory, sorted by name. A directory that
-// does not exist is empty, not an error: a fresh install has no memories and a
-// configured import may simply not be there.
+// does not exist is empty, not an error.
 func (s *Store) Load() ([]Memory, error) {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
@@ -97,9 +95,8 @@ func (s *Store) Load() ([]Memory, error) {
 	return out, nil
 }
 
-// Save writes one memory, replacing any file of the same name. Spec 11.4
-// requires same-subject files to be updated rather than duplicated, and making
-// the name the identity is what enforces that.
+// Save writes one memory, replacing any file of the same name. Spec 11.4 wants
+// same-subject files updated rather than duplicated; the name enforces it.
 func (s *Store) Save(m Memory) error {
 	if s.imported {
 		return fmt.Errorf("memory: %s is read-only", s.dir)
@@ -141,9 +138,8 @@ func (s *Store) Path(name string) string {
 // unsafe matches anything that may not appear in a memory's filename.
 var unsafe = regexp.MustCompile(`[^a-z0-9-]+`)
 
-// Slug turns a name into a filename that cannot escape its directory. A name
-// is the identity of a memory, so this must be stable: the same name always
-// produces the same file.
+// Slug turns a name into a filename that cannot escape its directory. It must
+// be stable, because the name is the identity of a memory.
 func Slug(name string) string {
 	s := unsafe.ReplaceAllString(strings.ToLower(strings.TrimSpace(name)), "-")
 	s = strings.Trim(s, "-")
@@ -170,12 +166,10 @@ func parseFile(path string) (Memory, error) {
 	return m, nil
 }
 
-// Parse reads the frontmatter and body of a memory file.
-//
-// The format is Claude Code's, and the real files differ from the spec's
-// summary of them in two ways that matter: `type` sits under a `metadata`
-// block rather than at the top level, and values may be quoted. A parser built
-// from the summary reads every existing memory as typeless.
+// Parse reads the frontmatter and body of a memory file. The real files differ
+// from the spec's summary in two ways that matter: `type` sits under a
+// `metadata` block, and values may be quoted. A parser written from the summary
+// reads every existing memory as typeless.
 func Parse(content string) (Memory, error) {
 	content = strings.TrimLeft(content, "\ufeff \t\r\n")
 	if !strings.HasPrefix(content, "---") {
@@ -247,13 +241,12 @@ func Parse(content string) (Memory, error) {
 	return m, nil
 }
 
-// modifiedLayout keeps millisecond precision, matching what Claude Code writes.
-// Second precision would make two saves in the same second indistinguishable,
-// and the point of the field is to say which version of a fact is current.
+// modifiedLayout keeps the millisecond precision Claude Code writes. At second
+// precision two saves inside one second are indistinguishable.
 const modifiedLayout = "2006-01-02T15:04:05.000Z07:00"
 
-// parseTime accepts either precision. A timestamp that will not parse is left
-// zero rather than failing the memory: the fact is worth more than its date.
+// parseTime accepts either precision. An unparseable date leaves the field zero
+// rather than failing the memory.
 func parseTime(v string) time.Time {
 	for _, layout := range []string{modifiedLayout, time.RFC3339Nano, time.RFC3339} {
 		if t, err := time.Parse(layout, v); err == nil {
@@ -273,8 +266,8 @@ func unquote(s string) string {
 	return s
 }
 
-// render writes a memory back in the format it was read in, preserving keys
-// this parser does not use: nabu is not the only writer of these files.
+// render writes a memory back in the format it was read in, keeping unknown
+// keys: nabu is not the only writer of these files.
 func render(m Memory) string {
 	var b strings.Builder
 	b.WriteString("---\n")

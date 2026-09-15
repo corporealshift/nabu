@@ -15,12 +15,9 @@ import (
 // gitTimeout bounds every git call. A wedged git must not hold a session open.
 const gitTimeout = 30 * time.Second
 
-// initGit makes the memory directory a repository, so rollback, diff and
-// "which session taught it this" come free.
-//
-// A missing git is not an error. Memory is the product and versioning is a
-// convenience on top of it, so anything that goes wrong here turns versioning
-// off for the daemon's lifetime and leaves memory working.
+// initGit makes the memory directory a repository. A missing git is not an
+// error: memory is the product and versioning is a convenience on top of it,
+// so anything that fails here turns versioning off and leaves memory working.
 func (m *Module) initGit() error {
 	if m.NoGit || m.Root == "" {
 		return nil
@@ -34,8 +31,8 @@ func (m *Module) initGit() error {
 		return err
 	}
 
-	// Already inside a work tree: leave it alone. Re-initialising someone
-	// else's repository would be nabu rewriting state it does not own.
+	// Leave an existing work tree alone rather than reinitialise state nabu
+	// does not own.
 	if out, err := m.git("rev-parse", "--is-inside-work-tree"); err == nil &&
 		strings.TrimSpace(out) == "true" {
 		return nil
@@ -45,9 +42,8 @@ func (m *Module) initGit() error {
 		m.NoGit = true
 		return fmt.Errorf("cannot make %s a repository: %w", m.Root, err)
 	}
-	// A machine with no global git identity would otherwise fail every commit.
-	// This is nabu's own repository, so setting a local identity changes
-	// nothing the owner configured.
+	// Without this a machine with no global identity fails every commit. The
+	// identity is local to nabu's own repository.
 	if out, err := m.git("config", "user.email"); err != nil || strings.TrimSpace(out) == "" {
 		if _, err := m.git("config", "user.email", "nabu@localhost"); err != nil {
 			m.NoGit = true
@@ -61,18 +57,14 @@ func (m *Module) initGit() error {
 	return nil
 }
 
-// commitSession commits what one session changed, once, at session end.
-//
-// One commit per fact would bury the history that makes the repository useful:
-// a session is the unit a reader wants to see, because a session is what
-// taught memory the facts in it.
+// commitSession commits what one session changed, once. One commit per fact
+// would bury the history: a session is what taught memory the facts in it.
 func (m *Module) commitSession(ctx context.Context, s module.Session, w writes) {
 	if m.NoGit || m.Root == "" || (w.saved == 0 && w.forgotten == 0) {
 		return
 	}
 
-	// Staged by directory rather than by sweeping the root, so nothing that
-	// is not a memory can be swept into a memory commit.
+	// Staged by directory, so nothing that is not a memory reaches the commit.
 	for _, dir := range []string{"global", "ws"} {
 		if _, err := os.Stat(filepath.Join(m.Root, dir)); err != nil {
 			continue
@@ -82,8 +74,7 @@ func (m *Module) commitSession(ctx context.Context, s module.Session, w writes) 
 		}
 	}
 
-	// A session that saved and then forgot the same fact leaves nothing
-	// staged, and an empty commit says nothing worth keeping.
+	// Saving then forgetting one fact leaves nothing staged.
 	if _, err := m.gitCtx(ctx, "diff", "--cached", "--quiet"); err == nil {
 		return
 	}
@@ -95,8 +86,8 @@ func (m *Module) commitSession(ctx context.Context, s module.Session, w writes) 
 	m.log.Info("memory: committed", "session", s.ID(), "saved", w.saved, "forgotten", w.forgotten)
 }
 
-// commitMessage names the session and what changed, which is what makes the
-// log answerable: who taught it this, and when.
+// commitMessage names the session and what changed, so the log answers who
+// taught memory this.
 func commitMessage(sessionID string, w writes) string {
 	var parts []string
 	if w.saved > 0 {

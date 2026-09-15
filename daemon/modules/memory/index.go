@@ -8,9 +8,8 @@ import (
 	"strings"
 )
 
-// The index rides in front of the model on every request until the next
-// compaction, so its cost is standing rather than one-off. Spec 11.2 sets the
-// caps.
+// The index rides in front of the model until the next compaction, so its cost
+// is standing rather than one-off. Spec 11.2 sets the caps.
 const (
 	// maxIndexLines is one line per memory, capped.
 	maxIndexLines = 200
@@ -18,12 +17,9 @@ const (
 	maxIndexBytes = 25 << 10
 )
 
-// BuildIndex renders the index and reports whether it is over its caps.
-//
-// Over the cap the index is still written whole, and the notice is what makes
-// the debt visible. Consolidation is the next plan; until it lands, refusing a
-// save would lose a fact the model had decided was worth keeping, which costs
-// more than an over-long index does.
+// BuildIndex renders the index and reports whether it is over its caps. Over
+// the cap it is still written whole: until consolidation lands, refusing a save
+// would lose a fact, which costs more than an over-long index does.
 func BuildIndex(mems []Memory) (content string, notice string) {
 	content = FormatIndex(mems)
 	switch {
@@ -59,8 +55,7 @@ func FormatIndex(mems []Memory) string {
 }
 
 // indexLine is `- [Title](file.md) — hook`, the shape the existing index uses.
-// The title is the description's first clause and the hook is the rest: the
-// hook is what makes a reader open the file, so it is worth keeping separate.
+// The hook is what makes a reader open the file, so it stays separate.
 func indexLine(m Memory) string {
 	title, hook := splitDescription(m.Description)
 	if title == "" {
@@ -71,8 +66,7 @@ func indexLine(m Memory) string {
 		line += " — " + hook
 	}
 	if m.Imported {
-		// An imported memory cannot be edited in place, and the model needs to
-		// know that before it tries.
+		// The model needs to know before it tries to edit one in place.
 		line += " *(imported)*"
 	}
 	return line + "\n"
@@ -91,8 +85,7 @@ func splitDescription(desc string) (title, hook string) {
 }
 
 // WriteIndex rebuilds a store's MEMORY.md from what is on disk and returns any
-// cap notice. An empty store has no index file: a file holding a header and
-// nothing else is context spent to say there is nothing to say.
+// cap notice. An empty store has no index file at all.
 func WriteIndex(s *Store) (string, error) {
 	if s.imported {
 		return "", nil // another tool owns that directory's index

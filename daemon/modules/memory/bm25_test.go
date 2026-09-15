@@ -17,8 +17,7 @@ func corpus() []Memory {
 }
 
 func TestNameMatchOutranksBodyMatch(t *testing.T) {
-	// "spec" appears in nabu-project's body only; "rancher" is in the other's
-	// name. A memory named for its subject should win a query about it.
+	// A memory named for its subject should win a query about it.
 	got := Rank("rancher", corpus(), 5)
 	if len(got) == 0 {
 		t.Fatal("no matches")

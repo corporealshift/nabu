@@ -7,17 +7,14 @@ import (
 	"unicode"
 )
 
-// BM25 parameters. These are the textbook defaults. The corpus is dozens of
-// short documents rather than a web index, and there is nothing to tune
-// against yet, so picking the standard values and saying so beats inventing
-// numbers.
+// BM25 parameters: the textbook defaults. The corpus is dozens of short
+// documents and there is nothing to tune against yet.
 const (
 	k1 = 1.2
 	b  = 0.75
 
-	// A memory named for its subject should win a query about that subject
-	// even when the body never repeats the phrase, so its fields count for
-	// more than its prose does.
+	// A memory named for its subject should win a query about it even when
+	// the body never repeats the phrase.
 	nameWeight        = 3
 	descriptionWeight = 2
 	bodyWeight        = 1
@@ -83,8 +80,7 @@ func Rank(query string, corpus []Memory, limit int) []Match {
 }
 
 // idf is the smoothed inverse document frequency. A term in every document
-// gets the smallest value this can produce, so it contributes the same amount
-// everywhere and separates nothing.
+// scores the same everywhere and so separates nothing.
 func idf(term string, docs []map[string]int) float64 {
 	var df float64
 	for _, tf := range docs {
@@ -110,11 +106,9 @@ func termFrequencies(m Memory) map[string]int {
 	return tf
 }
 
-// tokenize lowercases and splits on anything that is not a letter or a digit.
-// No stemming and no stop-word list: a corpus this small pays nothing for a
-// stop word, and stemming would need either a dependency or a hand-rolled
-// approximation of one. Splitting on punctuation is what makes
-// `docker-compose` match `docker compose`.
+// tokenize lowercases and splits on anything that is not a letter or a digit,
+// which is what makes `docker-compose` match `docker compose`. No stemming and
+// no stop-word list: a corpus this small pays nothing for either.
 func tokenize(s string) []string {
 	fields := strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)

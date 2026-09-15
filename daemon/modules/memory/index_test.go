@@ -27,8 +27,7 @@ func TestFormatIndexOneLinePerMemory(t *testing.T) {
 			t.Errorf("index does not name %s.md:\n%s", m.Name, got)
 		}
 	}
-	// A line the reader cannot judge is a line they have to open the file to
-	// use, which defeats an index.
+	// A line the reader cannot judge defeats the point of an index.
 	if !strings.Contains(got, "Rancher Desktop, not Docker Desktop") {
 		t.Errorf("index carries no description:\n%s", got)
 	}
@@ -70,9 +69,7 @@ func TestOverCapIsVisibleNotSilent(t *testing.T) {
 	}
 	content, notice := BuildIndex(mems)
 
-	// Consolidation is the next plan. Until it exists a save must still land:
-	// an over-long index costs context, a dropped memory costs the thing
-	// memory is for.
+	// Until consolidation exists a save must still land.
 	if n := len(strings.Split(strings.TrimSpace(content), "\n")); n != len(mems) {
 		t.Errorf("index has %d lines for %d memories, want every one written", n, len(mems))
 	}

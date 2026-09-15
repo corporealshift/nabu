@@ -146,8 +146,7 @@ func TestForgetIsCommittedToo(t *testing.T) {
 }
 
 func TestMemoryWorksWithoutGit(t *testing.T) {
-	// NoGit is what a machine without git resolves to: memory is the product,
-	// versioning is a convenience on top of it.
+	// NoGit is what a machine without git resolves to.
 	m := &Module{Root: t.TempDir(), NoGit: true}
 	if err := m.Init(nil, module.Config{}); err != nil {
 		t.Fatalf("Init: %v", err)

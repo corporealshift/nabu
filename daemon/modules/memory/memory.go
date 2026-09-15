@@ -1,11 +1,3 @@
-// Package memory gives nabu a memory the model can read and write, so a
-// session on a repository starts already knowing what earlier sessions
-// learned.
-//
-// Memory is markdown files under the nabu root, global and per workspace, with
-// a one-line-per-memory index injected as a prefix context block. Recall is
-// BM25, which needs no model and no embeddings. Nothing in the agent, the
-// session or the protocol knows memory exists.
 package memory
 
 import (
@@ -19,10 +11,8 @@ import (
 	"github.com/corporealshift/nabu/protocol"
 )
 
-// SaveInstructions is the wording that governs when the model saves. It is
-// fixed here rather than paraphrased per injection, because the wording is the
-// whole mechanism: a vaguer version produces a memory full of descriptions of
-// the code, which go stale while the code does not.
+// SaveInstructions governs when the model saves. A vaguer wording fills memory
+// with descriptions of the code, which go stale while the code does not.
 const SaveInstructions = "Save a memory when the user corrects you, confirms an " +
 	"approach, or tells you something about this project you could not have read from " +
 	"the code or the git history. Save a pointer to anything outside the repository " +
@@ -65,9 +55,8 @@ func (discardLog) Info(string, ...any) {}
 // Name implements module.Module.
 func (m *Module) Name() string { return "memory" }
 
-// Init implements module.Module. It resolves the roots and opens the import
-// directories; the stores themselves are read on demand, so a memory saved by
-// one session is visible to the next without restarting the daemon.
+// Init implements module.Module. Stores are read on demand, so a memory saved
+// by one session reaches the next without restarting the daemon.
 func (m *Module) Init(h module.Host, cfg module.Config) error {
 	m.log = discardLog{}
 	if h != nil && h.Log() != nil {
@@ -77,9 +66,8 @@ func (m *Module) Init(h module.Host, cfg module.Config) error {
 	m.wrote = map[string]*writes{}
 
 	if m.Root == "" {
-		// The host only exposes DataDir, and the module boundary is worth more
-		// than the spec's literal path: memory lives under the module's own
-		// data directory rather than reaching around for the nabu root.
+		// Not the spec's ~/.nabu/memory: the host exposes DataDir and nothing
+		// else, and the module boundary is worth more than the path.
 		if h == nil {
 			return nil
 		}
@@ -98,8 +86,7 @@ func (m *Module) Init(h module.Host, cfg module.Config) error {
 			continue
 		}
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-			// An import that is not there is a configuration that no longer
-			// applies, not a failure: memory works without it.
+			// A stale import is configuration that no longer applies, not a failure.
 			continue
 		}
 		m.imports = append(m.imports, NewStore(dir, ScopeGlobal, true))
@@ -132,9 +119,8 @@ func expandHome(p string) string {
 // GlobalStore is user-level memory: who the owner is, how they like to work.
 func (m *Module) GlobalStore() *Store { return m.global }
 
-// WorkspaceStore is the memory of one repository. Keying by the workspace key
-// is what keeps two repositories from sharing memory, and what lets worktrees
-// of one repository share it.
+// WorkspaceStore is the memory of one repository. The workspace key is what
+// separates two repositories and joins two worktrees of one.
 func (m *Module) WorkspaceStore(s module.Session) *Store {
 	key := "unknown"
 	if s != nil && s.Workspace().Key != "" {
@@ -144,8 +130,7 @@ func (m *Module) WorkspaceStore(s module.Session) *Store {
 }
 
 // globalCorpus is global memory plus imports, with nabu's own copy winning.
-// A save naming an imported memory writes nabu's version, and from then on the
-// import is shadowed rather than edited: editing it would be nabu writing into
+// Shadowing an import beats editing it, which would be nabu writing into
 // another tool's state.
 func (m *Module) globalCorpus() []Memory {
 	var out []Memory
@@ -191,9 +176,8 @@ func (m *Module) SessionStart(_ context.Context, s module.Session) ([]module.Con
 	return m.blocks(s), nil
 }
 
-// AfterCompaction implements module.CompactionHook. A prefix block is fixed
-// between compactions, so a summarize retires the index and it has to be put
-// back or the model forgets what it knows.
+// AfterCompaction implements module.CompactionHook. A summarize retires the
+// prefix, so the index has to go back or the model forgets what it knows.
 func (m *Module) AfterCompaction(_ context.Context, s module.Session) ([]module.ContextBlock, error) {
 	return m.blocks(s), nil
 }
@@ -204,8 +188,8 @@ func (m *Module) BeforeCompaction(context.Context, module.Session, module.Range)
 	return nil
 }
 
-// blocks renders the memory block, or nothing when there is nothing to say. A
-// block announcing that there are no memories is context spent to say nothing.
+// blocks renders the memory block, or nothing when there are no memories: a
+// block saying so is context spent to say nothing.
 func (m *Module) blocks(s module.Session) []module.ContextBlock {
 	if !m.enabled || m.global == nil {
 		return nil
@@ -228,8 +212,8 @@ func (m *Module) blocks(s module.Session) []module.ContextBlock {
 	return []module.ContextBlock{{Slot: "prefix", Content: b.String()}}
 }
 
-// section renders one index under a heading and reports any cap breach to the
-// session, so the debt is visible to a human rather than only to the model.
+// section renders one index, reporting a cap breach to the session so the debt
+// reaches a human and not only the model.
 func (m *Module) section(b *strings.Builder, s module.Session, heading string, mems []Memory) {
 	if len(mems) == 0 {
 		return
@@ -275,8 +259,7 @@ func (m *Module) takeWrites(id string) writes {
 	return *w
 }
 
-// Tools implements module.ToolProvider. A disabled module offers none: the
-// model must not be shown a tool that will not work.
+// Tools implements module.ToolProvider. A disabled module offers none.
 func (m *Module) Tools() []module.Tool {
 	if !m.enabled {
 		return nil
@@ -284,8 +267,7 @@ func (m *Module) Tools() []module.Tool {
 	return m.toolSet()
 }
 
-// SessionEnd implements module.SessionEnder: one commit per session that
-// wrote, rather than one per fact.
+// SessionEnd implements module.SessionEnder.
 func (m *Module) SessionEnd(ctx context.Context, s module.Session) {
 	if s == nil {
 		return

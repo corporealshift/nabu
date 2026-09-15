@@ -92,8 +92,7 @@ func TestSessionStartCarriesBothIndexesAndTheInstructions(t *testing.T) {
 			t.Errorf("block is missing %s:\n%s", want, body)
 		}
 	}
-	// The wording is what actually governs when the model saves, so it is
-	// fixed rather than left to paraphrase.
+	// The wording governs when the model saves, so it is fixed, not paraphrased.
 	if !strings.Contains(body, SaveInstructions) {
 		t.Errorf("the save instructions are not in the block:\n%s", body)
 	}
@@ -173,8 +172,7 @@ func TestImportsAreReadOnlyAndMarked(t *testing.T) {
 		t.Errorf("imports are not marked:\n%s", blocks[0].Content)
 	}
 
-	// nabu's own copy shadows the import rather than editing another tool's
-	// directory.
+	// The nabu copy shadows the import rather than editing it.
 	if err := m.GlobalStore().Save(Memory{
 		Name: "shadowed", Type: "project", Description: "the nabu version", Body: "the nabu version",
 	}); err != nil {
