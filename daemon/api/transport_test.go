@@ -213,7 +213,13 @@ func TestBearerTokenOnNonLoopback(t *testing.T) {
 		{"non-loopback with correct token upgrades", "203.0.113.7:5000", "Bearer sekrit", "sekrit", true},
 		{"non-loopback with wrong token refused", "203.0.113.7:5000", "Bearer nope", "sekrit", false},
 		{"non-loopback with no token refused", "203.0.113.7:5000", "", "sekrit", false},
-		{"non-loopback allowed when no token configured", "203.0.113.7:5000", "", "", true},
+		// Spec 5: connections from non-loopback addresses must present a
+		// bearer token. With none configured there is nothing to present, so
+		// the connection is refused rather than admitted unauthenticated. The
+		// daemon runs shell commands in the owner's repositories; an open port
+		// on a shared network is the worst possible default.
+		{"non-loopback refused when no token is configured", "203.0.113.7:5000", "", "", false},
+		{"non-loopback refused even with a header when none is configured", "203.0.113.7:5000", "Bearer anything", "", false},
 		{"loopback needs no token", "127.0.0.1:5000", "", "sekrit", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -213,21 +213,56 @@ func (m *Manager) appendContexts(h *sessionHandle, blocks []module.SourcedBlock)
 
 // Prompt appends a user message and starts the loop if it is not running.
 func (m *Manager) Prompt(ctx context.Context, id, content string) (protocol.Event, error) {
+	return m.PromptWithID(ctx, id, content, "")
+}
+
+// PromptWithID is Prompt for a client with an outbox. A non-empty clientID that
+// this session has already seen returns the event it produced the first time,
+// so a prompt retried across a dropped connection is appended once.
+//
+// An empty clientID deduplicates nothing: a person typing the same thing twice
+// means it twice.
+func (m *Manager) PromptWithID(ctx context.Context, id, content, clientID string) (protocol.Event, error) {
 	h, err := m.handle(id)
 	if err != nil {
 		return protocol.Event{}, err
+	}
+	if clientID != "" {
+		if e, ok := promptFor(h.s.Events(), clientID); ok {
+			return e, nil
+		}
 	}
 	switch st := h.State().State; st {
 	case protocol.StateCompleted, protocol.StateError, protocol.StatePaused:
 		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidTransition,
 			fmt.Sprintf("session is %s; resume it first", st))
 	}
-	e, err := h.s.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: content})
+	e, err := h.s.Append(protocol.EventMessage, protocol.MessageData{
+		Role: "user", Content: content, ClientID: clientID})
 	if err != nil {
 		return protocol.Event{}, err
 	}
 	m.ensureRunning(h, "prompt")
 	return e, nil
+}
+
+// promptFor finds the message a client id already produced. Scanning the log
+// is what keeps this correct across a restart: there is no separate table to
+// lose.
+func promptFor(log []protocol.Event, clientID string) (protocol.Event, bool) {
+	for _, e := range log {
+		if e.Type != protocol.EventMessage {
+			continue
+		}
+		d, err := protocol.DecodeData(e)
+		if err != nil {
+			continue
+		}
+		if md, ok := d.(*protocol.MessageData); ok && md.ClientID == clientID {
+			return e, true
+		}
+	}
+	return protocol.Event{}, false
 }
 
 // SetGoal records a goal and starts the loop if the session is idle.

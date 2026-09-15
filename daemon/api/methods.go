@@ -55,10 +55,17 @@ func (h *Handler) registerMutators() {
 // sent while running is not queued: the message is appended immediately and
 // the loop picks it up at the next turn boundary, because every request is
 // assembled from the log.
+//
+// An optional client_id makes the call idempotent, which is what an offline
+// outbox needs: a retry after a dropped connection returns the original event
+// rather than appending the prompt a second time.
 func (h *Handler) handleSendPrompt(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
 		Content   string `json:"content"`
+		// ClientID lets a client with an outbox retry safely: the same id
+		// returns the event the first attempt produced.
+		ClientID string `json:"client_id"`
 	}
 	if rpcErr := decodeParams(params, &p); rpcErr != nil {
 		return nil, rpcErr
@@ -69,7 +76,7 @@ func (h *Handler) handleSendPrompt(ctx context.Context, _ *connState, params jso
 	if _, rpcErr := h.getSession(p.SessionID); rpcErr != nil {
 		return nil, rpcErr
 	}
-	ev, err := h.manager.Prompt(ctx, p.SessionID, p.Content)
+	ev, err := h.manager.PromptWithID(ctx, p.SessionID, p.Content, p.ClientID)
 	if err != nil {
 		return nil, rpcErrOf(err)
 	}

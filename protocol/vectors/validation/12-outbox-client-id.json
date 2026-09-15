@@ -1,0 +1,48 @@
+{
+  "name": "outbox client_id is valid on a user message",
+  "description": "A user message may carry the outbox item it came from, so a client that retries a prompt after a dropped connection is recognised. Spec 7.4.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-15T03:00:00.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "auto"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-15T03:00:01.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "deploy the thing",
+        "client_id": "01JOUTBOX0000000000000001"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-15T03:00:02.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "shipping"
+      }
+    }
+  ],
+  "operation": {
+    "op": "validate"
+  },
+  "expect": {
+    "valid": true
+  }
+}

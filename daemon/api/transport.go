@@ -110,7 +110,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !isLoopback(r.RemoteAddr) && s.cfg.Token != "" {
+	// Spec 5: connections from non-loopback addresses must present a bearer
+	// token. With none configured there is nothing to present, so the
+	// connection is refused rather than admitted unauthenticated. The daemon
+	// runs shell commands in the owner's repositories, and an open port on a
+	// shared network is the worst default available.
+	if !isLoopback(r.RemoteAddr) {
+		if s.cfg.Token == "" {
+			s.log.Warn("refused a remote connection: no daemon token is configured",
+				"remote", r.RemoteAddr)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 		if r.Header.Get("Authorization") != "Bearer "+s.cfg.Token {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return

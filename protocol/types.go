@@ -92,8 +92,14 @@ type Usage struct {
 
 // MessageData is a user or assistant message.
 type MessageData struct {
-	Role        string `json:"role"`
-	Content     string `json:"content"`
+	Role    string `json:"role"`
+	Content string `json:"content"`
+	// ClientID is the outbox item a user message came from. A client that
+	// retries after a dropped connection sends the same one, and the daemon
+	// answers with the event it already appended rather than appending twice.
+	// The log is therefore its own deduplication table, which is what makes it
+	// survive a restart.
+	ClientID    string `json:"client_id,omitempty"`
 	Usage       *Usage `json:"usage,omitempty"`
 	Interrupted bool   `json:"interrupted,omitempty"`
 }
