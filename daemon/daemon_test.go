@@ -320,3 +320,49 @@ func TestModuleConfigSectionsReachTheirModule(t *testing.T) {
 		t.Error("enabled was not delivered")
 	}
 }
+
+// tasks_enabled is parsed and defaulted by the config loader, and until now
+// nothing read it: setting it false changed nothing. It has to reach the
+// provider registry, which is where the request layer looks it up.
+func TestTasksEnabledReachesTheProvider(t *testing.T) {
+	root := t.TempDir()
+	cfg := `{"providers":{"frontier":{"base_url":"https://api.example/v1","tasks_enabled":false}}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	_, _, pcfg, err := d.providers.Resolve("frontier/anything")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if pcfg.TasksEnabled == nil || *pcfg.TasksEnabled {
+		t.Error("tasks_enabled false did not reach the provider")
+	}
+}
+
+// Left unset it defaults to on, which is what most providers want.
+func TestTasksEnabledDefaultsToOn(t *testing.T) {
+	root := t.TempDir()
+	cfg := `{"providers":{"local":{"base_url":"http://localhost:8033/v1"}}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	_, _, pcfg, err := d.providers.Resolve("local/anything")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pcfg.TasksEnabled == nil || !*pcfg.TasksEnabled {
+		t.Error("the default should be on")
+	}
+}

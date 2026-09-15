@@ -100,6 +100,23 @@ func New(deps Deps, cfg Config) (*Manager, error) {
 	return m, nil
 }
 
+// toolsFor is the tools offered to one provider's model. Everything is offered
+// except the task tools, which a provider may decline: spec 8 turns them off
+// for frontier models, which spend about a quarter more tokens on them.
+func (m *Manager) toolsFor(pcfg provider.Config) []provider.ToolSpec {
+	if pcfg.TasksEnabled == nil || *pcfg.TasksEnabled {
+		return m.toolSpecs
+	}
+	out := make([]provider.ToolSpec, 0, len(m.toolSpecs))
+	for _, t := range m.toolSpecs {
+		if strings.HasPrefix(t.Name, "task.") {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
 // toolNames lists registered tools, sorted, for error messages.
 func (m *Manager) toolNames() []string {
 	out := make([]string, 0, len(m.toolsByName))

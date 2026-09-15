@@ -91,6 +91,8 @@ type Daemon struct {
 	store *session.Store
 	mgr   *agent.Manager
 	api   *api.Server
+	// providers is kept so the daemon can answer what a model resolves to.
+	providers *provider.Registry
 
 	listener net.Listener
 	logFile  *os.File
@@ -163,10 +165,11 @@ func New(opts Options) (*Daemon, error) {
 		isFirst := true
 		for name, p := range cfg.Providers {
 			pc := provider.Config{
-				Name:        name,
-				BaseURL:     p.BaseURL,
-				APIKey:      p.APIKey,
-				MaxInFlight: p.MaxInFlight,
+				Name:         name,
+				BaseURL:      p.BaseURL,
+				APIKey:       p.APIKey,
+				MaxInFlight:  p.MaxInFlight,
+				TasksEnabled: p.TasksEnabled,
 			}
 			providers.Add(pc, provider.NewOpenAI(pc, nil), isFirst)
 			isFirst = false
@@ -198,7 +201,7 @@ func New(opts Options) (*Daemon, error) {
 	srv := api.NewServer(handler, &api.Config{Bind: cfg.Daemon.Bind, Token: cfg.Daemon.Token}, log)
 
 	d := &Daemon{root: root, cfg: cfg, log: log, store: store,
-		mgr: mgr, api: srv, logFile: logFile,
+		mgr: mgr, api: srv, providers: providers, logFile: logFile,
 		shutdownDone: make(chan struct{})}
 
 	// The API exposes shutdown; the daemon owns it. nabu.daemon.stop is what
