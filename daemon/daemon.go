@@ -215,6 +215,22 @@ func New(opts Options) (*Daemon, error) {
 	return d, nil
 }
 
+// bindIsLoopback reports whether a configured bind address only accepts local
+// connections. A host that cannot be parsed is treated as remote, because
+// guessing the permissive way is the expensive mistake.
+func bindIsLoopback(bind string) bool {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(bind))
+	if err != nil {
+		host = strings.TrimSpace(bind)
+	}
+	switch host {
+	case "localhost", "":
+		return host == "localhost"
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 func closeFile(f *os.File) {
 	if f != nil {
 		_ = f.Close()
@@ -277,6 +293,13 @@ func (d *Daemon) Listen() error {
 	}
 	for _, id := range paused {
 		d.log.Info("session was interrupted and is paused", "session", id)
+	}
+	// A bind beyond loopback with no token refuses every remote client, which
+	// is the safe behaviour but a confusing one to discover from the far end.
+	if !bindIsLoopback(d.cfg.Daemon.Bind) && d.cfg.Daemon.Token == "" {
+		d.log.Warn("bound beyond loopback with no daemon token: "+
+			"remote clients will be refused until one is configured",
+			"bind", d.cfg.Daemon.Bind)
 	}
 	d.log.Info("daemon listening", "addr", ln.Addr().String(), "root", d.root)
 	return nil
