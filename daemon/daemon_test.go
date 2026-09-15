@@ -320,3 +320,29 @@ func TestModuleConfigSectionsReachTheirModule(t *testing.T) {
 		t.Error("enabled was not delivered")
 	}
 }
+
+// The configured context window has to reach the provider registry. It never
+// did, so provider.Config.ContextWindow was always zero, which is the value
+// that disables size-based compaction. Long sessions therefore grew until the
+// model refused them, and no compaction ever ran in a real daemon.
+func TestTheConfiguredContextWindowReachesTheProvider(t *testing.T) {
+	root := t.TempDir()
+	cfg := `{"providers":{"local":{"base_url":"http://localhost:8033/v1","context_window":256000}}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	_, _, pcfg, err := d.providers.Resolve("local/anything")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if pcfg.ContextWindow != 256000 {
+		t.Errorf("ContextWindow = %d, want 256000: compaction cannot trigger at zero",
+			pcfg.ContextWindow)
+	}
+}
