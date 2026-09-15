@@ -344,12 +344,22 @@ created_at, updated_at, goal?: {condition, state}, tasks?: {total, done}}`.
 `options` defaults: model from config, `compaction_enabled: true`,
 `permission_mode: "ask"`. The returned `event` is the `session` event.
 
-### 7.4 `nabu.session.send_prompt {session_id, content}` → `{event_id}`
+### 7.4 `nabu.session.send_prompt {session_id, content, client_id?}` → `{event_id}`
 
 Appends a `user` `message` immediately, in every state except `completed`, `error`,
 and `paused` (those return `nabu_invalid_transition`; use `resume` for `paused`). If
 the session is `idle` or `blocked`, the loop starts. If it is `running`, the message is
 picked up at the next request assembly.
+
+`client_id` is optional and makes the call **idempotent**, which is what a client with
+an offline outbox (§5) needs: a prompt retried after a dropped connection must not be
+appended twice. A `client_id` this session has already seen returns the `event_id` of
+the message it produced the first time, in any state, without appending anything and
+without starting the loop. The id is recorded on the `message` event, so the log is its
+own deduplication table and a retry is still recognised after a daemon restart.
+
+Omitting `client_id` deduplicates nothing: a person typing the same thing twice means
+it twice.
 
 ### 7.5 `nabu.session.events_after {session_id, last_event_id}` → `{events, synced}` — §4.
 

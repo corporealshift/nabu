@@ -73,6 +73,7 @@
       "properties": {
         "role": { "type": "string", "enum": ["user", "assistant"] },
         "content": { "type": "string" },
+        "client_id": { "type": "string", "minLength": 1 },
         "usage": { "$ref": "#/$defs/usage" },
         "interrupted": { "type": "boolean" }
       }
