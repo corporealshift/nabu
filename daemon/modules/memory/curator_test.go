@@ -163,3 +163,85 @@ func TestTwoPassesDoNotSeeTheSameEvents(t *testing.T) {
 		t.Errorf("the second pass missed the new message:\n%s", second.render())
 	}
 }
+
+// ---------------------------------------------------------------------------
+// The prompt and the reply
+
+func TestPromptCarriesTheCriteriaTheIndexAndTheWindow(t *testing.T) {
+	existing := []Memory{
+		{Name: "rancher-desktop", Description: "the owner runs Rancher Desktop", Type: "user"},
+	}
+	w := window([]protocol.Event{userMsg("01A", "always use make ship to deploy")}, "")
+
+	p := curatorPrompt(existing, w)
+
+	// The wording that governs when to save is the same wording the session
+	// prefix uses. Two versions of it would drift apart.
+	if !strings.Contains(p, SaveInstructions) {
+		t.Error("the prompt does not carry the save instructions")
+	}
+	if !strings.Contains(p, "rancher-desktop") {
+		t.Error("the prompt does not list what is already remembered, so it will duplicate")
+	}
+	if !strings.Contains(p, "make ship") {
+		t.Error("the prompt does not carry the window")
+	}
+}
+
+func TestParseProposals(t *testing.T) {
+	good := `[{"scope":"workspace","name":"deploy-command","type":"project",
+	  "description":"deploy with make ship","body":"Use make ship, never npm publish."}]`
+
+	for _, tc := range []struct{ name, reply string }{
+		{"bare json", good},
+		{"in a fence", "```json\n" + good + "\n```"},
+		{"with prose", "Here is what I found:\n" + good + "\nThat is all."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseProposals(tc.reply, 3)
+			if len(got) != 1 {
+				t.Fatalf("got %d proposals, want 1: %+v", len(got), got)
+			}
+			if got[0].Name != "deploy-command" || got[0].Scope != "workspace" {
+				t.Errorf("proposal = %+v", got[0])
+			}
+		})
+	}
+}
+
+func TestParseProposalsDropsWhatItCannotUse(t *testing.T) {
+	reply := `[
+	  {"scope":"workspace","name":"good","type":"project","description":"d","body":"b"},
+	  {"scope":"workspace","name":"bad-type","type":"notes","description":"d","body":"b"},
+	  {"scope":"workspace","name":"","type":"project","description":"d","body":"b"},
+	  {"scope":"workspace","name":"no-body","type":"project","description":"d","body":"  "},
+	  {"scope":"elsewhere","name":"bad-scope","type":"project","description":"d","body":"b"}
+	]`
+	got := parseProposals(reply, 3)
+	if len(got) != 1 || got[0].Name != "good" {
+		t.Fatalf("got %+v, want only the usable one", got)
+	}
+}
+
+func TestParseProposalsTruncatesRatherThanRejects(t *testing.T) {
+	var parts []string
+	for i := 0; i < 6; i++ {
+		parts = append(parts, fmt.Sprintf(
+			`{"scope":"global","name":"m%d","type":"user","description":"d","body":"b"}`, i))
+	}
+	got := parseProposals("["+strings.Join(parts, ",")+"]", 3)
+	if len(got) != 3 {
+		t.Fatalf("got %d, want 3: finding too much is not a reason to keep none", len(got))
+	}
+	if got[0].Name != "m0" {
+		t.Errorf("truncation should keep the first three, got %+v", got)
+	}
+}
+
+func TestParseProposalsOnRubbish(t *testing.T) {
+	for _, reply := range []string{"", "nothing worth saving", "{not json", "[]", "null"} {
+		if got := parseProposals(reply, 3); len(got) != 0 {
+			t.Errorf("reply %q produced %+v, want nothing", reply, got)
+		}
+	}
+}

@@ -165,3 +165,97 @@ func clip(s string, n int) string {
 	}
 	return s[:n] + " …[truncated]"
 }
+
+// curatorSystem frames the pass. The curator is told to find nothing when
+// there is nothing, because a model asked to produce memories will produce
+// them, and a memory of something unremarkable is worse than no memory.
+const curatorSystem = "You are curating the memory of a coding agent. You are shown a " +
+	"transcript and the memories that already exist. Decide what, if anything, a future " +
+	"session on this project would act on differently. Most sessions teach nothing: " +
+	"replying with an empty list is the common and correct answer.\n\n" +
+	"Reply with JSON only: an array of objects with scope, name, type, description and " +
+	"body. scope is \"global\" for facts about the owner and how they work, or " +
+	"\"workspace\" for this project. type is one of user, feedback, project, reference. " +
+	"name is kebab-case and names the subject. To correct something already remembered, " +
+	"reuse its exact name and the old one is replaced."
+
+// proposal is one memory the curator wants written. It is deliberately the
+// same shape memory.save takes, because that is how it gets written.
+type proposal struct {
+	Scope       string `json:"scope"`
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	Body        string `json:"body"`
+}
+
+// curatorPrompt is the user message: what is already known, then what happened.
+func curatorPrompt(existing []Memory, w curatorWindow) string {
+	var b strings.Builder
+	b.WriteString(SaveInstructions + "\n\n")
+
+	b.WriteString("## Already remembered\n\n")
+	if len(existing) == 0 {
+		b.WriteString("Nothing yet.\n")
+	}
+	for _, m := range existing {
+		b.WriteString("- " + m.Name)
+		if m.Description != "" {
+			b.WriteString(": " + m.Description)
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n## What happened\n\n")
+	b.WriteString(w.render())
+	b.WriteString("\n")
+	return b.String()
+}
+
+// parseProposals reads the model's reply. A model that wraps JSON in prose or
+// a code fence is being helpful rather than wrong, so the array is located
+// rather than demanded.
+//
+// Anything unusable is dropped rather than corrected: a guess at what the
+// model meant is a memory nobody chose.
+func parseProposals(reply string, limit int) []proposal {
+	raw := jsonArray(reply)
+	if raw == "" {
+		return nil
+	}
+	var all []proposal
+	if err := json.Unmarshal([]byte(raw), &all); err != nil {
+		return nil
+	}
+
+	var out []proposal
+	for _, p := range all {
+		p.Name = strings.TrimSpace(p.Name)
+		p.Body = strings.TrimSpace(p.Body)
+		p.Description = strings.TrimSpace(p.Description)
+		p.Type = strings.TrimSpace(p.Type)
+		switch Scope(strings.TrimSpace(p.Scope)) {
+		case ScopeGlobal, ScopeWorkspace:
+		default:
+			continue
+		}
+		if p.Name == "" || p.Body == "" || !validTypes[p.Type] {
+			continue
+		}
+		out = append(out, p)
+		if limit > 0 && len(out) == limit {
+			break // finding too much is not a reason to keep none of it
+		}
+	}
+	return out
+}
+
+// jsonArray finds the outermost [...] in a reply.
+func jsonArray(s string) string {
+	start := strings.Index(s, "[")
+	end := strings.LastIndex(s, "]")
+	if start < 0 || end < start {
+		return ""
+	}
+	return s[start : end+1]
+}
