@@ -90,10 +90,7 @@ func TestRepeatedIdenticalVetoesBlockTheSession(t *testing.T) {
 		t.Fatalf("the progress detector must stop after 3 identical rounds, got %d", st.Turns)
 	}
 	ev := s.Events()
-	if ev[len(ev)-1].Type != protocol.EventReport {
-		t.Fatal("blocked must emit a report")
-	}
-	if protocol.MustData[protocol.ReportData](ev[len(ev)-1]).ExitStatus != protocol.StateBlocked {
+	if lastReport(t, ev).ExitStatus != protocol.StateBlocked {
 		t.Fatal("report must say blocked")
 	}
 }
@@ -139,7 +136,7 @@ func TestBudgetPausesBeforeTheNextTurn(t *testing.T) {
 		t.Fatalf("budget must stop the loop before the second call, got %d", h.fake.CallCount())
 	}
 	ev := s.Events()
-	if protocol.MustData[protocol.ReportData](ev[len(ev)-1]).ExitStatus != protocol.StatePaused {
+	if lastReport(t, ev).ExitStatus != protocol.StatePaused {
 		t.Fatal("report must say paused")
 	}
 	if err := h.m.Resume(context.Background(), s.ID(), &protocol.BudgetData{MaxTurns: 5, Source: "client"}); err != nil {

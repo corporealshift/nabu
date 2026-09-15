@@ -264,11 +264,7 @@ func TestPromptOnTerminalSessionIsRejected(t *testing.T) {
 	if st := s.State(); st.State != protocol.StateCompleted {
 		t.Fatalf("state: %s", st.State)
 	}
-	ev := s.Events()
-	if ev[len(ev)-1].Type != protocol.EventReport {
-		t.Fatal("stop must emit a report last")
-	}
-	r := protocol.MustData[protocol.ReportData](ev[len(ev)-1])
+	r := lastReport(t, s.Events())
 	if r.ExitStatus != protocol.StateCompleted || r.Checks == nil || r.Tasks.Open == nil {
 		t.Fatalf("report: %+v", r)
 	}
@@ -356,4 +352,20 @@ func TestDefaultPermissionModeIsAuto(t *testing.T) {
 	if got := s.State().Options.PermissionMode; got != protocol.PermissionAuto {
 		t.Errorf("default permission mode: got %q, want %q", got, protocol.PermissionAuto)
 	}
+}
+
+// lastReport finds the run report, which sits immediately before the terminal
+// state change rather than at the end of the log.
+func lastReport(t *testing.T, ev []protocol.Event) *protocol.ReportData {
+	t.Helper()
+	for i := len(ev) - 1; i >= 0; i-- {
+		if ev[i].Type == protocol.EventReport {
+			if i != len(ev)-1 && ev[len(ev)-1].Type != protocol.EventStateChange {
+				t.Errorf("the report is not immediately before the final state change")
+			}
+			return protocol.MustData[protocol.ReportData](ev[i])
+		}
+	}
+	t.Fatal("the session produced no report")
+	return nil
 }

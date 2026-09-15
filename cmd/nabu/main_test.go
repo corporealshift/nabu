@@ -13,6 +13,8 @@ import (
 
 	"github.com/corporealshift/nabu/clients/goclient"
 	"github.com/corporealshift/nabu/daemon"
+	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/daemon/provider"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -270,5 +272,148 @@ func TestResolveRootFallsBackToTheEnvironment(t *testing.T) {
 	}
 	if got != want {
 		t.Errorf("root: got %q, want %q", got, want)
+	}
+}
+
+// startDaemonWithModel runs a daemon whose only provider is scripted, so a
+// whole turn runs without a model server.
+func startDaemonWithModel(t *testing.T, replies ...string) string {
+	t.Helper()
+	root := t.TempDir()
+
+	script := make([]provider.Response, 0, len(replies))
+	for _, r := range replies {
+		script = append(script, provider.Response{Content: r})
+	}
+	reg := provider.NewRegistry()
+	cfg := provider.Config{Name: "fake", MaxInFlight: 1}
+	reg.Add(cfg, &provider.Fake{Script: script}, true)
+
+	d, err := daemon.New(daemon.Options{
+		Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard,
+		Providers: reg,
+		Modules:   []module.Module{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	go d.Serve()
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	if _, err := daemon.WaitForDaemon(context.Background(), root, 5*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// Regression: every successful run hung. The agent leaves a session idle and
+// a headless run was waiting for a terminal state nothing would produce.
+func TestRunExitsWhenTheTurnCompletes(t *testing.T) {
+	root := startDaemonWithModel(t, "The deploy command is make ship.")
+	ws := t.TempDir()
+
+	done := make(chan int, 1)
+	go func() {
+		code, _, _ := runCLI("run", "--root", root, "--workspace", ws, "how is this deployed?")
+		done <- code
+	}()
+
+	select {
+	case code := <-done:
+		if code != exitOK {
+			t.Errorf("exit: got %d, want %d", code, exitOK)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("nabu run never exited after the turn completed")
+	}
+}
+
+// The report is only emitted when a session actually ends, so it guards the
+// other half of the same defect.
+func TestRunLeavesTheSessionCompletedWithAReport(t *testing.T) {
+	root := startDaemonWithModel(t, "done")
+	ws := t.TempDir()
+
+	done := make(chan string, 1)
+	go func() {
+		_, stdout, _ := runCLI("run", "--root", root, "--workspace", ws, "do the thing")
+		done <- stdout
+	}()
+	var stdout string
+	select {
+	case stdout = <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("nabu run never exited")
+	}
+
+	// Reaching the log is not enough; the caller has to see it.
+	if !strings.Contains(stdout, "report") {
+		t.Errorf("the run report was never rendered:\n%s", stdout)
+	}
+	// A report line with nothing on it verifies nothing.
+	if !strings.Contains(stdout, "completed") || !strings.Contains(stdout, "tasks") {
+		t.Errorf("the report line carries no outcome:\n%s", stdout)
+	}
+
+	addr, ok := daemon.RunningAddr(root)
+	if !ok {
+		t.Fatal("daemon not discoverable")
+	}
+	ctx := context.Background()
+	c, err := goclient.Dial(ctx, addr, "", "nabu-cli-test", version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	sessions, err := c.List(ctx)
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("List: %v %+v", err, sessions)
+	}
+	id := sessions[0].SessionID
+
+	st, err := c.State(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.State != protocol.StateCompleted {
+		t.Errorf("state = %q, want completed", st.State)
+	}
+
+	events, _, err := c.EventsAfter(ctx, id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reports int
+	for _, e := range events {
+		if e.Type == protocol.EventReport {
+			reports++
+		}
+	}
+	if reports != 1 {
+		t.Errorf("got %d report events, want exactly one", reports)
+	}
+
+	// A follower stops at the terminal state change, so the report must precede it.
+	reportAt, terminalAt := -1, -1
+	for i, e := range events {
+		switch e.Type {
+		case protocol.EventReport:
+			reportAt = i
+		case protocol.EventStateChange:
+			var sc protocol.StateChangeData
+			if err := json.Unmarshal(e.Data, &sc); err == nil && sc.To == protocol.StateCompleted {
+				terminalAt = i
+			}
+		}
+	}
+	if reportAt < 0 || terminalAt < 0 {
+		t.Fatalf("missing events: report at %d, terminal at %d", reportAt, terminalAt)
+	}
+	if reportAt > terminalAt {
+		t.Errorf("the report comes after the session ended, so no follower sees it")
 	}
 }

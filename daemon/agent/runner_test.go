@@ -108,10 +108,7 @@ func TestProviderErrorEndsTheSessionInError(t *testing.T) {
 		t.Fatalf("state: %s", st.State)
 	}
 	ev := s.Events()
-	if ev[len(ev)-1].Type != protocol.EventReport {
-		t.Fatal("an error must still produce a report")
-	}
-	if protocol.MustData[protocol.ReportData](ev[len(ev)-1]).ExitStatus != protocol.StateError {
+	if lastReport(t, ev).ExitStatus != protocol.StateError {
 		t.Fatal("report must say error")
 	}
 	var sawNotice bool
