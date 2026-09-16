@@ -275,8 +275,11 @@ private fun Composer(pending: List<OutboxRow>, onSend: (String) -> Unit) {
         if (pending.isNotEmpty()) {
             // A prompt the user believes was sent and was not is the failure
             // the outbox exists to prevent, so pending items are visible.
+            // Why it is still waiting, not just that it is.
+            val reason = pending.firstNotNullOfOrNull { it.lastError }
             Text(
-                "${pending.size} waiting to send",
+                if (reason == null) "${pending.size} waiting to send"
+                else "${pending.size} waiting to send — $reason",
                 style = MaterialTheme.typography.labelMedium,
                 color = c.danger,
             )

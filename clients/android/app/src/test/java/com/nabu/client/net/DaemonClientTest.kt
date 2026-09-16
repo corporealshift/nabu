@@ -162,6 +162,18 @@ class DaemonClientTest {
     }
 
     /** The failure the Go client was rebuilt for: a call blocking the stream. */
+    /** Without this the reconnect loop has nothing to wait on and never runs. */
+    @Test
+    fun `a dropped connection can be waited for`() = runBlocking {
+        val c = client()
+        withTimeout(10_000) { c.connect() }
+
+        daemon.socket?.close(1000, "going away")
+
+        val reason = withTimeout(10_000) { c.awaitClosed() }
+        assertTrue("no reason was given for the close", reason.isNotEmpty())
+    }
+
     @Test
     fun `a notification arrives while a call is in flight`() = runBlocking {
         val c = client()

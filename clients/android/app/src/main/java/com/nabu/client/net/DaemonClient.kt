@@ -161,9 +161,16 @@ class DaemonClient(
         }
     }
 
+    /**
+     * Suspends until the connection is gone, and says why. [incoming] is a
+     * SharedFlow and so never completes; this is what a reconnect loop waits on.
+     */
+    suspend fun awaitClosed(): String = closed.await()
+
     fun close() {
         socket?.close(1000, null)
         socket = null
+        closed.complete("closed by this client")
     }
 
     private inner class Listener : WebSocketListener() {
@@ -186,6 +193,13 @@ class DaemonClient(
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             fail(t.message ?: "connection failed")
+        }
+
+        // OkHttp does not answer a peer-initiated close for us, and without the
+        // reply onClosed never arrives.
+        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            webSocket.close(1000, null)
+            fail(if (reason.isEmpty()) "the daemon closed the connection" else reason)
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {

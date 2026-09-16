@@ -8,6 +8,7 @@ import com.nabu.client.data.MirrorDb
 import com.nabu.client.data.SessionRepository
 import com.nabu.client.data.SessionRow
 import com.nabu.client.net.DaemonClient
+import com.nabu.client.net.DaemonException
 import com.nabu.client.net.Incoming
 import com.nabu.client.net.SessionSummary
 import com.nabu.client.protocol.NabuJson
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.buildJsonObject
@@ -120,13 +122,20 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { repo.sync(c, summary.sessionId) }
         }
 
-        // Suspends until the connection drops, which is what makes it retry.
-        c.incoming.collect { msg ->
-            when (msg) {
-                is Incoming.Event -> repo.record(msg)
-                is Incoming.Permission -> _pendingPermission.value = msg.value
-                else -> Unit
+        // incoming never completes, so the drop is what this waits on.
+        coroutineScope {
+            val pump = launch {
+                c.incoming.collect { msg ->
+                    when (msg) {
+                        is Incoming.Event -> repo.record(msg)
+                        is Incoming.Permission -> _pendingPermission.value = msg.value
+                        else -> Unit
+                    }
+                }
             }
+            val reason = c.awaitClosed()
+            pump.cancel()
+            throw DaemonException(reason)
         }
     }
 
