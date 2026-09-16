@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -13,12 +14,15 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -42,15 +46,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
 import com.nabu.client.data.SessionRow
 import com.nabu.client.settings.Settings
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import com.nabu.client.ui.theme.Mode
 import com.nabu.client.ui.theme.NabuTheme
 import com.nabu.client.ui.theme.Scheme
@@ -351,8 +353,30 @@ private fun LineView(line: Line) {
             }
         }
 
-        is Line.UserSaid -> Bubble("You", line.text, NabuTheme.colors.mine)
-        is Line.AgentSaid -> Bubble("Nabu", line.text, NabuTheme.colors.surface)
+        // Only what the reader wrote gets a bubble. The agent's own words are
+        // the page, and a bubble around them just adds a wall to read past.
+        is Line.UserSaid -> Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            Spacer(Modifier.width(40.dp))
+            Text(
+                line.text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = NabuTheme.colors.ink,
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .background(NabuTheme.colors.mine, RoundedCornerShape(16.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            )
+        }
+
+        is Line.AgentSaid -> Text(
+            line.text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = NabuTheme.colors.ink,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        )
 
         is Line.ToolRan -> Text(
             "▸ ${line.tool}  ${line.summary}",
@@ -407,23 +431,6 @@ private fun LineView(line: Line) {
             style = MaterialTheme.typography.labelMedium,
             color = NabuTheme.colors.muted,
         )
-    }
-}
-
-@Composable
-private fun Bubble(who: String, text: String, colour: androidx.compose.ui.graphics.Color) {
-    Column(
-        Modifier.fillMaxWidth()
-            .background(colour, RoundedCornerShape(10.dp))
-            .padding(12.dp)
-    ) {
-        Text(
-            who,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = NabuTheme.colors.muted,
-        )
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = NabuTheme.colors.ink)
     }
 }
 
