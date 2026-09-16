@@ -54,6 +54,7 @@ import com.nabu.client.data.OutboxRow
 import com.nabu.client.data.SessionRow
 import com.nabu.client.protocol.Task
 import com.nabu.client.settings.Settings
+import com.nabu.client.ui.markdown.MarkdownText
 import com.nabu.client.ui.theme.Mode
 import com.nabu.client.ui.theme.NabuTheme
 import com.nabu.client.ui.theme.Scheme
@@ -381,10 +382,8 @@ private fun LineView(line: Line) {
             )
         }
 
-        is Line.AgentSaid -> Text(
+        is Line.AgentSaid -> MarkdownText(
             line.text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = NabuTheme.colors.ink,
             modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
         )
 
