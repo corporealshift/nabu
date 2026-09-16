@@ -2,52 +2,13 @@
 
 A self-contained, custom, multiplatform coding harness built in Go.
 
-## Why it exists
+Nabu was the Mesopotamian god of scribes and record-keeping. The name is the design:
+every session is an append-only log, and every request to the model is built from that
+log. Most of what follows falls out of it.
 
-I wanted a Claude Code-like experience that I own outright.
-
-There is no plugin system and no extension API, because there is nothing to extend
-around. If it should behave differently, I change it. The source is the customisation
-layer. That one decision is why the rest of it looks the way it does.
-
-**Self-contained.** One binary. No Node, no Python, no runtime to install, nothing
-downloaded at startup. The daemon, the terminal UI and the headless CLI are the same
-executable, and the only hard dependency is a model endpoint to talk to.
-
-**Custom.** Policy lives in Go modules compiled into that binary: what the agent is
-allowed to run, when it is allowed to stop, what it remembers. Adding behaviour means
-adding a file and a line to a list, not learning an extension format that someone
-designed for a general case I do not have.
-
-**Multiplatform,** in two senses. It builds for macOS, Linux and Windows, and the tests
-run on all three in CI. And a session is not tied to whatever is looking at it: a
-daemon owns the sessions and clients attach to it, so the terminal is not the only way
-in.
-
-## What it actually does
-
-**It refuses to claim it is done when it isn't.** When the agent thinks it has
-finished, a stop gate asks whether tasks are still open, whether the project's test
-command passes, whether this session left uncommitted changes, and whether the stated
-goal was met. Any objection sends it back to work. The model's account of its own
-success is not treated as evidence.
-
-**It remembers between sessions.** After a session ends, a curator asks whether
-anything in it is worth keeping and writes what it finds as markdown under
-`~/.nabu/memory`. The next session on that repository starts already knowing. That
-directory is a git repository, so you can read, diff and revert whatever it chose to
-remember.
-
-**The run outlives the window.** Quit the terminal UI and the agent keeps working.
-Reattach and the transcript replays from where you left off. Two clients can watch the
-same session at once.
-
-**It only interrupts for things that matter.** A guard judges a command by what it
-would do rather than what it is called. `rm -rf build` runs. `rm -rf /etc` asks.
-
-Every session is an append-only log, and every model request is built from that log.
-Nearly everything above falls out of that. Named for the Mesopotamian god of scribes
-for the same reason.
+I built it because I wanted a Claude Code-like experience that I own outright. There is
+no plugin system and no extension API, because there is nothing to extend around: if it
+should behave differently, I change it. The source is the customisation layer.
 
 > **Status:** early, and built for one person's daily use. It drives a local model
 > through real work every day. Interfaces still move, there is no release or installer,
@@ -167,6 +128,47 @@ nabu resume <id>       # resume a paused one
 nabu daemon            # run the daemon in the foreground
 nabu daemon stop       # stop it
 ```
+
+## Why it looks like this
+
+**Self-contained.** One binary. No Node, no Python, no runtime to install, nothing
+downloaded at startup. The daemon, the terminal UI and the headless CLI are the same
+executable, and the only hard dependency is a model endpoint to talk to.
+
+**Custom.** Policy lives in Go modules compiled into that binary: what the agent is
+allowed to run, when it is allowed to stop, what it remembers. Adding behaviour means
+adding a file and a line to a list, not learning an extension format that someone
+designed for a general case I do not have.
+
+**Multiplatform,** in two senses. It builds for macOS, Linux and Windows, and the tests
+run on all three in CI. And a session is not tied to whatever is looking at it: a
+daemon owns the sessions and clients attach to it, so the terminal is not the only way
+in.
+
+## What it actually does
+
+**It refuses to claim it is done when it isn't.** When the agent thinks it has
+finished, a stop gate asks whether tasks are still open, whether the project's test
+command passes, whether this session left uncommitted changes, and whether the stated
+goal was met. Any objection sends it back to work. The model's account of its own
+success is not treated as evidence.
+
+**It remembers between sessions.** After a session ends, a curator asks whether
+anything in it is worth keeping and writes what it finds as markdown under
+`~/.nabu/memory`. The next session on that repository starts already knowing. That
+directory is a git repository, so you can read, diff and revert whatever it chose to
+remember.
+
+**The run outlives the window.** Quit the terminal UI and the agent keeps working.
+Reattach and the transcript replays from where you left off. Two clients can watch the
+same session at once.
+
+**It only interrupts for things that matter.** A guard judges a command by what it
+would do rather than what it is called. `rm -rf build` runs. `rm -rf /etc` asks.
+
+> **Status:** early, and built for one person's daily use. It drives a local model
+> through real work every day. Interfaces still move, there is no release or installer,
+> and the Android client speaks the protocol but its screens are unfinished.
 
 ## What the agent can do
 
