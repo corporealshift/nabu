@@ -8,20 +8,28 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 version="${1:-dev}"
+shift || true
+
+# With no targets given, build everything. CI passes the subset native to the
+# runner it is on, so each platform's binary is built by that platform.
+if [ "$#" -gt 0 ]; then
+  targets=("$@")
+else
+  targets=(
+    "darwin/arm64"   # Apple silicon
+    "darwin/amd64"   # Intel Macs
+    "linux/amd64"
+    "linux/arm64"
+    "windows/amd64"
+  )
+fi
+
 out="dist"
-rm -rf "$out"
 mkdir -p "$out"
 
-targets=(
-  "darwin arm64"   # Apple silicon
-  "darwin amd64"   # Intel Macs
-  "linux amd64"
-  "linux arm64"
-  "windows amd64"
-)
-
 for target in "${targets[@]}"; do
-  read -r goos goarch <<<"$target"
+  goos="${target%/*}"
+  goarch="${target#*/}"
   name="nabu_${goos}_${goarch}"
   [ "$goos" = "windows" ] && name="$name.exe"
 

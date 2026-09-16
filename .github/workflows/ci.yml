@@ -25,7 +25,15 @@ jobs:
       # is the whole reason the matrix exists.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            targets: linux/amd64 linux/arm64
+          - os: windows-latest
+            targets: windows/amd64
+          # The macOS runner is Apple silicon, so arm64 is native and the Intel
+          # build is cross-compiled beside it. Both are pure Go.
+          - os: macos-latest
+            targets: darwin/arm64 darwin/amd64
     steps:
       - uses: actions/checkout@v4
 
@@ -58,14 +66,18 @@ jobs:
       - name: test
         run: go test ./...
 
-      # Released binaries are cross-compiled from one machine, so a platform
-      # that only ever gets built at release time is one that breaks quietly.
-      # This is compile-only and costs seconds.
-      - name: cross-compile the release targets
-        if: matrix.os == 'ubuntu-latest'
+      # Each runner builds the binaries native to it, so a macOS binary comes
+      # off a Mac rather than out of a cross-compile nobody has run.
+      - name: build release binaries
         shell: bash
-        run: |
-          for target in darwin/arm64 darwin/amd64 linux/arm64 windows/amd64; do
-            echo "building $target"
-            CGO_ENABLED=0 GOOS="${target%/*}" GOARCH="${target#*/}"               go build -o /dev/null ./cmd/nabu
-          done
+        run: ./scripts/build-release.sh "${{ github.sha }}" ${{ matrix.targets }}
+
+      # A macOS binary that only exists at release time is one that breaks
+      # quietly between releases. This makes every run produce a real one.
+      - name: upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: nabu-${{ matrix.os }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
