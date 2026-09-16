@@ -47,6 +47,12 @@ func (m Message) IsNotification() bool { return m.Method != "" && m.ID == nil }
 // answered with Respond.
 func (m Message) IsRequest() bool { return m.Method != "" && m.ID != nil }
 
+// MaxMessageBytes is the largest message either side will read. A session log
+// replay is the big one: events_after returns everything since the cursor in a
+// single message, so this has to clear a long session's catch-up, not just one
+// event.
+const MaxMessageBytes = 64 << 20
+
 // Client is a connection to the daemon.
 //
 // One goroutine owns the socket. The websocket library forbids concurrent
@@ -88,6 +94,12 @@ func Dial(ctx context.Context, addr, token, clientName, version string) (*Client
 	if err != nil {
 		return nil, fmt.Errorf("connecting to the daemon at %s: %w", addr, err)
 	}
+	// The library defaults to 32 KiB, which is exactly the bash tool's output
+	// cap, so a maximum-size tool result plus its envelope always exceeded it
+	// and took the connection down with it. Bounded rather than unlimited: a
+	// buggy peer should not be able to exhaust memory.
+	conn.SetReadLimit(MaxMessageBytes)
+
 	c := &Client{
 		conn:    conn,
 		waiting: map[int]chan Message{},

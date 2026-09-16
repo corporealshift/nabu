@@ -12,7 +12,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -78,9 +77,8 @@ func TestListenWritesPidAndPortThenCleansUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	port, err := strconv.Atoi(string(portBytes))
-	if err != nil || port <= 0 {
-		t.Fatalf("port file holds %q", portBytes)
+	if strings.TrimSpace(string(portBytes)) != d.Addr() {
+		t.Fatalf("port file holds %q, want the bound address %q", portBytes, d.Addr())
 	}
 	if d.Addr() == "" {
 		t.Error("Addr should report the bound address")
@@ -471,5 +469,94 @@ func TestNoConfiguredBudgetLeavesASessionUnbounded(t *testing.T) {
 	}
 	if got := protocol.Project(s.Events()).Budget.MaxTurns; got != 0 {
 		t.Errorf("max_turns = %d, want unbounded", got)
+	}
+}
+
+// Regression: a daemon bound off loopback could not be found by its own CLI.
+func TestASpecificAddressIsDiscoveredVerbatim(t *testing.T) {
+	root := t.TempDir()
+	if err := EnsureLayout(root); err != nil {
+		t.Fatal(err)
+	}
+	writeRunning(t, root, "100.114.148.58:8737")
+
+	addr, ok := RunningAddr(root)
+	if !ok {
+		t.Fatal("not discoverable")
+	}
+	if addr != "100.114.148.58:8737" {
+		t.Errorf("got %q, want the address the daemon actually bound", addr)
+	}
+}
+
+// "[::]" is not dialable, so a wildcard bind means loopback.
+func TestAWildcardBindResolvesToLoopback(t *testing.T) {
+	root := t.TempDir()
+	d, err := New(Options{Root: root, Bind: "0.0.0.0:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	addr, ok := RunningAddr(root)
+	if !ok {
+		t.Fatal("a running daemon was not discoverable")
+	}
+	_, port, _ := net.SplitHostPort(d.Addr())
+	if addr != net.JoinHostPort("127.0.0.1", port) {
+		t.Errorf("got %q, want loopback on port %s", addr, port)
+	}
+}
+
+// A loopback daemon still resolves the way it always did.
+func TestALoopbackDaemonIsStillDiscoverable(t *testing.T) {
+	root := t.TempDir()
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	addr, ok := RunningAddr(root)
+	if !ok {
+		t.Fatal("not discoverable")
+	}
+	if addr != d.Addr() {
+		t.Errorf("discovered %q, want %q", addr, d.Addr())
+	}
+}
+
+// An upgrade must not orphan a daemon that is already running.
+func TestABarePortFileStillResolves(t *testing.T) {
+	root := t.TempDir()
+	if err := EnsureLayout(root); err != nil {
+		t.Fatal(err)
+	}
+	writeRunning(t, root, "8737")
+
+	addr, ok := RunningAddr(root)
+	if !ok {
+		t.Fatal("an old port file should still resolve")
+	}
+	if addr != "127.0.0.1:8737" {
+		t.Errorf("got %q, want the old loopback assumption", addr)
+	}
+}
+
+// writeRunning fakes a live daemon.
+func writeRunning(t *testing.T, root, contents string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(root, PIDFile),
+		[]byte(fmt.Sprint(os.Getpid())), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, PortFile), []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

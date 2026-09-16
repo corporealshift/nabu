@@ -5,9 +5,8 @@ on:
   push:
     branches: [main]
 
-# A new push to a branch cancels the run still going for it. This repo is
-# private on the free tier, so in-flight runs are billed minutes worth
-# reclaiming.
+# A new push to a branch cancels the run still going for it: an in-flight run
+# against superseded code tells nobody anything.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -21,11 +20,20 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
-      # Both platforms always report. nabu targets Windows, and knowing whether
-      # a failure is platform-specific is the whole reason the matrix exists.
+      # Every platform always reports. nabu is developed on Windows and run on
+      # macOS and Linux too, and knowing whether a failure is platform-specific
+      # is the whole reason the matrix exists.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            targets: linux/amd64 linux/arm64
+          - os: windows-latest
+            targets: windows/amd64
+          # The macOS runner is Apple silicon, so arm64 is native and the Intel
+          # build is cross-compiled beside it. Both are pure Go.
+          - os: macos-latest
+            targets: darwin/arm64 darwin/amd64
     steps:
       - uses: actions/checkout@v4
 
@@ -57,3 +65,19 @@ jobs:
       # it never is here: it needs the local model server on the desktop.
       - name: test
         run: go test ./...
+
+      # Each runner builds the binaries native to it, so a macOS binary comes
+      # off a Mac rather than out of a cross-compile nobody has run.
+      - name: build release binaries
+        shell: bash
+        run: bash scripts/build-release.sh "${{ github.sha }}" ${{ matrix.targets }}
+
+      # A macOS binary that only exists at release time is one that breaks
+      # quietly between releases. This makes every run produce a real one.
+      - name: upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: nabu-${{ matrix.os }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
