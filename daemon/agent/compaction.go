@@ -173,7 +173,7 @@ func (m *Manager) summarize(ctx context.Context, h *sessionHandle, pcfg provider
 			{Role: "system", Content: sys},
 			{Role: "user", Content: transcript},
 		},
-	}, nil)
+	}, nil, nil)
 	if err != nil {
 		// A failed summary is not fatal: fall back to clearing results.
 		h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "warn",

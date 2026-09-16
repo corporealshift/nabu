@@ -21,7 +21,7 @@ type Fake struct {
 }
 
 // Complete implements Provider.
-func (f *Fake) Complete(ctx context.Context, req Request, onDelta func(string)) (Response, error) {
+func (f *Fake) Complete(ctx context.Context, req Request, onDelta, onThinking func(string)) (Response, error) {
 	f.mu.Lock()
 	i := len(f.Calls)
 	f.Calls = append(f.Calls, req)
@@ -43,6 +43,9 @@ func (f *Fake) Complete(ctx context.Context, req Request, onDelta func(string)) 
 		return Response{}, fmt.Errorf("fake provider: no scripted response for call %d", i+1)
 	}
 	r := f.Script[i]
+	if onThinking != nil && r.Reasoning != "" {
+		onThinking(r.Reasoning)
+	}
 	if onDelta != nil && r.Content != "" {
 		onDelta(r.Content)
 	}

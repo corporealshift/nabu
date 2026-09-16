@@ -187,9 +187,9 @@ func (m model) help() string {
 		return dim.Render("enter send · esc cancel · /help for commands")
 	}
 	if terminal(m.state) {
-		return dim.Render("q quit · i type · s sessions · g/G top/bottom — the session has ended")
+		return dim.Render("q quit · i type · s sessions · t thinking · g/G top/bottom — the session has ended")
 	}
-	return dim.Render("q quit (the run continues) · i type · s sessions · ctrl+x interrupt")
+	return dim.Render("q quit (the run continues) · i type · s sessions · t thinking · ctrl+x interrupt")
 }
 
 // overlay is the permission prompt. It takes the whole screen deliberately:

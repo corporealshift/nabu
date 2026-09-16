@@ -42,16 +42,21 @@ type Request struct {
 
 // Response is the completed assistant turn.
 type Response struct {
-	Content      string
+	Content string
+	// Reasoning is what the model thought before answering, when the
+	// provider reports any. It is shown to the reader and never sent back.
+	Reasoning    string
 	ToolCalls    []ToolCall
 	Usage        protocol.Usage
 	FinishReason string // "stop" | "tool_calls" | "length" | provider-specific
 }
 
-// Provider streams one completion. onDelta (may be nil) receives content text
-// as it arrives; the returned Response holds the full content.
+// Provider streams one completion. onDelta and onThinking (either may be nil)
+// receive the answer and the reasoning as they arrive, separately, because a
+// reader showing thinking live must not splice it into the answer. The
+// returned Response holds both in full.
 type Provider interface {
-	Complete(ctx context.Context, req Request, onDelta func(string)) (Response, error)
+	Complete(ctx context.Context, req Request, onDelta, onThinking func(string)) (Response, error)
 }
 
 // Config describes one configured provider (spec §4).

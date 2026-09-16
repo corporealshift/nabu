@@ -60,12 +60,26 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 			m.deps.Deltas(h.ID(), turnID, text)
 		}
 	}
-	resp, err := p.Complete(ctx, req, onDelta)
+	onThinking := func(text string) {
+		if m.deps.Thinking != nil {
+			m.deps.Thinking(h.ID(), turnID, text)
+		}
+	}
+	resp, err := p.Complete(ctx, req, onDelta, onThinking)
 	if err != nil {
 		if ctx.Err() != nil {
 			return false, ctx.Err()
 		}
 		return false, fmt.Errorf("model call failed: %w", err)
+	}
+
+	// Thinking is appended first, so a reader that stops at the message has
+	// already seen the reasoning behind it (spec 3.1).
+	if resp.Reasoning != "" {
+		thought := protocol.ThinkingData{Content: resp.Reasoning, Source: "model"}
+		if _, err := h.s.Append(protocol.EventThinking, thought); err != nil {
+			return false, err
+		}
 	}
 
 	msg := protocol.MessageData{Role: "assistant", Content: resp.Content}
