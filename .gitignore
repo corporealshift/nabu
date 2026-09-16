@@ -4,3 +4,4 @@ bin/
 *.exe
 *.test
 coverage.out
+dist/

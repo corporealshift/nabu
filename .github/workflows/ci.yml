@@ -5,9 +5,8 @@ on:
   push:
     branches: [main]
 
-# A new push to a branch cancels the run still going for it. This repo is
-# private on the free tier, so in-flight runs are billed minutes worth
-# reclaiming.
+# A new push to a branch cancels the run still going for it: an in-flight run
+# against superseded code tells nobody anything.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -21,11 +20,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
-      # Both platforms always report. nabu targets Windows, and knowing whether
-      # a failure is platform-specific is the whole reason the matrix exists.
+      # Every platform always reports. nabu is developed on Windows and run on
+      # macOS and Linux too, and knowing whether a failure is platform-specific
+      # is the whole reason the matrix exists.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -57,3 +57,15 @@ jobs:
       # it never is here: it needs the local model server on the desktop.
       - name: test
         run: go test ./...
+
+      # Released binaries are cross-compiled from one machine, so a platform
+      # that only ever gets built at release time is one that breaks quietly.
+      # This is compile-only and costs seconds.
+      - name: cross-compile the release targets
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          for target in darwin/arm64 darwin/amd64 linux/arm64 windows/amd64; do
+            echo "building $target"
+            CGO_ENABLED=0 GOOS="${target%/*}" GOARCH="${target#*/}"               go build -o /dev/null ./cmd/nabu
+          done
