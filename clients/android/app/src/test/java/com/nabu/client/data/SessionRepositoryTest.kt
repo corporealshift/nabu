@@ -41,11 +41,7 @@ class SessionRepositoryTest {
             """{"id":"$id","type":"$type","timestamp":"2026-09-16T00:00:00Z","data":$body}""",
         )
 
-    /**
-     * A session the daemon listed but this device has never fetched is
-     * unsynced, not empty. An empty transcript and a missing one must never
-     * look alike (spec 15).
-     */
+    /** Empty and missing must not look alike (spec 15). */
     @Test
     fun `a listed but unfetched session is recorded as unsynced`() = runBlocking {
         repo.recordSessions(listOf(SessionSummary("S1", "C:/proj", "idle")))

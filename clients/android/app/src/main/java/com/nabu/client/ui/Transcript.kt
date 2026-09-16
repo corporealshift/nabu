@@ -30,10 +30,8 @@ sealed interface Line {
     data class Compacted(override val key: String, val summary: String) : Line
 
     /**
-     * Earlier events exist that this device has not fetched. Spec 15 requires
-     * a partially synced session to render visibly truncated rather than
-     * silently short, so this is a line in the transcript at the point of the
-     * gap, not a footnote somewhere else.
+     * Events this device has not fetched. Spec 15 wants the gap visible at the
+     * gap, not as a footnote elsewhere.
      */
     data class Gap(override val key: String, val neverFetched: Boolean) : Line
 }
@@ -42,11 +40,8 @@ sealed interface Line {
 const val COLLAPSED_OUTPUT_CHARS = 600
 
 /**
- * Builds the transcript.
- *
- * [synced] false means the mirror is behind the daemon, and [hasEvents] false
- * with an unsynced session means nothing has ever been fetched. The two are
- * different and the reader is told which.
+ * Builds the transcript. Behind-the-daemon and never-fetched are different
+ * states and the reader is told which.
  */
 fun transcript(rows: List<EventRow>, synced: Boolean): List<Line> {
     val out = mutableListOf<Line>()

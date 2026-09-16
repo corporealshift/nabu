@@ -15,12 +15,8 @@ import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 /**
- * A session as this device knows it.
- *
- * [cursor] is the last event id mirrored and [synced] whether the mirror had
- * caught up when it was last written. Both are stored rather than derived: the
- * app has to be able to say it is behind while offline, when there is nothing
- * to compare against.
+ * A session as this device knows it. [synced] is stored rather than derived,
+ * because the app must be able to say it is behind while offline.
  */
 @Entity(tableName = "sessions")
 data class SessionRow(
@@ -33,11 +29,7 @@ data class SessionRow(
     @ColumnInfo(name = "updated_at") val updatedAt: Long = 0,
 )
 
-/**
- * One mirrored event. [ordinal] preserves log order independently of the id,
- * so a replay that arrives out of order still renders in the order the daemon
- * appended it.
- */
+/** One mirrored event. [ordinal] preserves log order independently of the id. */
 @Entity(
     tableName = "events",
     foreignKeys = [ForeignKey(
@@ -58,12 +50,8 @@ data class EventRow(
 )
 
 /**
- * A prompt composed on this device.
- *
- * It exists before any send is attempted, which is the whole point: a prompt
- * the user believes was sent and was not is the failure an outbox exists to
- * prevent. [clientId] is what makes a retry safe, because the daemon returns
- * the original event rather than appending a second message.
+ * A prompt composed on this device. It exists before any send is attempted,
+ * and [clientId] is what makes retrying one safe.
  */
 @Entity(tableName = "outbox", indices = [Index("session_id")])
 data class OutboxRow(
@@ -114,7 +102,7 @@ interface EventDao {
     @Query("SELECT MAX(ordinal) FROM events WHERE session_id = :sessionId")
     suspend fun lastOrdinal(sessionId: String): Long?
 
-    /** IGNORE, not REPLACE: an event is immutable, so a repeat is a no-op. */
+    /** An event is immutable, so a repeat is a no-op. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(rows: List<EventRow>)
 }
@@ -150,10 +138,7 @@ abstract class MirrorDb : RoomDatabase() {
     abstract fun events(): EventDao
     abstract fun outbox(): OutboxDao
 
-    /**
-     * Appends events and advances the cursor together, so a reader never sees
-     * a cursor claiming more than the events table holds.
-     */
+    /** Appends and advances the cursor together, so the two cannot disagree. */
     @Transaction
     open suspend fun append(sessionId: String, rows: List<EventRow>, cursor: String, synced: Boolean) {
         if (rows.isNotEmpty()) events().insert(rows)

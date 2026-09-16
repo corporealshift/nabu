@@ -27,11 +27,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/**
- * A stand-in daemon. It answers nabu.hello, echoes a result for any call, and
- * can push notifications on demand, which is enough to exercise the routing
- * without a real daemon or a model.
- */
+/** A stand-in daemon: answers any call, and pushes notifications on demand. */
 private class FakeDaemon {
     val server = MockWebServer()
     val received = ConcurrentLinkedQueue<String>()
@@ -61,8 +57,7 @@ private class FakeDaemon {
                     return
                 }
                 holdCall?.let {
-                    // Answer only once the test says so, so it can prove other
-                    // traffic still flows while this call waits.
+                    // Answer only when the test says so.
                     Thread {
                         it.await(10, TimeUnit.SECONDS)
                         ws.send(resultFor(id, msg.method ?: ""))
@@ -166,11 +161,7 @@ class DaemonClientTest {
         c.done()
     }
 
-    /**
-     * The failure the Go client had to be rebuilt for: a stream and a call
-     * sharing one socket. Here a notification must arrive while a call is
-     * still waiting, rather than being stuck behind it.
-     */
+    /** The failure the Go client was rebuilt for: a call blocking the stream. */
     @Test
     fun `a notification arrives while a call is in flight`() = runBlocking {
         val c = client()
@@ -186,7 +177,7 @@ class DaemonClientTest {
         }
         val call = async { withTimeout(15_000) { c.call("nabu.session.state") } }
 
-        // The call is unanswered on purpose; the event must still get through.
+        // The call is unanswered on purpose.
         delay(200)
         daemon.push("""{"jsonrpc":"2.0","method":"nabu.session.event","params":{
             "session_id":"S1","event":{"id":"E1","type":"message",

@@ -16,12 +16,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * Joins the daemon to the local mirror.
- *
- * Everything the daemon sends is written to Room, and screens read Room. That
- * is the decision the whole app hangs on: offline rendering needs no separate
- * path, a dropped connection changes nothing about what renders, and there is
- * exactly one source of truth for the UI.
+ * Joins the daemon to the local mirror. Everything the daemon sends is written
+ * to Room and screens read Room, so offline rendering needs no separate path.
  */
 class SessionRepository(
     private val db: MirrorDb,
@@ -42,8 +38,7 @@ class SessionRepository(
                     id = s.sessionId,
                     workspace = s.workspace,
                     state = s.state,
-                    // A session listed but never fetched is unsynced, not
-                    // empty. The difference is the whole point of spec 4.
+                    // Listed but never fetched is unsynced, not empty (spec 4).
                     cursor = existing?.cursor ?: "",
                     synced = existing?.synced ?: false,
                     workspaceKey = existing?.workspaceKey ?: "",
@@ -54,10 +49,8 @@ class SessionRepository(
     }
 
     /**
-     * Brings one session's mirror up to date.
-     *
-     * Subscribing happens before fetching, so an event appended during the
-     * catch-up arrives live rather than falling into the gap between the two.
+     * Brings one session's mirror up to date. Subscribing precedes fetching so
+     * an event appended during catch-up is not lost in the gap.
      */
     suspend fun sync(client: DaemonClient, sessionId: String) {
         client.callOrThrow("nabu.session.subscribe", buildJsonObject {
@@ -73,9 +66,8 @@ class SessionRepository(
                 if (cursor.isNotEmpty()) put("last_event_id", cursor)
             })
         } catch (e: Exception) {
-            // A cursor the daemon does not recognise means this device's idea
-            // of the log is wrong. Refetching the whole thing is the only
-            // honest recovery; silently staying behind forever is not.
+            // An unrecognised cursor means this device's idea of the log is
+            // wrong, and refetching beats staying silently behind.
             if (cursor.isEmpty()) throw e
             db.sessions().markSynced(sessionId, "", false, now())
             client.callOrThrow("nabu.session.events_after", buildJsonObject {
@@ -97,10 +89,7 @@ class SessionRepository(
         apply(event.value.sessionId, listOf(event.value.event), synced = true)
     }
 
-    /**
-     * Appends events and advances the cursor. Ordinals continue from what is
-     * already stored, so a later batch cannot sort above an earlier one.
-     */
+    /** Ordinals continue, so a later batch cannot sort above an earlier one. */
     internal suspend fun apply(sessionId: String, events: List<Event>, synced: Boolean) {
         if (db.sessions().get(sessionId) == null) {
             db.sessions().upsert(SessionRow(id = sessionId, updatedAt = now()))
@@ -141,11 +130,8 @@ class SessionRepository(
     }
 
     /**
-     * Sends everything pending, oldest first.
-     *
-     * The client id goes with each one, so a send retried after a dropped
-     * connection returns the original event rather than appending the prompt
-     * twice. An item is cleared only once the daemon has given it an event id.
+     * Sends everything pending, oldest first. The client id makes a retry safe;
+     * an item clears only once the daemon returns an event id for it.
      */
     suspend fun flushOutbox(client: DaemonClient) {
         for (item in db.outbox().pending()) {
@@ -162,9 +148,7 @@ class SessionRepository(
                     db.outbox().markSent(item.clientId, eventId)
                 }
             } catch (e: Exception) {
-                // Stop at the first failure: the rest are almost certainly
-                // going to fail the same way, and sending out of order would
-                // put the prompts into the log backwards.
+                // Stop at the first failure rather than reorder the rest.
                 db.outbox().markFailed(item.clientId, e.message ?: "send failed")
                 return
             }

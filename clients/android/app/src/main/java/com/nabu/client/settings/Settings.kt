@@ -8,10 +8,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /**
- * Where the daemon is and how to prove you may talk to it.
- *
- * The token is not optional in practice: the daemon refuses any connection
- * that is not from loopback without one, and a phone is never loopback.
+ * Where the daemon is and how to prove you may talk to it. The token is not
+ * optional: a phone is never loopback, and the daemon refuses those without one.
  */
 data class Settings(
     val host: String = "",

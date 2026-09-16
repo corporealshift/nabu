@@ -54,9 +54,8 @@ private fun App(vm: NabuViewModel = viewModel()) {
     }
 
     permission?.let { req ->
-        // Deliberately not a bottom sheet with a button where "send" was a
-        // moment ago: spec 15 asks for more friction than the TUI, and the
-        // safe answer must always be the easier one.
+        // Deny sits in the confirm position on purpose: spec 15 wants the safe
+        // answer to be the easier one.
         AlertDialog(
             onDismissRequest = { },
             title = { Text("Permission needed") },

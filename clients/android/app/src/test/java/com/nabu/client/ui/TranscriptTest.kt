@@ -89,10 +89,7 @@ class TranscriptTest {
         assertFalse((lines.single() as Line.ToolOutput).truncated)
     }
 
-    /**
-     * Spec 15: a partially synced session must render visibly truncated. The
-     * gap is a line in the transcript, not a footnote somewhere else.
-     */
+    /** Spec 15: the gap shows at the gap, not as a footnote. */
     @Test
     fun `an unsynced transcript opens with a gap`() {
         val lines = transcript(

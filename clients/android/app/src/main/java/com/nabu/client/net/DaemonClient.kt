@@ -65,15 +65,9 @@ sealed interface Incoming {
 class DaemonException(message: String) : Exception(message)
 
 /**
- * One connection to the daemon.
- *
- * OkHttp delivers every frame on a single reader thread, and all writes are
- * serialised behind a mutex. The Go client had to be rebuilt because two
- * goroutines shared a socket and corrupted the frame stream; repeating that on
- * a phone would be harder to diagnose, not easier.
- *
- * The class is a connection, not a connection manager. Reconnecting is the
- * caller's job, because only the caller knows what to do about the gap.
+ * One connection to the daemon. OkHttp reads on a single thread and writes are
+ * serialised, because concurrent use corrupts the frame stream rather than
+ * failing cleanly. Reconnecting is the caller's job.
  */
 class DaemonClient(
     private val baseUrl: String,
@@ -84,9 +78,8 @@ class DaemonClient(
 ) {
     companion object {
         fun defaultHttp(): OkHttpClient = OkHttpClient.Builder()
-            // The daemon sends nothing while the model thinks, which can be
-            // minutes. Pings keep the connection alive without a read timeout
-            // that would kill an idle-but-healthy session.
+            // A turn can be silent for minutes, so pings keep an idle but
+            // healthy connection alive.
             .pingInterval(20, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -95,9 +88,8 @@ class DaemonClient(
 
     private val writeLock = Mutex()
 
-    // Touched from both coroutines and OkHttp's reader thread, so it is
-    // concurrent rather than guarded: a coroutine Mutex would not exclude the
-    // reader thread, and blocking that thread would stall every other message.
+    // Touched from coroutines and OkHttp's reader thread; a coroutine Mutex
+    // would not exclude the latter.
     private val pending = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<Rpc>>()
     private val nextId = java.util.concurrent.atomic.AtomicLong(0)
     @Volatile private var socket: WebSocket? = null
@@ -114,10 +106,7 @@ class DaemonClient(
     private val connected = CompletableDeferred<Unit>()
     private val closed = CompletableDeferred<String>()
 
-    /**
-     * Opens the socket and completes the handshake. A refused handshake throws
-     * rather than leaving a half-open connection that fails later.
-     */
+    /** Opens the socket and completes the handshake, throwing if it is refused. */
     suspend fun connect() {
         val url = baseUrl.replace(Regex("^http"), "ws")
         val request = Request.Builder().url(url).apply {
@@ -165,8 +154,7 @@ class DaemonClient(
 
     private suspend fun send(msg: Rpc) {
         val text = NabuJson.encodeToString(Rpc.serializer(), msg)
-        // One writer at a time. Concurrent writes corrupt the frame stream
-        // rather than failing cleanly.
+        // One writer at a time.
         writeLock.withLock {
             val s = socket ?: throw DaemonException("not connected")
             if (!s.send(text)) throw DaemonException("the send queue is full or the socket is closed")

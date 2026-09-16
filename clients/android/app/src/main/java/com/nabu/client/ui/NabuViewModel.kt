@@ -68,11 +68,7 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /**
-     * Keeps a connection up for as long as the app is alive, retrying with
-     * backoff. Nothing here blocks a screen: the UI is reading Room, which
-     * works whether this succeeds or not.
-     */
+    /** Keeps a connection up, retrying with backoff. No screen waits on it. */
     fun reconnect() {
         loop?.cancel()
         loop = viewModelScope.launch {
@@ -119,8 +115,7 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { repo.sync(c, summary.sessionId) }
         }
 
-        // Live from here. This suspends until the connection drops, which is
-        // what makes the enclosing loop reconnect.
+        // Suspends until the connection drops, which is what makes it retry.
         c.incoming.collect { msg ->
             when (msg) {
                 is Incoming.Event -> repo.record(msg)
@@ -145,10 +140,7 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /**
-     * Queues a prompt and tries to send it. It is written locally first, so
-     * closing the app or losing signal cannot lose it.
-     */
+    /** Queues a prompt, written locally first so losing signal cannot lose it. */
     fun sendPrompt(sessionId: String, text: String) {
         viewModelScope.launch {
             repo.queuePrompt(sessionId, text, newClientId())
@@ -156,7 +148,7 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** A client-generated id, which is what makes a retry safe to repeat. */
+    /** The id that makes a retry safe to repeat. */
     private fun newClientId(): String =
         "outbox-" + java.util.UUID.randomUUID().toString().replace("-", "").take(20)
 
