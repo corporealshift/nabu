@@ -1,45 +1,61 @@
 # nabu
 
-A coding agent that runs as a daemon on your machine, keeps every session as an
-append-only log, and lets thin clients attach to it. Close the terminal and the run
-keeps going. Open it again and the transcript replays from where you left off.
-
-Named for the Mesopotamian god of scribes, because the central idea is the log.
-
-> **Status:** early, and built for one person's daily use. It works: it drives a local
-> model through real work, remembers what it learns, and refuses to claim it is done
-> when it isn't. Interfaces still move. There is no release, no installer, and the
-> Android client is half-built.
+A coding agent that doesn't take its own word for it.
 
 ## Why it exists
 
-Most coding agents are a process attached to your terminal. Close it and the work dies
-with it. nabu splits that in two:
+Four things about working with coding agents wear thin, and nabu is an attempt at all
+four.
 
-- A **daemon** owns the sessions, the model calls, the tools and the policy.
-- **Clients** are windows onto it. A terminal UI, a headless CLI, eventually a phone.
+**It tells you it's finished when it isn't.** The agent reports that the tests pass.
+The fix is sitting uncommitted, or one task is still open, or the thing you actually
+asked for never got done. You find out later. The model narrating its own success is
+not evidence, and most harnesses treat it as though it were.
 
-Because the daemon owns the log, and every model request is built from that log, you
-get some things for free. A run survives your terminal. Two clients can watch one
-session. A laptop that closes mid-run picks up where it stopped.
+**It forgets everything the moment you close it.** Every session starts from nothing.
+You explain again that this project deploys with `make ship`, that the port is taken,
+that you prefer the other approach. You learn to keep a file of things to paste in.
 
-## What makes it different
+**The run dies with your terminal.** Close the window, lose the work. Shut the laptop
+mid-task and it's gone. A long run means babysitting a terminal you can't close.
 
-**It argues with itself before it stops.** When the agent thinks it's finished, a stop
-gate asks: are tasks still open, did the project's test command pass, did this session
-leave uncommitted changes, was the goal actually met? Any objection sends it back to
-work. "Tests pass" while the fix sits uncommitted is the failure this is built to
-prevent.
+**You can only reach it from where it's running.** No way to check on a run from
+another room, let alone answer a question it's blocked on.
+
+Those are the reasons. Everything below is how nabu addresses them.
+
+## How it addresses them
+
+**It argues with itself before it stops.** When the agent thinks it's done, a stop gate
+asks: are tasks still open, did the project's test command pass, did this session leave
+uncommitted changes, was the goal actually met? Any objection sends it back to work.
+Nothing here trusts the model's account of itself.
 
 **It remembers across sessions.** After a session ends, a curator asks a model whether
-anything in it is worth keeping, and writes what it finds as markdown files under
-`~/.nabu/memory`. The next session on that repository starts with those facts in front
-of it. The memory directory is a git repository, so you can read, diff and revert what
-it decided to remember.
+anything in it is worth keeping and writes what it finds as markdown under
+`~/.nabu/memory`. The next session on that repository starts already knowing. The
+memory directory is a git repository, so you can read, diff and revert what it chose to
+remember, and delete anything it got wrong.
 
-**It only interrupts you for things that matter.** The guard classifies a command by
-what it would do, not what it is called. `rm -rf build` runs. `rm -rf /etc` asks. It
-ships compiled in, so it works before you configure anything.
+**The session outlives the window looking at it.** A daemon owns the sessions; the
+terminal UI is just a view onto one. Quit it and the run continues. Reattach and the
+transcript replays from where you left off. Two clients can watch the same session.
+
+**Any client can attach.** The daemon speaks one documented protocol, so a terminal is
+not the only way in. An Android client is being built against the same one, and it
+needs no changes to the daemon to exist.
+
+One more, not on that list but worth knowing: it only interrupts you for things that
+matter. A guard classifies a command by what it would do rather than what it's called.
+`rm -rf build` runs. `rm -rf /etc` asks.
+
+Named for the Mesopotamian god of scribes and record-keeping, because the thing that
+makes all of this work is that every session is an append-only log.
+
+> **Status:** early, and built for one person's daily use. The first three of those
+> four work today. The fourth is half-built: the Android app speaks the protocol and
+> mirrors sessions, but its screens are unfinished. Interfaces still move, and there's
+> no release or installer yet.
 
 ## Requirements
 
