@@ -10,6 +10,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import androidx.room.Upsert
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
@@ -75,7 +76,9 @@ interface SessionDao {
     @Query("SELECT * FROM sessions WHERE id = :id")
     suspend fun get(id: String): SessionRow?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // REPLACE would delete the existing row first, and the events' foreign key
+    // cascades that delete, emptying the mirror on every relist.
+    @Upsert
     suspend fun upsert(row: SessionRow)
 
     @Query("UPDATE sessions SET cursor = :cursor, synced = :synced, updated_at = :at WHERE id = :id")

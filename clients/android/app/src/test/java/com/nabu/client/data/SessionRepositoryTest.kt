@@ -66,6 +66,26 @@ class SessionRepositoryTest {
         assertEquals("running", row.state)
     }
 
+    /** Relisting on every reconnect must not empty the mirror it just filled. */
+    @Test
+    fun `relisting keeps the events already mirrored`() = runBlocking {
+        repo.recordSessions(listOf(SessionSummary("S1", "C:/proj", "idle")))
+        db.append("S1", listOf(EventRow("E1", "S1", 1, "message", "{}")), "E1", true)
+
+        repo.recordSessions(listOf(SessionSummary("S1", "C:/proj", "idle")))
+
+        assertEquals("relisting must not delete mirrored events", 1, db.events().count("S1"))
+    }
+
+    /** A cursor with nothing behind it would ask for events after the end. */
+    @Test
+    fun `a cursor with an empty mirror is discarded`() = runBlocking {
+        repo.recordSessions(listOf(SessionSummary("S1", "C:/proj", "idle")))
+        db.sessions().markSynced("S1", "E9", true, clock++)
+
+        assertEquals("", repo.cursorFor("S1"))
+    }
+
     /** Ordinals continue, so a later batch cannot sort above an earlier one. */
     @Test
     fun `events keep log order across separate batches`() = runBlocking {

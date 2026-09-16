@@ -49,6 +49,17 @@ class SessionRepository(
     }
 
     /**
+     * Where catch-up resumes from. A cursor with no events behind it is a
+     * mirror that was emptied under it, and asking for events after the end of
+     * the log would return nothing forever, so it starts again.
+     */
+    internal suspend fun cursorFor(sessionId: String): String {
+        val cursor = db.sessions().get(sessionId)?.cursor.orEmpty()
+        if (cursor.isEmpty()) return ""
+        return if (db.events().count(sessionId) == 0) "" else cursor
+    }
+
+    /**
      * Brings one session's mirror up to date. Subscribing precedes fetching so
      * an event appended during catch-up is not lost in the gap.
      */
@@ -57,8 +68,7 @@ class SessionRepository(
             put("session_id", sessionId)
         })
 
-        val row = db.sessions().get(sessionId)
-        val cursor = row?.cursor.orEmpty()
+        val cursor = cursorFor(sessionId)
 
         val result = try {
             client.callOrThrow("nabu.session.events_after", buildJsonObject {
