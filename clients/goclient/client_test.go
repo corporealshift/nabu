@@ -441,3 +441,90 @@ func TestCallsAndStreamCanRunTogether(t *testing.T) {
 		t.Fatal("the stream stopped delivering after concurrent calls")
 	}
 }
+
+// The bash tool caps its output at 32 KiB and the websocket library defaults
+// its read limit to 32 KiB, so a maximum-size tool result plus its JSON-RPC
+// envelope is always over the limit. The connection dies rather than the
+// message being rejected, which is what "read limited at 32769 bytes" is.
+func TestALargeEventDoesNotKillTheConnection(t *testing.T) {
+	addr, m, dir := realDaemon(t)
+	c := dialTest(t, addr)
+	ctx := context.Background()
+
+	s, err := m.Create(ctx, dir, agent.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Subscribe(ctx, s.ID()); err != nil {
+		t.Fatal(err)
+	}
+
+	got := make(chan int, 4)
+	errs := make(chan error, 1)
+	go func() {
+		errs <- c.Stream(ctx, func(msg Message) bool {
+			if ev, ok := ParseEvent(msg); ok && ev.Event.Type == protocol.EventToolResult {
+				d := protocol.MustData[protocol.ToolResultData](ev.Event)
+				select {
+				case got <- len(d.Content):
+				default:
+				}
+				return false
+			}
+			return true
+		})
+	}()
+
+	// Exactly what the bash tool is allowed to return.
+	big := strings.Repeat("x", 32<<10)
+	if _, err := s.Append(protocol.EventToolResult, protocol.ToolResultData{
+		CallID: "c1", Tool: "bash", Content: big, Status: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case n := <-got:
+		if n != len(big) {
+			t.Errorf("received %d bytes of content, want %d", n, len(big))
+		}
+	case err := <-errs:
+		t.Fatalf("the connection dropped instead of delivering the event: %v", err)
+	case <-time.After(15 * time.Second):
+		t.Fatal("the large event never arrived")
+	}
+}
+
+// The same limit applies to what a client sends: pasting a large prompt must
+// not drop the connection either.
+func TestALargePromptIsAccepted(t *testing.T) {
+	addr, m, dir := realDaemon(t)
+	c := dialTest(t, addr)
+	ctx := context.Background()
+
+	s, err := m.Create(ctx, dir, agent.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	big := strings.Repeat("a stack trace line\n", 4000) // well over 32 KiB
+	_, err = c.Call(ctx, "nabu.session.send_prompt",
+		map[string]any{"session_id": s.ID(), "content": big})
+	if err != nil {
+		t.Fatalf("a large prompt was refused: %v", err)
+	}
+}
+
+// Both ends have to agree. If one side will read more than the other, a
+// message one considers sendable is one the other drops the connection over,
+// which is the shape of the bug this pair of limits fixed.
+func TestBothSidesAgreeOnTheMessageLimit(t *testing.T) {
+	if MaxMessageBytes != api.MaxMessageBytes {
+		t.Errorf("client limit %d, daemon limit %d: they must match",
+			MaxMessageBytes, api.MaxMessageBytes)
+	}
+	// Generous enough for a whole session replay, which events_after returns
+	// in one message.
+	if MaxMessageBytes < 16<<20 {
+		t.Errorf("limit %d is too small for a long session's catch-up", MaxMessageBytes)
+	}
+}
