@@ -34,6 +34,9 @@ import kotlinx.serialization.json.put
 /** How the app is currently placed with respect to the daemon. */
 enum class Connection { Offline, Connecting, Connected }
 
+/** A session as the list shows it: the mirror's row plus what was last asked. */
+data class SessionCard(val row: SessionRow, val prompt: String)
+
 class NabuViewModel(app: Application) : AndroidViewModel(app) {
 
     private val db = Room.databaseBuilder(app, MirrorDb::class.java, "nabu-mirror")
@@ -56,8 +59,10 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         settingsStore.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /** The screens read the mirror, never the socket. */
-    val sessions: StateFlow<List<SessionRow>> =
-        repo.watchSessions().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val sessions: StateFlow<List<SessionCard>> =
+        repo.watchSessions()
+            .map { rows -> rows.map { SessionCard(it, repo.latestPrompt(it.id)) } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     fun watchSession(id: String) = repo.watchSession(id)
     fun watchEvents(id: String) = repo.watchEvents(id)

@@ -105,6 +105,17 @@ interface EventDao {
     @Query("SELECT MAX(ordinal) FROM events WHERE session_id = :sessionId")
     suspend fun lastOrdinal(sessionId: String): Long?
 
+    /**
+     * The newest prompts. A long agent run can put dozens of assistant turns
+     * between two prompts, so the role is matched in SQL rather than by taking
+     * the last few messages; the caller confirms it after parsing.
+     */
+    @Query(
+        "SELECT raw FROM events WHERE session_id = :sessionId AND type = 'message' " +
+            "AND raw LIKE '%\"role\":\"user\"%' ORDER BY ordinal DESC LIMIT :limit"
+    )
+    suspend fun recentPrompts(sessionId: String, limit: Int = 5): List<String>
+
     /** An event is immutable, so a repeat is a no-op. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(rows: List<EventRow>)

@@ -86,6 +86,43 @@ class SessionRepositoryTest {
         assertEquals("", repo.cursorFor("S1"))
     }
 
+    /** Two sessions in one workspace are told apart by what was last asked. */
+    @Test
+    fun `a session summarises the last thing the user asked`() = runBlocking {
+        repo.recordSessions(listOf(SessionSummary("S1", "C:/proj", "idle")))
+        repo.apply(
+            "S1",
+            listOf(
+                event("E1", body = """{"role":"user","content":"first question"}"""),
+                event("E2", body = """{"role":"assistant","content":"an answer"}"""),
+                event("E3", body = """{"role":"user","content":"second question"}"""),
+                event("E4", body = """{"role":"assistant","content":"another answer"}"""),
+            ),
+            synced = true,
+        )
+
+        assertEquals("second question", repo.latestPrompt("S1"))
+    }
+
+    /** One prompt can be followed by a long agent run of assistant turns. */
+    @Test
+    fun `a prompt buried under a long run is still found`() = runBlocking {
+        repo.recordSessions(listOf(SessionSummary("S1", "C:/proj", "idle")))
+        val turns = mutableListOf(event("E0", body = """{"role":"user","content":"the only prompt"}"""))
+        repeat(40) { turns += event("E$it-a", body = """{"role":"assistant","content":"turn $it"}""") }
+        repo.apply("S1", turns, synced = true)
+
+        assertEquals("the only prompt", repo.latestPrompt("S1"))
+    }
+
+    /** A session with nothing asked yet has nothing to show, not a stale line. */
+    @Test
+    fun `a session with no prompt summarises as empty`() = runBlocking {
+        repo.recordSessions(listOf(SessionSummary("S1", "C:/proj", "idle")))
+
+        assertEquals("", repo.latestPrompt("S1"))
+    }
+
     /** Ordinals continue, so a later batch cannot sort above an earlier one. */
     @Test
     fun `events keep log order across separate batches`() = runBlocking {

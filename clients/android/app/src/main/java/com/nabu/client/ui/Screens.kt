@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.nabu.client.data.EventRow
@@ -124,7 +125,7 @@ fun SettingsScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionListScreen(
-    sessions: List<SessionRow>,
+    sessions: List<SessionCard>,
     connection: Connection,
     error: String?,
     onOpen: (String) -> Unit,
@@ -183,20 +184,29 @@ fun SessionListScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(sessions, key = { it.id }) { s ->
+            items(sessions, key = { it.row.id }) { card ->
+                val s = card.row
                 Card(
                     colors = CardDefaults.cardColors(containerColor = NabuTheme.colors.surface),
                     modifier = Modifier.fillMaxWidth().clickable { onOpen(s.id) },
                 ) {
-                    Column(Modifier.padding(14.dp)) {
+                    Column(
+                        Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        // Several sessions can share one workspace, so the last
+                        // prompt leads: it is what tells them apart.
                         Text(
-                            s.workspace.ifBlank { s.id },
+                            card.prompt.ifBlank { "Nothing asked yet" },
                             style = MaterialTheme.typography.titleSmall,
-                            color = NabuTheme.colors.ink,
+                            color = if (card.prompt.isBlank()) NabuTheme.colors.muted
+                            else NabuTheme.colors.ink,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                s.state,
+                                "${project(s.workspace.ifBlank { s.id })}  ·  ${s.state}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = NabuTheme.colors.muted,
                             )
@@ -416,6 +426,10 @@ private fun Bubble(who: String, text: String, colour: androidx.compose.ui.graphi
         Text(text, style = MaterialTheme.typography.bodyMedium, color = NabuTheme.colors.ink)
     }
 }
+
+/** The workspace's last segment: the whole path does not fit on a phone. */
+private fun project(workspace: String) =
+    workspace.trimEnd('\\', '/').substringAfterLast('\\').substringAfterLast('/')
 
 private fun connectionLabel(c: Connection) = when (c) {
     Connection.Connected -> "connected"

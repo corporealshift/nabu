@@ -5,6 +5,8 @@ import com.nabu.client.net.Incoming
 import com.nabu.client.net.SessionSummary
 import com.nabu.client.protocol.Event
 import com.nabu.client.protocol.NabuJson
+import com.nabu.client.protocol.payload
+import com.nabu.client.protocol.MessageData
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
@@ -125,6 +127,21 @@ class SessionRepository(
                 if (!to.isNullOrEmpty()) db.sessions().setState(sessionId, to)
             }
         }
+    }
+
+    /**
+     * The last thing the user asked, which is what tells two sessions in one
+     * workspace apart. Empty when nothing has been asked yet.
+     */
+    suspend fun latestPrompt(sessionId: String): String {
+        for (raw in db.events().recentPrompts(sessionId)) {
+            val event = runCatching {
+                NabuJson.decodeFromString(Event.serializer(), raw)
+            }.getOrNull() ?: continue
+            val message = event.payload<MessageData>() ?: continue
+            if (message.role == "user") return message.content.trim()
+        }
+        return ""
     }
 
     /** Queues a prompt. It exists locally before any send is attempted. */
