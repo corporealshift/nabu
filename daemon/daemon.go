@@ -282,11 +282,10 @@ func (d *Daemon) Listen() error {
 	}
 	d.listener = ln
 
-	_, port, err := net.SplitHostPort(ln.Addr().String())
-	if err != nil {
-		port = ln.Addr().String()
-	}
-	if err := os.WriteFile(d.portPath(), []byte(port), 0o644); err != nil {
+	// The whole address, not just the port. A daemon bound to a tailnet
+	// address is reachable only at that address, and a client that assumed
+	// loopback could not find its own daemon.
+	if err := os.WriteFile(d.portPath(), []byte(ln.Addr().String()), 0o644); err != nil {
 		_ = ln.Close()
 		d.releasePID()
 		return fmt.Errorf("daemon: writing port file: %w", err)
@@ -405,11 +404,28 @@ func RunningAddr(root string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	port := strings.TrimSpace(string(b))
-	if port == "" {
+	return clientAddr(strings.TrimSpace(string(b)))
+}
+
+// clientAddr turns what the port file holds into something a client on this
+// machine can dial.
+//
+// A bare port is what an older daemon wrote, and meant loopback. A wildcard
+// bind is not a connectable address, so it means loopback too. Anything else
+// is the address the daemon actually bound, and is used verbatim.
+func clientAddr(recorded string) (string, bool) {
+	if recorded == "" {
 		return "", false
 	}
-	return net.JoinHostPort("127.0.0.1", port), true
+	host, port, err := net.SplitHostPort(recorded)
+	if err != nil {
+		// No colon at all: an old file holding just a port.
+		return net.JoinHostPort("127.0.0.1", recorded), true
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		return net.JoinHostPort("127.0.0.1", port), true
+	}
+	return recorded, true
 }
 
 // WaitForDaemon polls until a daemon under root is listening, or the deadline
