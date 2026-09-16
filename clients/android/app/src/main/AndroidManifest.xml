@@ -5,7 +5,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- The daemon speaks plain ws over Tailscale or a LAN, never the public
+         internet, and there is no certificate to verify. -->
     <application
+        android:usesCleartextTraffic="true"
         android:label="nabu"
         android:supportsRtl="true"
         android:theme="@style/Theme.Nabu">

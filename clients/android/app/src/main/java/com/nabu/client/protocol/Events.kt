@@ -8,12 +8,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-/**
- * The protocol version this client speaks. The daemon refuses a handshake that
- * does not match, which is deliberate: a client guessing at a newer log format
- * is worse than one that will not start.
- */
-const val PROTOCOL_VERSION = "1"
+/** Must match protocol.Version in Go; the daemon refuses a mismatch. */
+const val PROTOCOL_VERSION = "1.0"
 
 /**
  * Lenient on unknown keys and permissive about missing ones. A phone that

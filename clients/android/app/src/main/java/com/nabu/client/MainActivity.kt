@@ -44,6 +44,7 @@ private fun App(vm: NabuViewModel = viewModel()) {
     val sessions by vm.sessions.collectAsState()
     val connection by vm.connection.collectAsState()
     val permission by vm.pendingPermission.collectAsState()
+    val error by vm.error.collectAsState()
 
     // With nowhere to connect to, the first screen is the one that fixes that.
     var screen: Screen by remember { mutableStateOf(Screen.Sessions) }
@@ -65,6 +66,7 @@ private fun App(vm: NabuViewModel = viewModel()) {
         is Screen.Sessions -> SessionListScreen(
             sessions = sessions,
             connection = connection,
+            error = error,
             onOpen = { screen = Screen.Transcript(it) },
             onSettings = { screen = Screen.Settings },
         )

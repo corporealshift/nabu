@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -49,7 +50,7 @@ fun SettingsScreen(current: Settings, onSave: (Settings) -> Unit) {
     var token by remember(current) { mutableStateOf(current.token) }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Connect to a daemon", style = MaterialTheme.typography.headlineSmall)
@@ -89,6 +90,7 @@ fun SettingsScreen(current: Settings, onSave: (Settings) -> Unit) {
 fun SessionListScreen(
     sessions: List<SessionRow>,
     connection: Connection,
+    error: String?,
     onOpen: (String) -> Unit,
     onSettings: () -> Unit,
 ) {
@@ -105,6 +107,20 @@ fun SessionListScreen(
             },
         )
     }) { padding ->
+        if (error != null && connection != Connection.Connected) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                ),
+                modifier = Modifier.fillMaxWidth().padding(padding).padding(12.dp),
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("Cannot reach the daemon", style = MaterialTheme.typography.titleSmall)
+                    Text(error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            return@Scaffold
+        }
         if (sessions.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text(

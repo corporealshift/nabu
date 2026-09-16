@@ -136,4 +136,14 @@ class ProjectionTest {
         assertEquals("running", got.state)
         assertEquals(1, got.turns)
     }
+
+    /** A guessed version is refused by the daemon, so it is read from Go. */
+    @Test
+    fun `the protocol version matches the one the daemon declares`() {
+        var dir: File? = File("").absoluteFile
+        while (dir != null && !File(dir, "protocol/types.go").isFile) dir = dir.parentFile
+        val types = File(requireNotNull(dir), "protocol/types.go").readText()
+        val declared = Regex("""Version\s*=\s*"([^"]+)"""").find(types)!!.groupValues[1]
+        assertEquals("protocol version drifted from the daemon", declared, PROTOCOL_VERSION)
+    }
 }
