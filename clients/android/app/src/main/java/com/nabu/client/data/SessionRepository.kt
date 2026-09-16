@@ -156,6 +156,9 @@ class SessionRepository(
         )
     }
 
+    /** How many prompts are still waiting to be sent. */
+    suspend fun pendingCount(): Int = db.outbox().pending().size
+
     /**
      * Sends everything pending, oldest first. The client id makes a retry safe;
      * an item clears only once the daemon returns an event id for it.
