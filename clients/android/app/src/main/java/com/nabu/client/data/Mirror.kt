@@ -10,17 +10,14 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import androidx.room.Upsert
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 /**
- * A session as this device knows it.
- *
- * [cursor] is the last event id mirrored and [synced] whether the mirror had
- * caught up when it was last written. Both are stored rather than derived: the
- * app has to be able to say it is behind while offline, when there is nothing
- * to compare against.
+ * A session as this device knows it. [synced] is stored rather than derived,
+ * because the app must be able to say it is behind while offline.
  */
 @Entity(tableName = "sessions")
 data class SessionRow(
@@ -33,11 +30,7 @@ data class SessionRow(
     @ColumnInfo(name = "updated_at") val updatedAt: Long = 0,
 )
 
-/**
- * One mirrored event. [ordinal] preserves log order independently of the id,
- * so a replay that arrives out of order still renders in the order the daemon
- * appended it.
- */
+/** One mirrored event. [ordinal] preserves log order independently of the id. */
 @Entity(
     tableName = "events",
     foreignKeys = [ForeignKey(
@@ -58,12 +51,8 @@ data class EventRow(
 )
 
 /**
- * A prompt composed on this device.
- *
- * It exists before any send is attempted, which is the whole point: a prompt
- * the user believes was sent and was not is the failure an outbox exists to
- * prevent. [clientId] is what makes a retry safe, because the daemon returns
- * the original event rather than appending a second message.
+ * A prompt composed on this device. It exists before any send is attempted,
+ * and [clientId] is what makes retrying one safe.
  */
 @Entity(tableName = "outbox", indices = [Index("session_id")])
 data class OutboxRow(
@@ -87,7 +76,9 @@ interface SessionDao {
     @Query("SELECT * FROM sessions WHERE id = :id")
     suspend fun get(id: String): SessionRow?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // REPLACE would delete the existing row first, and the events' foreign key
+    // cascades that delete, emptying the mirror on every relist.
+    @Upsert
     suspend fun upsert(row: SessionRow)
 
     @Query("UPDATE sessions SET cursor = :cursor, synced = :synced, updated_at = :at WHERE id = :id")
@@ -114,7 +105,18 @@ interface EventDao {
     @Query("SELECT MAX(ordinal) FROM events WHERE session_id = :sessionId")
     suspend fun lastOrdinal(sessionId: String): Long?
 
-    /** IGNORE, not REPLACE: an event is immutable, so a repeat is a no-op. */
+    /**
+     * The newest prompts. A long agent run can put dozens of assistant turns
+     * between two prompts, so the role is matched in SQL rather than by taking
+     * the last few messages; the caller confirms it after parsing.
+     */
+    @Query(
+        "SELECT raw FROM events WHERE session_id = :sessionId AND type = 'message' " +
+            "AND raw LIKE '%\"role\":\"user\"%' ORDER BY ordinal DESC LIMIT :limit"
+    )
+    suspend fun recentPrompts(sessionId: String, limit: Int = 5): List<String>
+
+    /** An event is immutable, so a repeat is a no-op. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(rows: List<EventRow>)
 }
@@ -150,10 +152,7 @@ abstract class MirrorDb : RoomDatabase() {
     abstract fun events(): EventDao
     abstract fun outbox(): OutboxDao
 
-    /**
-     * Appends events and advances the cursor together, so a reader never sees
-     * a cursor claiming more than the events table holds.
-     */
+    /** Appends and advances the cursor together, so the two cannot disagree. */
     @Transaction
     open suspend fun append(sessionId: String, rows: List<EventRow>, cursor: String, synced: Boolean) {
         if (rows.isNotEmpty()) events().insert(rows)

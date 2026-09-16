@@ -6,14 +6,109 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import com.nabu.client.ui.theme.Mode
+import com.nabu.client.ui.theme.NabuTheme
+import com.nabu.client.ui.theme.Scheme
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nabu.client.data.EventRow
+import com.nabu.client.data.OutboxRow
+import com.nabu.client.ui.Connection
+import com.nabu.client.ui.NabuViewModel
+import com.nabu.client.ui.PermissionSheet
+import com.nabu.client.ui.SessionListScreen
+import com.nabu.client.ui.SettingsScreen
+import com.nabu.client.ui.TranscriptScreen
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme {
-                Surface { Text("nabu") }
-            }
+        enableEdgeToEdge()
+        setContent { App() }
+    }
+}
+
+private sealed interface Screen {
+    data object Sessions : Screen
+    data object Settings : Screen
+    data class Transcript(val id: String) : Screen
+}
+
+@Composable
+private fun App(vm: NabuViewModel = viewModel()) {
+    val settings by vm.settings.collectAsState()
+    val systemDark = isSystemInDarkTheme()
+    val chosen = settings
+    val dark = when (chosen?.mode ?: Mode.System) {
+        Mode.System -> systemDark
+        Mode.Light -> false
+        Mode.Dark -> true
+    }
+
+    NabuTheme(scheme = chosen?.scheme ?: Scheme.Verdigris, dark = dark) {
+        Surface(color = NabuTheme.colors.background) {
+            Screens(vm = vm, systemDark = systemDark)
+        }
+    }
+}
+
+@Composable
+private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
+    val settings by vm.settings.collectAsState()
+    val sessions by vm.sessions.collectAsState()
+    val connection by vm.connection.collectAsState()
+    val permission by vm.pendingPermission.collectAsState()
+    val error by vm.error.collectAsState()
+
+    // With nowhere to connect to, the first screen is the one that fixes that.
+    var screen: Screen by remember { mutableStateOf(Screen.Sessions) }
+    LaunchedEffect(settings) {
+        val s = settings ?: return@LaunchedEffect
+        if (s.host.isBlank()) screen = Screen.Settings else vm.reconnect()
+    }
+
+    permission?.let { req ->
+        PermissionSheet(request = req, onAnswer = { vm.answerPermission(it) })
+    }
+
+    when (val s = screen) {
+        is Screen.Settings -> SettingsScreen(
+            current = settings ?: com.nabu.client.settings.Settings(),
+            systemDark = systemDark,
+            onAppearance = { sc, md -> vm.setAppearance(sc, md) },
+            onSave = { vm.save(it); screen = Screen.Sessions },
+        )
+
+        is Screen.Sessions -> SessionListScreen(
+            sessions = sessions,
+            connection = connection,
+            error = error,
+            onOpen = { screen = Screen.Transcript(it) },
+            onSettings = { screen = Screen.Settings },
+        )
+
+        is Screen.Transcript -> {
+            val row by vm.watchSession(s.id).collectAsState(initial = null)
+            val events by vm.watchEvents(s.id).collectAsState(initial = emptyList<EventRow>())
+            val pending by vm.watchPending(s.id).collectAsState(initial = emptyList<OutboxRow>())
+            TranscriptScreen(
+                title = row?.workspace?.substringAfterLast('/')?.ifBlank { s.id } ?: s.id,
+                events = events,
+                synced = row?.synced ?: false,
+                pending = pending,
+                onSend = { vm.sendPrompt(s.id, it) },
+                onBack = { screen = Screen.Sessions },
+            )
         }
     }
 }

@@ -1,0 +1,171 @@
+package com.nabu.client.ui
+
+import com.nabu.client.data.EventRow
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class TranscriptTest {
+
+    private fun row(id: String, type: String, data: String, ordinal: Long = 1) =
+        EventRow(
+            id = id, sessionId = "S1", ordinal = ordinal, type = type,
+            raw = """{"id":"$id","type":"$type","timestamp":"2026-09-16T00:00:00Z","data":$data}""",
+        )
+
+    @Test
+    fun `messages render by role`() {
+        val lines = transcript(
+            listOf(
+                row("E1", "message", """{"role":"user","content":"do the thing"}"""),
+                row("E2", "message", """{"role":"assistant","content":"doing it"}""", 2),
+            ),
+            synced = true,
+        )
+
+        assertEquals(2, lines.size)
+        assertTrue(lines[0] is Line.UserSaid)
+        assertTrue(lines[1] is Line.AgentSaid)
+        assertEquals("do the thing", (lines[0] as Line.UserSaid).text)
+    }
+
+    /** An assistant message with no text is the model calling a tool. */
+    @Test
+    fun `an empty message is not a line`() {
+        val lines = transcript(
+            listOf(row("E1", "message", """{"role":"assistant","content":""}""")),
+            synced = true,
+        )
+        assertTrue(lines.isEmpty())
+    }
+
+    @Test
+    fun `a tool call shows what it did rather than its payload`() {
+        val lines = transcript(
+            listOf(
+                row(
+                    "E1", "tool_call",
+                    """{"call_id":"c1","tool":"bash","source":"model","arguments":{"command":"go test ./..."}}""",
+                )
+            ),
+            synced = true,
+        )
+
+        val line = lines.single() as Line.ToolRan
+        assertEquals("bash", line.tool)
+        assertEquals("go test ./...", line.summary)
+    }
+
+    @Test
+    fun `a long tool result is marked for collapsing`() {
+        val long = "x".repeat(COLLAPSED_OUTPUT_CHARS + 50)
+        val lines = transcript(
+            listOf(
+                row(
+                    "E1", "tool_result",
+                    """{"call_id":"c1","tool":"bash","content":"$long","status":"ok"}""",
+                )
+            ),
+            synced = true,
+        )
+
+        val line = lines.single() as Line.ToolOutput
+        assertTrue("a long result should be collapsible", line.truncated)
+        assertEquals(long.length, line.text.length)
+    }
+
+    @Test
+    fun `a short tool result is not collapsed`() {
+        val lines = transcript(
+            listOf(
+                row(
+                    "E1", "tool_result",
+                    """{"call_id":"c1","tool":"read","content":"two lines","status":"ok"}""",
+                )
+            ),
+            synced = true,
+        )
+        assertFalse((lines.single() as Line.ToolOutput).truncated)
+    }
+
+    /** Spec 15: the gap shows at the gap, not as a footnote. */
+    @Test
+    fun `an unsynced transcript opens with a gap`() {
+        val lines = transcript(
+            listOf(row("E9", "message", """{"role":"user","content":"latest"}""")),
+            synced = false,
+        )
+
+        val gap = lines.first() as Line.Gap
+        assertFalse("there are events, so this is truncated not empty", gap.neverFetched)
+        assertEquals(2, lines.size)
+    }
+
+    /** Never fetched and fetched-but-behind must not look alike. */
+    @Test
+    fun `a never fetched session says so rather than looking empty`() {
+        val gap = transcript(emptyList(), synced = false).single() as Line.Gap
+        assertTrue(gap.neverFetched)
+    }
+
+    /** A fully synced session has no gap line at all. */
+    @Test
+    fun `a synced transcript has no gap`() {
+        val lines = transcript(
+            listOf(row("E1", "message", """{"role":"user","content":"hi"}""")),
+            synced = true,
+        )
+        assertTrue(lines.none { it is Line.Gap })
+    }
+
+    @Test
+    fun `notices and vetoes are shown`() {
+        val lines = transcript(
+            listOf(
+                row("E1", "notice", """{"source":"daemon","level":"warn","message":"context is filling"}"""),
+                row("E2", "stop_veto", """{"module":"verify","reason":"the gate failed"}""", 2),
+            ),
+            synced = true,
+        )
+
+        assertEquals("context is filling", (lines[0] as Line.Note).text)
+        assertEquals("verify", (lines[1] as Line.Veto).module)
+    }
+
+    /** Injected context is the module talking to the model, not to the reader. */
+    @Test
+    fun `context events are not rendered`() {
+        val lines = transcript(
+            listOf(row("E1", "context", """{"source":"module:memory","slot":"prefix","content":"## Memory"}""")),
+            synced = true,
+        )
+        assertTrue(lines.isEmpty())
+    }
+
+    /** A row that will not decode costs its line and nothing else. */
+    @Test
+    fun `an unreadable row does not break the transcript`() {
+        val good = row("E1", "message", """{"role":"user","content":"kept"}""")
+        val bad = EventRow(id = "E2", sessionId = "S1", ordinal = 2, type = "message", raw = "not json")
+
+        val lines = transcript(listOf(good, bad), synced = true)
+
+        assertEquals(1, lines.size)
+        assertEquals("kept", (lines.single() as Line.UserSaid).text)
+    }
+
+    @Test
+    fun `a summarize compaction is shown so the gap in context is visible`() {
+        val lines = transcript(
+            listOf(
+                row(
+                    "E1", "compaction",
+                    """{"mode":"summarize","range_start":"E0","range_end":"E0","summary":"what happened"}""",
+                )
+            ),
+            synced = true,
+        )
+        assertEquals("what happened", (lines.single() as Line.Compacted).summary)
+    }
+}
