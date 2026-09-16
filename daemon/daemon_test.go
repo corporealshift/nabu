@@ -77,7 +77,6 @@ func TestListenWritesPidAndPortThenCleansUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The whole bound address, so a daemon off loopback can still be found.
 	if strings.TrimSpace(string(portBytes)) != d.Addr() {
 		t.Fatalf("port file holds %q, want the bound address %q", portBytes, d.Addr())
 	}
@@ -473,10 +472,7 @@ func TestNoConfiguredBudgetLeavesASessionUnbounded(t *testing.T) {
 	}
 }
 
-// A daemon bound anywhere but loopback was undiscoverable by its own clients:
-// the port file held only a port and every reader assumed 127.0.0.1. Binding
-// to a tailnet address, which is the whole point of reaching it from a phone,
-// therefore broke the local CLI.
+// Regression: a daemon bound off loopback could not be found by its own CLI.
 func TestASpecificAddressIsDiscoveredVerbatim(t *testing.T) {
 	root := t.TempDir()
 	if err := EnsureLayout(root); err != nil {
@@ -493,8 +489,7 @@ func TestASpecificAddressIsDiscoveredVerbatim(t *testing.T) {
 	}
 }
 
-// A wildcard bind is not a connectable address, so a client on this machine
-// uses loopback. Handing it "[::]" would simply fail to dial.
+// "[::]" is not dialable, so a wildcard bind means loopback.
 func TestAWildcardBindResolvesToLoopback(t *testing.T) {
 	root := t.TempDir()
 	d, err := New(Options{Root: root, Bind: "0.0.0.0:0", LogWriter: io.Discard})
@@ -537,8 +532,7 @@ func TestALoopbackDaemonIsStillDiscoverable(t *testing.T) {
 	}
 }
 
-// A port file written by an older daemon holds a bare port. It still resolves,
-// because an upgrade should not orphan a running daemon.
+// An upgrade must not orphan a daemon that is already running.
 func TestABarePortFileStillResolves(t *testing.T) {
 	root := t.TempDir()
 	if err := EnsureLayout(root); err != nil {
@@ -555,8 +549,7 @@ func TestABarePortFileStillResolves(t *testing.T) {
 	}
 }
 
-// writeRunning fakes a live daemon: this process's pid, and whatever the port
-// file is meant to contain.
+// writeRunning fakes a live daemon.
 func writeRunning(t *testing.T, root, contents string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(root, PIDFile),

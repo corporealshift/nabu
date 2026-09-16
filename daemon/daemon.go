@@ -282,9 +282,8 @@ func (d *Daemon) Listen() error {
 	}
 	d.listener = ln
 
-	// The whole address, not just the port. A daemon bound to a tailnet
-	// address is reachable only at that address, and a client that assumed
-	// loopback could not find its own daemon.
+	// The whole address: a daemon off loopback is reachable only at the one
+	// it bound.
 	if err := os.WriteFile(d.portPath(), []byte(ln.Addr().String()), 0o644); err != nil {
 		_ = ln.Close()
 		d.releasePID()
@@ -407,12 +406,9 @@ func RunningAddr(root string) (string, bool) {
 	return clientAddr(strings.TrimSpace(string(b)))
 }
 
-// clientAddr turns what the port file holds into something a client on this
-// machine can dial.
-//
-// A bare port is what an older daemon wrote, and meant loopback. A wildcard
-// bind is not a connectable address, so it means loopback too. Anything else
-// is the address the daemon actually bound, and is used verbatim.
+// clientAddr turns what the port file holds into something dialable. A bare
+// port is an older daemon's format, and a wildcard bind is not an address, so
+// both mean loopback; anything else is used verbatim.
 func clientAddr(recorded string) (string, bool) {
 	if recorded == "" {
 		return "", false
