@@ -3,14 +3,15 @@ package com.nabu.client.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.room.Room
 import com.nabu.client.data.MirrorDb
+import com.nabu.client.data.OutboxWorker
 import com.nabu.client.data.SessionRepository
 import com.nabu.client.data.SessionRow
 import com.nabu.client.net.DaemonClient
 import com.nabu.client.net.DaemonException
 import com.nabu.client.net.Incoming
 import com.nabu.client.net.SessionSummary
+import com.nabu.client.protocol.EventType
 import com.nabu.client.protocol.NabuJson
 import com.nabu.client.settings.Settings
 import com.nabu.client.settings.SettingsStore
@@ -39,9 +40,7 @@ data class SessionCard(val row: SessionRow, val prompt: String)
 
 class NabuViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val db = Room.databaseBuilder(app, MirrorDb::class.java, "nabu-mirror")
-        .fallbackToDestructiveMigration()
-        .build()
+    private val db = MirrorDb.get(app)
 
     private val repo = SessionRepository(db)
     private val settingsStore = SettingsStore(app)
@@ -132,7 +131,13 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
             val pump = launch {
                 c.incoming.collect { msg ->
                     when (msg) {
-                        is Incoming.Event -> repo.record(msg)
+                        is Incoming.Event -> {
+                            repo.record(msg)
+                            // The snapshot is authoritative; taps stop speaking.
+                            if (msg.value.event.type == EventType.TASKS) {
+                                _tapped.value = _tapped.value - msg.value.sessionId
+                            }
+                        }
                         is Incoming.Permission -> _pendingPermission.value = msg.value
                         else -> Unit
                     }
@@ -153,10 +158,49 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         val c = client ?: return
         viewModelScope.launch {
             runCatching {
-                c.respond(req.id, buildJsonObject { put("approved", approve) })
+                c.respond(req.id, permissionReply(approve))
             }
             _pendingPermission.value = null
         }
+    }
+
+    /**
+     * Tasks tapped but not yet confirmed by a snapshot, so a tap shows at once
+     * rather than two seconds later.
+     */
+    private val _tapped = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+    val tapped: StateFlow<Map<String, Set<String>>> = _tapped.asStateFlow()
+
+    /** Completes a task. `update_tasks` takes the whole snapshot, not a diff. */
+    fun completeTask(sessionId: String, tasks: List<com.nabu.client.protocol.Task>, taskId: String) {
+        _tapped.value = _tapped.value + (sessionId to (_tapped.value[sessionId].orEmpty() + taskId))
+        viewModelScope.launch {
+            val c = client
+            if (c == null) {
+                forget(sessionId, taskId)
+                _error.value = "not connected"
+                return@launch
+            }
+            try {
+                c.callOrThrow("nabu.session.update_tasks", buildJsonObject {
+                    put("session_id", sessionId)
+                    put(
+                        "tasks",
+                        NabuJson.encodeToJsonElement(
+                            ListSerializer(com.nabu.client.protocol.Task.serializer()),
+                            withDone(tasks, taskId),
+                        ),
+                    )
+                })
+            } catch (e: Exception) {
+                forget(sessionId, taskId)
+                _error.value = e.message
+            }
+        }
+    }
+
+    private fun forget(sessionId: String, taskId: String) {
+        _tapped.value = _tapped.value + (sessionId to (_tapped.value[sessionId].orEmpty() - taskId))
     }
 
     /** Queues a prompt, written locally first so losing signal cannot lose it. */
@@ -164,6 +208,9 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             repo.queuePrompt(sessionId, text, newClientId())
             client?.let { runCatching { repo.flushOutbox(it) } }
+            // Whatever happened just now, the queue is drained again when
+            // there is a network, with or without this app in the foreground.
+            if (repo.pendingCount() > 0) OutboxWorker.schedule(getApplication())
         }
     }
 

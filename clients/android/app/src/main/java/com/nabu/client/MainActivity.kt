@@ -18,6 +18,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import com.nabu.client.ui.theme.Mode
 import com.nabu.client.ui.theme.NabuTheme
 import com.nabu.client.ui.theme.Scheme
+import com.nabu.client.ui.overlay
+import com.nabu.client.ui.projectName
+import com.nabu.client.ui.tasksOf
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
@@ -101,12 +104,18 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
             val row by vm.watchSession(s.id).collectAsState(initial = null)
             val events by vm.watchEvents(s.id).collectAsState(initial = emptyList<EventRow>())
             val pending by vm.watchPending(s.id).collectAsState(initial = emptyList<OutboxRow>())
+            val tapped by vm.tapped.collectAsState()
+            val tasks = remember(events, tapped) {
+                overlay(tasksOf(events), tapped[s.id].orEmpty())
+            }
             TranscriptScreen(
-                title = row?.workspace?.substringAfterLast('/')?.ifBlank { s.id } ?: s.id,
+                title = row?.workspace?.let { projectName(it) }?.ifBlank { s.id } ?: s.id,
                 events = events,
                 synced = row?.synced ?: false,
                 pending = pending,
+                tasks = tasks,
                 onSend = { vm.sendPrompt(s.id, it) },
+                onTaskDone = { vm.completeTask(s.id, tasks, it) },
                 onBack = { screen = Screen.Sessions },
             )
         }
