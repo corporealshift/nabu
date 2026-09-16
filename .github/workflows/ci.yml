@@ -70,7 +70,7 @@ jobs:
       # off a Mac rather than out of a cross-compile nobody has run.
       - name: build release binaries
         shell: bash
-        run: ./scripts/build-release.sh "${{ github.sha }}" ${{ matrix.targets }}
+        run: bash scripts/build-release.sh "${{ github.sha }}" ${{ matrix.targets }}
 
       # A macOS binary that only exists at release time is one that breaks
       # quietly between releases. This makes every run produce a real one.
