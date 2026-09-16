@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The wedge, placed inside the adaptive icon's safe zone. Same geometry as
-     ui/theme/Wedge.kt, scaled from its 64-unit grid onto 108. -->
+     ui/theme/Wedge.kt, scaled from its 64-unit grid onto 108 and nudged right:
+     the mark's mass is at its head, so a centred bounding box reads as left. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -8,8 +9,8 @@
     android:viewportHeight="108">
     <path
         android:fillColor="#E8DFE2"
-        android:pathData="M28.8,28.9 L77.1,45.7 L28.8,56.2 Z" />
+        android:pathData="M35.8,29.9 L84.1,46.7 L35.8,57.2 Z" />
     <path
         android:fillColor="#D5654A"
-        android:pathData="M28.8,56.2 L77.1,45.7 L37.2,79.3 Z" />
+        android:pathData="M35.8,57.2 L84.1,46.7 L44.2,80.3 Z" />
 </vector>
