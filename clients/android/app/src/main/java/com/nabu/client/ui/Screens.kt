@@ -8,11 +8,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -25,6 +29,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,6 +38,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -41,16 +48,31 @@ import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
 import com.nabu.client.data.SessionRow
 import com.nabu.client.settings.Settings
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.nabu.client.ui.theme.Mode
+import com.nabu.client.ui.theme.NabuTheme
+import com.nabu.client.ui.theme.Scheme
+import com.nabu.client.ui.theme.Wedge
 
 /** Host, port and token. The token is required, so the screen says why. */
 @Composable
-fun SettingsScreen(current: Settings, onSave: (Settings) -> Unit) {
+fun SettingsScreen(
+    current: Settings,
+    systemDark: Boolean,
+    onAppearance: (Scheme, Mode) -> Unit,
+    onSave: (Settings) -> Unit,
+) {
     var host by remember(current) { mutableStateOf(current.host) }
     var port by remember(current) { mutableStateOf(current.port.toString()) }
     var token by remember(current) { mutableStateOf(current.token) }
 
     Column(
-        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Connect to a daemon", style = MaterialTheme.typography.headlineSmall)
@@ -78,10 +100,24 @@ fun SettingsScreen(current: Settings, onSave: (Settings) -> Unit) {
         )
         Button(
             onClick = {
-                onSave(Settings(host.trim(), port.toIntOrNull() ?: 8737, token.trim()))
+                // copy, so saving the connection does not discard the palette
+                onSave(
+                    current.copy(
+                        host = host.trim(),
+                        port = port.toIntOrNull() ?: 8737,
+                        token = token.trim(),
+                    )
+                )
             },
             enabled = host.isNotBlank() && token.isNotBlank(),
         ) { Text("Save and connect") }
+
+        AppearanceSection(
+            scheme = current.scheme,
+            mode = current.mode,
+            systemDark = systemDark,
+            onChange = onAppearance,
+        )
     }
 }
 
@@ -94,13 +130,18 @@ fun SessionListScreen(
     onOpen: (String) -> Unit,
     onSettings: () -> Unit,
 ) {
-    Scaffold(topBar = {
+    Scaffold(containerColor = NabuTheme.colors.background, topBar = {
         TopAppBar(
-            title = { Text("nabu") },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = NabuTheme.colors.background,
+                titleContentColor = NabuTheme.colors.ink,
+            ),
+            title = { Text("Nabu", fontWeight = FontWeight.SemiBold) },
             actions = {
                 Text(
                     connectionLabel(connection),
                     style = MaterialTheme.typography.labelMedium,
+                    color = NabuTheme.colors.muted,
                     modifier = Modifier.padding(end = 12.dp),
                 )
                 TextButton(onClick = onSettings) { Text("Settings") }
@@ -109,14 +150,20 @@ fun SessionListScreen(
     }) { padding ->
         if (error != null && connection != Connection.Connected) {
             Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                ),
+                colors = CardDefaults.cardColors(containerColor = NabuTheme.colors.surface),
                 modifier = Modifier.fillMaxWidth().padding(padding).padding(12.dp),
             ) {
                 Column(Modifier.padding(12.dp)) {
-                    Text("Cannot reach the daemon", style = MaterialTheme.typography.titleSmall)
-                    Text(error, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "Cannot reach the daemon",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = NabuTheme.colors.danger,
+                    )
+                    Text(
+                        error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NabuTheme.colors.muted,
+                    )
                 }
             }
             return@Scaffold
@@ -138,21 +185,27 @@ fun SessionListScreen(
         ) {
             items(sessions, key = { it.id }) { s ->
                 Card(
+                    colors = CardDefaults.cardColors(containerColor = NabuTheme.colors.surface),
                     modifier = Modifier.fillMaxWidth().clickable { onOpen(s.id) },
                 ) {
                     Column(Modifier.padding(14.dp)) {
                         Text(
                             s.workspace.ifBlank { s.id },
                             style = MaterialTheme.typography.titleSmall,
+                            color = NabuTheme.colors.ink,
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text(s.state, style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                s.state,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = NabuTheme.colors.muted,
+                            )
                             if (!s.synced) {
                                 // Spec 4 obliges a client to disclose this.
                                 Text(
                                     "partially synced",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.error,
+                                    color = NabuTheme.colors.danger,
                                 )
                             }
                         }
@@ -181,8 +234,13 @@ fun TranscriptScreen(
     }
 
     Scaffold(
+        containerColor = NabuTheme.colors.background,
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = NabuTheme.colors.background,
+                    titleContentColor = NabuTheme.colors.ink,
+                ),
                 title = { Text(title, style = MaterialTheme.typography.titleSmall) },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
             )
@@ -203,14 +261,24 @@ fun TranscriptScreen(
 @Composable
 private fun Composer(pending: List<OutboxRow>, onSend: (String) -> Unit) {
     var text by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+    val c = NabuTheme.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(c.background)
+            // Rises with the keyboard, and clears the gesture bar and the
+            // screen's rounded corners when it is down.
+            .imePadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
         if (pending.isNotEmpty()) {
             // A prompt the user believes was sent and was not is the failure
             // the outbox exists to prevent, so pending items are visible.
             Text(
                 "${pending.size} waiting to send",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.error,
+                color = c.danger,
             )
         }
         Row(
@@ -220,12 +288,29 @@ private fun Composer(pending: List<OutboxRow>, onSend: (String) -> Unit) {
             OutlinedTextField(
                 value = text, onValueChange = { text = it },
                 placeholder = { Text("Send a prompt") },
+                // Grows with what is typed, then scrolls inside itself rather
+                // than pushing the transcript off the screen.
+                maxLines = 6,
+                shape = RoundedCornerShape(20.dp),
                 modifier = Modifier.weight(1f),
             )
-            Button(
-                onClick = { onSend(text.trim()); text = "" },
-                enabled = text.isNotBlank(),
-            ) { Text("Send") }
+            val ready = text.isNotBlank()
+            Box(
+                Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(if (ready) c.accent else Color.Transparent)
+                    .clickable(enabled = ready) { onSend(text.trim()); text = "" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Wedge(
+                    stroke = if (ready) c.onAccent else c.muted,
+                    // On the filled button the accent tail would vanish, so the
+                    // wedge keeps its two tones by dropping the tail's alpha.
+                    shadow = if (ready) c.onAccent.copy(alpha = 0.55f) else c.line,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
         }
     }
 }
@@ -234,32 +319,33 @@ private fun Composer(pending: List<OutboxRow>, onSend: (String) -> Unit) {
 private fun LineView(line: Line) {
     when (line) {
         is Line.Gap -> Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-            ),
+            colors = CardDefaults.cardColors(containerColor = NabuTheme.colors.surface),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(Modifier.padding(12.dp)) {
                 Text(
                     if (line.neverFetched) "Not downloaded" else "Earlier events not downloaded",
                     style = MaterialTheme.typography.titleSmall,
+                    color = NabuTheme.colors.danger,
                 )
                 Text(
                     if (line.neverFetched)
                         "This session exists on the daemon but nothing has been fetched yet."
                     else "This device is behind. What follows is only the most recent part.",
                     style = MaterialTheme.typography.bodySmall,
+                    color = NabuTheme.colors.muted,
                 )
             }
         }
 
-        is Line.UserSaid -> Bubble("You", line.text, MaterialTheme.colorScheme.primaryContainer)
-        is Line.AgentSaid -> Bubble("nabu", line.text, MaterialTheme.colorScheme.surfaceVariant)
+        is Line.UserSaid -> Bubble("You", line.text, NabuTheme.colors.mine)
+        is Line.AgentSaid -> Bubble("Nabu", line.text, NabuTheme.colors.surface)
 
         is Line.ToolRan -> Text(
             "▸ ${line.tool}  ${line.summary}",
             style = MaterialTheme.typography.bodySmall,
             fontFamily = FontFamily.Monospace,
+            color = NabuTheme.colors.accent,
         )
 
         is Line.ToolOutput -> {
@@ -269,10 +355,7 @@ private fun LineView(line: Line) {
                 else line.text.take(COLLAPSED_OUTPUT_CHARS)
             Column(
                 Modifier.fillMaxWidth()
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant,
-                        RoundedCornerShape(6.dp),
-                    )
+                    .background(NabuTheme.colors.code, RoundedCornerShape(6.dp))
                     .clickable(enabled = line.truncated) { expanded = !expanded }
                     .padding(10.dp)
             ) {
@@ -280,12 +363,14 @@ private fun LineView(line: Line) {
                     shown,
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
+                    color = NabuTheme.colors.codeInk,
                 )
                 if (line.truncated) {
                     Text(
                         if (expanded) "tap to collapse"
                         else "… ${line.text.length - COLLAPSED_OUTPUT_CHARS} more, tap to expand",
                         style = MaterialTheme.typography.labelSmall,
+                        color = NabuTheme.colors.muted,
                     )
                 }
             }
@@ -294,19 +379,20 @@ private fun LineView(line: Line) {
         is Line.Note -> Text(
             "note: ${line.text}",
             style = MaterialTheme.typography.bodySmall,
-            color = if (line.level == "error") MaterialTheme.colorScheme.error
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (line.level == "error") NabuTheme.colors.danger
+            else NabuTheme.colors.muted,
         )
 
         is Line.Veto -> Text(
             "${line.module} refused the stop: ${line.reason}",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
+            color = NabuTheme.colors.danger,
         )
 
         is Line.Compacted -> Text(
             "— earlier conversation summarised —",
             style = MaterialTheme.typography.labelMedium,
+            color = NabuTheme.colors.muted,
         )
     }
 }
@@ -318,8 +404,13 @@ private fun Bubble(who: String, text: String, colour: androidx.compose.ui.graphi
             .background(colour, RoundedCornerShape(10.dp))
             .padding(12.dp)
     ) {
-        Text(who, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-        Text(text, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            who,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = NabuTheme.colors.muted,
+        )
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = NabuTheme.colors.ink)
     }
 }
 

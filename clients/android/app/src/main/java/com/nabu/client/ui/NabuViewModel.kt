@@ -61,6 +61,11 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     fun watchEvents(id: String) = repo.watchEvents(id)
     fun watchPending(id: String) = repo.watchPending(id)
 
+    /** Appearance saves without disturbing the connection. */
+    fun setAppearance(scheme: com.nabu.client.ui.theme.Scheme, mode: com.nabu.client.ui.theme.Mode) {
+        viewModelScope.launch { settingsStore.saveAppearance(scheme, mode) }
+    }
+
     fun save(settings: Settings) {
         viewModelScope.launch {
             settingsStore.save(settings)

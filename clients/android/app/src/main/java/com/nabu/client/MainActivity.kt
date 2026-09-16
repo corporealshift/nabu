@@ -13,6 +13,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import com.nabu.client.ui.theme.Mode
+import com.nabu.client.ui.theme.NabuTheme
+import com.nabu.client.ui.theme.Scheme
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
@@ -28,7 +33,8 @@ import kotlinx.coroutines.flow.flowOf
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme { Surface { App() } } }
+        enableEdgeToEdge()
+        setContent { App() }
     }
 }
 
@@ -40,6 +46,24 @@ private sealed interface Screen {
 
 @Composable
 private fun App(vm: NabuViewModel = viewModel()) {
+    val settings by vm.settings.collectAsState()
+    val systemDark = isSystemInDarkTheme()
+    val chosen = settings
+    val dark = when (chosen?.mode ?: Mode.System) {
+        Mode.System -> systemDark
+        Mode.Light -> false
+        Mode.Dark -> true
+    }
+
+    NabuTheme(scheme = chosen?.scheme ?: Scheme.Verdigris, dark = dark) {
+        Surface(color = NabuTheme.colors.background) {
+            Screens(vm = vm, systemDark = systemDark)
+        }
+    }
+}
+
+@Composable
+private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
     val settings by vm.settings.collectAsState()
     val sessions by vm.sessions.collectAsState()
     val connection by vm.connection.collectAsState()
@@ -60,6 +84,8 @@ private fun App(vm: NabuViewModel = viewModel()) {
     when (val s = screen) {
         is Screen.Settings -> SettingsScreen(
             current = settings ?: com.nabu.client.settings.Settings(),
+            systemDark = systemDark,
+            onAppearance = { sc, md -> vm.setAppearance(sc, md) },
             onSave = { vm.save(it); screen = Screen.Sessions },
         )
 
