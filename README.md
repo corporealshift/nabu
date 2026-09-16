@@ -49,7 +49,8 @@ ships compiled in, so it works before you configure anything.
 - Git, optionally. Without it you lose memory versioning and some reporting, nothing
   else.
 
-Developed on Windows. The daemon and CLI are pure Go and should build anywhere Go does.
+Developed on Windows, with the tests run on macOS and Linux in CI too. The daemon and
+CLI are pure Go with no cgo, so they build and cross-compile anywhere Go runs.
 
 ## Install
 
@@ -63,6 +64,19 @@ That puts `nabu` in your Go bin directory, which you may need to add to your PAT
 
 When you upgrade later, stop the daemon first with `nabu daemon stop`. A running
 daemon holds the binary open and the install will fail.
+
+### Building for another machine
+
+`scripts/build-release.sh` cross-compiles into `dist/` for macOS on Apple silicon and
+Intel, Linux on x86-64 and arm64, and Windows. Any one machine builds all of them.
+
+```bash
+./scripts/build-release.sh 0.1.0
+```
+
+Nothing is code-signed or notarised. On macOS a binary you built or copied across runs
+without complaint; one downloaded through a browser is quarantined and needs
+`xattr -d com.apple.quarantine nabu` first.
 
 ## Configure
 
