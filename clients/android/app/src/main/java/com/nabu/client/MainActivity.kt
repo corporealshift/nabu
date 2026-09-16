@@ -3,11 +3,9 @@ package com.nabu.client
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -20,6 +18,7 @@ import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
 import com.nabu.client.ui.Connection
 import com.nabu.client.ui.NabuViewModel
+import com.nabu.client.ui.PermissionSheet
 import com.nabu.client.ui.SessionListScreen
 import com.nabu.client.ui.SettingsScreen
 import com.nabu.client.ui.TranscriptScreen
@@ -54,17 +53,7 @@ private fun App(vm: NabuViewModel = viewModel()) {
     }
 
     permission?.let { req ->
-        // Deny sits in the confirm position on purpose: spec 15 wants the safe
-        // answer to be the easier one.
-        AlertDialog(
-            onDismissRequest = { },
-            title = { Text("Permission needed") },
-            text = { Text("${req.risk.uppercase()}  ${req.tool}\n\n${req.summary}") },
-            confirmButton = { TextButton(onClick = { vm.answerPermission(false) }) { Text("Deny") } },
-            dismissButton = {
-                TextButton(onClick = { vm.answerPermission(true) }) { Text("Approve") }
-            },
-        )
+        PermissionSheet(request = req, onAnswer = { vm.answerPermission(it) })
     }
 
     when (val s = screen) {
