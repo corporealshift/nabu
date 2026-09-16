@@ -133,6 +133,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("websocket accept failed", "error", err)
 		return
 	}
+	// The 32 KiB default is smaller than a pasted stack trace, and smaller
+	// than a single maximum-size tool result. Exceeding it closes the
+	// connection rather than rejecting the message.
+	c.SetReadLimit(MaxMessageBytes)
 	defer c.CloseNow()
 
 	ctx := r.Context()
@@ -234,6 +238,11 @@ func isLoopback(addr string) bool {
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
 }
+
+// MaxMessageBytes is the largest message the daemon will read from a client.
+// It matches the client's own limit; both sides have to agree or one of them
+// drops a message the other considered sendable.
+const MaxMessageBytes = 64 << 20
 
 // isWebSocketUpgrade reports whether r carries the WebSocket handshake headers.
 func isWebSocketUpgrade(r *http.Request) bool {
