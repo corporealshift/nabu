@@ -1,0 +1,14 @@
+{
+  "id": "03-find-the-bug",
+  "prompt": "`go run ./cmd/check` fails. Fix the bug in dedupe.go so it passes, and add a regression test to dedupe_test.go covering the case that was broken. Do not change anything under cmd/.",
+  "verify": [
+    "go",
+    "run",
+    "./cmd/check"
+  ],
+  "unchanged": [
+    "cmd/check/main.go"
+  ],
+  "max_turns": 14,
+  "timeout_seconds": 900
+}

@@ -1,0 +1,14 @@
+{
+  "id": "06-two-places",
+  "prompt": "Statuses are listed in two places that have drifted apart: the Status constants in status.go and the labels in labels.go. TestEveryStatusHasALabel fails because of it. Fix it so the test passes. Do not change the test.",
+  "verify": [
+    "go",
+    "test",
+    "./..."
+  ],
+  "unchanged": [
+    "status_test.go"
+  ],
+  "max_turns": 14,
+  "timeout_seconds": 900
+}
