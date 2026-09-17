@@ -69,15 +69,15 @@ func (w *Workspace) git(ctx context.Context, args ...string) (string, error) {
 
 // Changed is every file the run added, edited or deleted, in sorted order.
 func (w *Workspace) Changed(ctx context.Context) ([]string, error) {
-	if _, err := w.git(ctx, "add", "-A"); err != nil {
-		return nil, fmt.Errorf("workspace: staging: %w", err)
+	if out, err := w.git(ctx, "add", "-A"); err != nil {
+		return nil, fmt.Errorf("workspace: staging: %w: %s", err, out)
 	}
 	// --no-renames, because a rename touched two paths. Git would report only
 	// the destination, and a harness that renamed a forbidden file would look
 	// as though it had left it alone.
 	out, err := w.git(ctx, "diff", "--cached", "--no-renames", "--name-only")
 	if err != nil {
-		return nil, fmt.Errorf("workspace: diff: %w", err)
+		return nil, fmt.Errorf("workspace: diff: %w: %s", err, out)
 	}
 	if out == "" {
 		return nil, nil
@@ -93,12 +93,12 @@ func (w *Workspace) Changed(ctx context.Context) ([]string, error) {
 
 // Diff is the whole change as a patch, which is what the judge reads.
 func (w *Workspace) Diff(ctx context.Context) (string, error) {
-	if _, err := w.git(ctx, "add", "-A"); err != nil {
-		return "", fmt.Errorf("workspace: staging: %w", err)
+	if out, err := w.git(ctx, "add", "-A"); err != nil {
+		return "", fmt.Errorf("workspace: staging: %w: %s", err, out)
 	}
 	out, err := w.git(ctx, "diff", "--cached")
 	if err != nil {
-		return "", fmt.Errorf("workspace: diff: %w", err)
+		return "", fmt.Errorf("workspace: diff: %w: %s", err, out)
 	}
 	return out, nil
 }

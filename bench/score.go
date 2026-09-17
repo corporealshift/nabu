@@ -2,6 +2,8 @@ package bench
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os/exec"
 	"sort"
 	"time"
@@ -23,23 +25,30 @@ const (
 	OutcomeNA Outcome = "not_scored" // excluded, because its task is suspect
 )
 
-// verify runs a task's check in the workspace and reports whether it passed,
-// and separately whether it could be run at all. A verify command that cannot
-// start is a broken fixture, not a failing harness.
-func verify(ctx context.Context, ws *Workspace, task Task) (ok bool, runnable bool) {
+// verify runs a task's check in the workspace. It reports whether the check
+// passed, whether it could be run at all, and why not when it could not: a
+// broken fixture with no reason attached is a dead end to diagnose.
+func verify(ctx context.Context, ws *Workspace, task Task) (ok bool, runnable bool, why string) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, task.Verify[0], task.Verify[1:]...)
 	cmd.Dir = ws.Dir
-	err := cmd.Run()
-	if err == nil {
-		return true, true
+	out, err := cmd.CombinedOutput()
+	switch {
+	case err == nil:
+		return true, true, ""
+	case isExitError(err):
+		// It ran and disagreed, which is a result about the harness.
+		return false, true, ""
+	default:
+		return false, false, fmt.Sprintf("%v: %s", err, tail(string(out), 200))
 	}
-	if _, isExit := err.(*exec.ExitError); isExit {
-		return false, true
-	}
-	return false, false
+}
+
+func isExitError(err error) bool {
+	var ee *exec.ExitError
+	return errors.As(err, &ee)
 }
 
 // violations is the forbidden files this run touched.

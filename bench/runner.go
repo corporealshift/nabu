@@ -125,7 +125,10 @@ func (r *Runner) one(ctx context.Context, parent string, task Task, h Harness, r
 	out.Changed = changed
 	out.Broke = violations(changed, task.Unchanged)
 
-	verified, runnable := verify(ctx, ws, task)
+	verified, runnable, why := verify(ctx, ws, task)
+	if why != "" {
+		out.Note = "the check could not be run — " + why
+	}
 	out.Outcome = outcome(attempt, runErr == nil, verified, runnable, out.Broke)
 	if out.Outcome == Passed {
 		out.Tail = "" // nothing to explain

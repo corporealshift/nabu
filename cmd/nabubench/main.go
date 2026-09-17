@@ -25,7 +25,8 @@ func run() int {
 	var (
 		tasksDir   = flag.String("tasks", "bench/tasks", "directory of task fixtures")
 		resultsDir = flag.String("results", "bench/results", "where to write the result file")
-		only       = flag.String("only", "", "comma-separated harnesses to run (default: all)")
+		only       = flag.String("only", "nabu,pi", "comma-separated harnesses to run")
+		withClaude = flag.Bool("claude", false, "also run Claude, and let it judge craft (uses your Claude quota)")
 		task       = flag.String("task", "", "run one task by id")
 		repeat     = flag.Int("repeat", 3, "attempts per task per harness")
 		compare    = flag.String("compare", "", "an earlier result file to measure movement against")
@@ -84,7 +85,13 @@ func run() int {
 		}
 	}()
 
-	harnesses := pick(*only, []bench.Harness{
+	// Claude is opt-in. It is the reference, but it spends a quota that a
+	// routine comparison of the two local harnesses has no need of.
+	wanted := *only
+	if *withClaude && !strings.Contains(wanted, "claude") {
+		wanted += ",claude"
+	}
+	harnesses := pick(wanted, []bench.Harness{
 		nabu,
 		&bench.Pi{},
 		&bench.Claude{Model: *claudeMdl},
@@ -94,9 +101,11 @@ func run() int {
 		return 1
 	}
 
-	var judge bench.Judge = &bench.ClaudeJudge{Model: *judgeModel}
-	if *noJudge {
-		judge = bench.NoJudge{}
+	// The judge is Claude too, so it follows the same opt-in rather than
+	// quietly spending a quota on a run that asked for neither.
+	var judge bench.Judge = bench.NoJudge{}
+	if *withClaude && !*noJudge {
+		judge = &bench.ClaudeJudge{Model: *judgeModel}
 	}
 
 	// Ctrl-C stops after the run in flight rather than losing the hours

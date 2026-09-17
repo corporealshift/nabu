@@ -47,9 +47,9 @@ func TestEveryFixtureStartsFailing(t *testing.T) {
 			}
 			defer ws.Remove()
 
-			passed, runnable := verify(context.Background(), ws, task)
+			passed, runnable, why := verify(context.Background(), ws, task)
 			if !runnable {
-				t.Fatalf("the verify command could not be run at all: %v", task.Verify)
+				t.Fatalf("the check %v could not be run: %s", task.Verify, why)
 			}
 			if passed {
 				t.Errorf("the fixture already passes %v, so the task asks for nothing", task.Verify)

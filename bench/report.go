@@ -74,6 +74,38 @@ func Report(w io.Writer, r Results) {
 		fmt.Fprintln(w)
 	}
 
+	fmt.Fprintf(w, "%-24s", "TIME (median)")
+	for _, h := range harnesses {
+		var secs []float64
+		for _, run := range r.Runs {
+			if run.Harness == h && run.Outcome == Passed {
+				secs = append(secs, run.Cost.Duration.Seconds())
+			}
+		}
+		cell := "–"
+		if len(secs) > 0 {
+			cell = fmt.Sprintf("%.0fs", medianOf(secs))
+		}
+		fmt.Fprintf(w, "%-16s", cell)
+	}
+	fmt.Fprintln(w)
+
+	fmt.Fprintf(w, "%-24s", "TURNS (median)")
+	for _, h := range harnesses {
+		var turns []float64
+		for _, run := range r.Runs {
+			if run.Harness == h && run.Outcome == Passed && run.Cost.Turns > 0 {
+				turns = append(turns, float64(run.Cost.Turns))
+			}
+		}
+		cell := "–"
+		if len(turns) > 0 {
+			cell = fmt.Sprintf("%.0f", medianOf(turns))
+		}
+		fmt.Fprintf(w, "%-16s", cell)
+	}
+	fmt.Fprintln(w)
+
 	fmt.Fprintf(w, "%-24s", "CRAFT (of 5)")
 	for _, h := range harnesses {
 		var sum float64
@@ -99,6 +131,9 @@ func Report(w io.Writer, r Results) {
 		fmt.Fprintf(w, "%-24s$%.2f\n", "CLAUDE SPEND", spend)
 	}
 
+	if !ranReference(r) {
+		fmt.Fprintf(w, "\nno reference harness in this run, so no task was checked for being broken\n")
+	}
 	if len(r.Suspects) > 0 {
 		fmt.Fprintf(w, "\n? suspect, excluded from the rates: %s\n", strings.Join(r.Suspects, ", "))
 		fmt.Fprintf(w, "  the reference harness failed these, so they are more likely broken than hard.\n")
@@ -188,6 +223,17 @@ func rateIndex(r Results) map[string]float64 {
 	return out
 }
 
+// medianOf is the middle of a slice of numbers, which says more about a
+// harness than a mean does when one run went badly.
+func medianOf(xs []float64) float64 {
+	if len(xs) == 0 {
+		return 0
+	}
+	sorted := append([]float64(nil), xs...)
+	sort.Float64s(sorted)
+	return sorted[len(sorted)/2]
+}
+
 // tiersIn lists the tiers present, basic first: it is the floor, and a hard
 // score read without knowing the floor holds is misleading.
 func tiersIn(r Results) []string {
@@ -205,6 +251,18 @@ func tiersIn(r Results) []string {
 		return []string{""}
 	}
 	return out
+}
+
+// ranReference reports whether the harness that vouches for the tasks took
+// part. Without it a rate is still a rate, but nothing has vouched for the
+// tasks behind it.
+func ranReference(r Results) bool {
+	for _, h := range r.Harness {
+		if h == "claude" {
+			return true
+		}
+	}
+	return false
 }
 
 func isSuspect(r Results, task string) bool {
