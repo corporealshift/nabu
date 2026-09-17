@@ -33,7 +33,7 @@ expected to pass everything, so its failure is evidence about the task.
 
 ## Tiers
 
- tasks confirm a harness works at all.  tasks are the ones meant to
+`basic` tasks confirm a harness works at all. `hard` tasks are the ones meant to
 tell good harnesses apart, and they are reported on their own line: a tier every
 harness passes cannot show movement, and averaging it into the headline hides
 the difference you are looking for.
