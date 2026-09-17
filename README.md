@@ -183,6 +183,53 @@ run on all three in CI. And a session is not tied to whatever is looking at it: 
 daemon owns the sessions and clients attach to it, so the terminal is not the only way
 in.
 
+## How a request travels
+
+Everything is an append-only log of events. The daemon owns it, clients read it, and
+nothing else is the truth: a client that reconnects replays from the log rather than
+being told what it missed.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor You
+    participant Client as TUI or phone
+    participant Daemon
+    participant Log as session log
+    participant Model
+
+    You->>Client: a prompt
+    Client->>Daemon: nabu.session.send_prompt
+    Daemon->>Log: append message
+    Log-->>Client: event
+
+    loop until every stop gate agrees
+        Daemon->>Log: read it back
+        Note over Daemon: assemble the request from<br/>the log alone
+        Daemon->>Model: system prompt, log, tools
+        Model-->>Daemon: reasoning, text, tool calls
+        Daemon->>Log: append thinking, then message
+        Log-->>Client: events
+
+        opt the model asked for a tool
+            Note over Daemon: modules may refuse,<br/>or ask you first
+            Daemon-->>Client: permission request
+            Client-->>Daemon: approve or deny
+            Daemon->>Log: append tool_call, tool_result
+            Log-->>Client: events
+        end
+    end
+
+    Daemon->>Log: append report
+    Log-->>Client: event
+```
+
+The loop is the part worth understanding. The model does not decide when it has
+finished: it says so, and the stop gates are asked whether that is true. Any objection
+appends a veto and sends it back round. That is why the same session can keep working
+after you close the terminal, and why two clients can watch it at once — neither is
+driving it.
+
 ## What it actually does
 
 **It refuses to claim it is done when it isn't.** When the agent thinks it has
