@@ -54,7 +54,7 @@ func TestOpenAIStreamsContentToolCallsAndUsage(t *testing.T) {
 		},
 		Tools:     []ToolSpec{{Name: "bash", Description: "run", Parameters: []byte(`{"type":"object"}`)}},
 		MaxTokens: 256,
-	}, func(s string) { deltas = append(deltas, s) })
+	}, func(s string) { deltas = append(deltas, s) }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestOpenAINonStreamErrorBody(t *testing.T) {
 	}))
 	defer srv.Close()
 	p := NewOpenAI(Config{Name: "t", BaseURL: srv.URL + "/v1", Retries: -1}, srv.Client())
-	_, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
+	_, err := p.Complete(context.Background(), Request{Model: "m"}, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "bad tool schema") || !strings.Contains(err.Error(), "400") {
 		t.Fatalf("err: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestOpenAIErrorEventMidStream(t *testing.T) {
 	}))
 	defer srv.Close()
 	p := NewOpenAI(Config{Name: "t", BaseURL: srv.URL + "/v1"}, srv.Client())
-	_, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
+	_, err := p.Complete(context.Background(), Request{Model: "m"}, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "context length exceeded") {
 		t.Fatalf("err: %v", err)
 	}

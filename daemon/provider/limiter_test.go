@@ -24,7 +24,7 @@ func TestRetriesOn503ThenSucceeds(t *testing.T) {
 	defer srv.Close()
 	p := NewOpenAI(Config{Name: "t", BaseURL: srv.URL + "/v1", Retries: 1}, srv.Client())
 	start := time.Now()
-	resp, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
+	resp, err := p.Complete(context.Background(), Request{Model: "m"}, nil, nil)
 	if err != nil || resp.Content != "ok" {
 		t.Fatalf("resp: %+v err: %v", resp, err)
 	}
@@ -46,7 +46,7 @@ func TestNoRetryAfterFirstDelta(t *testing.T) {
 	}))
 	defer srv.Close()
 	p := NewOpenAI(Config{Name: "t", BaseURL: srv.URL + "/v1", Retries: 3}, srv.Client())
-	_, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
+	_, err := p.Complete(context.Background(), Request{Model: "m"}, nil, nil)
 	if err == nil || atomic.LoadInt32(&n) != 1 {
 		t.Fatalf("must not retry after output started: attempts=%d err=%v", n, err)
 	}
@@ -75,7 +75,7 @@ func TestMaxInFlightSerialises(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := p.Complete(context.Background(), Request{Model: "m"}, nil); err != nil {
+			if _, err := p.Complete(context.Background(), Request{Model: "m"}, nil, nil); err != nil {
 				t.Error(err)
 			}
 		}()

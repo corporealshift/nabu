@@ -446,6 +446,20 @@ func ParseDelta(m Message) (SessionDelta, bool) {
 	return p, true
 }
 
+// ParseThinking reads a thinking notification. It carries the same shape as a
+// delta because it is the same kind of thing: ephemeral, superseded by the
+// thinking event that follows it.
+func ParseThinking(m Message) (SessionDelta, bool) {
+	if m.Method != "nabu.session.thinking" {
+		return SessionDelta{}, false
+	}
+	var p SessionDelta
+	if json.Unmarshal(m.Params, &p) != nil {
+		return SessionDelta{}, false
+	}
+	return p, true
+}
+
 // sameID compares a response id to the one sent. JSON numbers decode as
 // float64, so an int never equals its own echo without this.
 func sameID(got any, want int) bool {

@@ -30,6 +30,7 @@
         "nabu.session.update_tasks",
         "nabu.session.event",
         "nabu.session.delta",
+        "nabu.session.thinking",
         "nabu.rpc.permission.request",
         "nabu.rpc.ui.ask"
       ]
@@ -50,7 +51,7 @@
       "not": { "required": ["id"] },
       "properties": {
         "jsonrpc": { "const": "2.0" },
-        "method": { "type": "string", "enum": ["nabu.session.event", "nabu.session.delta"] },
+        "method": { "type": "string", "enum": ["nabu.session.event", "nabu.session.delta", "nabu.session.thinking"] },
         "params": { "type": "object" }
       }
     },

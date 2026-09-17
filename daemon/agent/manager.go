@@ -31,6 +31,9 @@ type Asker interface {
 // never replayed (protocol spec §7.6).
 type DeltaSink func(sessionID, turnID, text string)
 
+// Thinking streams over the same sink shape. The event is what persists;
+// the stream only saves the reader waiting for the turn to end.
+
 // Deps are the collaborators a Manager needs.
 type Deps struct {
 	Store     *session.Store
@@ -41,6 +44,7 @@ type Deps struct {
 	Log       *slog.Logger
 	Asker     Asker
 	Deltas    DeltaSink
+	Thinking  DeltaSink
 }
 
 // Manager owns every live session: it creates them, runs their loops, and is
@@ -695,7 +699,7 @@ func (m *Manager) complete(ctx context.Context, h *sessionHandle, req module.Com
 		msgs = append(msgs, provider.Message{Role: mm.Role, Content: mm.Content})
 	}
 	resp, err := p.Complete(ctx, provider.Request{
-		Model: name, Messages: msgs, MaxTokens: req.MaxTokens}, nil)
+		Model: name, Messages: msgs, MaxTokens: req.MaxTokens}, nil, nil)
 	if err != nil {
 		return module.CompletionResponse{}, err
 	}

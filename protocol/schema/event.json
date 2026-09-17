@@ -11,7 +11,7 @@
     "type": {
       "type": "string",
       "enum": [
-        "session", "message", "tool_call", "tool_result", "options_change",
+        "session", "message", "thinking", "tool_call", "tool_result", "options_change",
         "state_change", "compaction", "context", "tasks", "goal", "check",
         "stop_veto", "budget", "notice", "report"
       ]
@@ -21,6 +21,7 @@
   "allOf": [
     { "if": { "properties": { "type": { "const": "session" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/session" } } } },
     { "if": { "properties": { "type": { "const": "message" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/message" } } } },
+    { "if": { "properties": { "type": { "const": "thinking" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/thinking" } } } },
     { "if": { "properties": { "type": { "const": "tool_call" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/tool_call" } } } },
     { "if": { "properties": { "type": { "const": "tool_result" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/tool_result" } } } },
     { "if": { "properties": { "type": { "const": "options_change" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/options_change" } } } },
@@ -76,6 +77,14 @@
         "client_id": { "type": "string", "minLength": 1 },
         "usage": { "$ref": "#/$defs/usage" },
         "interrupted": { "type": "boolean" }
+      }
+    },
+    "thinking": {
+      "type": "object",
+      "required": ["content", "source"],
+      "properties": {
+        "content": { "type": "string", "minLength": 1 },
+        "source": { "$ref": "#/$defs/source" }
       }
     },
     "tool_call": {

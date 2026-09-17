@@ -81,6 +81,7 @@ var Methods = []string{
 	"nabu.session.update_tasks",
 	"nabu.session.event",
 	"nabu.session.delta",
+	"nabu.session.thinking",
 	"nabu.rpc.permission.request",
 	"nabu.rpc.ui.ask",
 }

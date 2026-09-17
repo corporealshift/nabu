@@ -20,6 +20,10 @@ type (
 	eventMsg struct{ ev protocol.Event }
 	// deltaMsg is streaming assistant text. Ephemeral: never logged.
 	deltaMsg struct{ d goclient.SessionDelta }
+
+	// thinkingMsg is streaming reasoning, so a slow turn can be watched
+	// rather than waited out. The thinking event supersedes it.
+	thinkingMsg struct{ d goclient.SessionDelta }
 	// promptMsg is a permission request awaiting an answer.
 	promptMsg struct{ p prompt }
 	// resolvedMsg says a request was answered elsewhere, so dismiss it.
@@ -68,6 +72,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case deltaMsg:
 		m.addDelta(msg.d)
+		return m, nil
+
+	case thinkingMsg:
+		m.addThinking(msg.d)
 		return m, nil
 
 	case promptMsg:
@@ -236,6 +244,9 @@ func (m model) onTranscriptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "i", "enter":
 		m.composing = true
+		return m, nil
+	case "t":
+		m.toggleThinking()
 		return m, nil
 	case "s":
 		return m, m.emit(action{kind: actListSessions})
