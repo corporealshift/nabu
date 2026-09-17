@@ -53,6 +53,11 @@ func run(ctx context.Context, dir string, timeout time.Duration, argv []string, 
 	started := time.Now()
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
+	// Killing the process is not enough to end the call: a harness that
+	// leaves a detached child behind leaves it holding the output pipes, and
+	// CombinedOutput waits on those, not on the process. Without this a run
+	// that times out hangs the whole suite rather than being recorded.
+	cmd.WaitDelay = 15 * time.Second
 	if len(env) > 0 {
 		cmd.Env = env
 	}
