@@ -45,12 +45,33 @@ const (
 	requestTimeout    = 30 * time.Second
 )
 
+// The two things a search can be asked for. The model chooses by what it
+// wants back, not by which company it wants to ask: which service serves
+// each mode is configuration, and a mode whose service is not configured
+// falls back rather than failing.
+const (
+	modeLinks  = "links"
+	modeAnswer = "answer"
+)
+
+// servesMode is which service answers each mode best. Brave is an index,
+// so it ranks sources; Tavily reads the pages, so it can answer.
+var servesMode = map[string]string{
+	modeLinks:  "brave",
+	modeAnswer: "tavily",
+}
+
 // Module is the web module.
 type Module struct {
 	enabled bool
-	search  Searcher
 	client  *http.Client
 	maxHits int
+
+	// services is every configured service by name, fallback is the one
+	// used when the model expresses no preference.
+	services       map[string]Searcher
+	defaultService string
+	fallback       Searcher
 }
 
 func (m *Module) Name() string { return "web" }
@@ -65,51 +86,61 @@ func (m *Module) Init(_ module.Host, cfg module.Config) error {
 		m.maxHits = defaultMaxResults
 	}
 
-	braveKey := strings.TrimSpace(cfg.String("brave_api_key", ""))
-	tavilyKey := strings.TrimSpace(cfg.String("tavily_api_key", ""))
-
-	switch want := strings.ToLower(strings.TrimSpace(cfg.String("provider", ""))); {
-	case want == "brave" && braveKey != "":
-		m.search = &brave{key: braveKey, client: m.client}
-	case want == "tavily" && tavilyKey != "":
-		m.search = &tavily{key: tavilyKey, client: m.client}
-	case want != "":
-		// Named a provider whose key is missing: say nothing rather than
-		// silently searching with the other one.
-		return fmt.Errorf("web: provider %q has no api key configured", want)
-	case braveKey != "":
-		m.search = &brave{key: braveKey, client: m.client}
-	case tavilyKey != "":
-		m.search = &tavily{key: tavilyKey, client: m.client}
+	m.services = map[string]Searcher{}
+	if key := strings.TrimSpace(cfg.String("brave_api_key", "")); key != "" {
+		m.services["brave"] = &brave{key: key, client: m.client}
 	}
+	if key := strings.TrimSpace(cfg.String("tavily_api_key", "")); key != "" {
+		m.services["tavily"] = &tavily{key: key, client: m.client}
+	}
+
+	// provider is the default for a call that names no mode, not a
+	// restriction: naming one whose key is missing is a mistake worth saying
+	// out loud rather than quietly searching with the other one.
+	want := strings.ToLower(strings.TrimSpace(cfg.String("provider", "")))
+	if want != "" && m.services[want] == nil {
+		return fmt.Errorf("web: provider %q has no api key configured", want)
+	}
+	switch {
+	case want != "":
+		m.defaultService = want
+	case m.services["brave"] != nil:
+		m.defaultService = "brave"
+	case m.services["tavily"] != nil:
+		m.defaultService = "tavily"
+	}
+	m.fallback = m.services[m.defaultService]
 	return nil
 }
 
-// providerName is which service is in use, or "" when none is configured.
-func (m *Module) providerName() string {
-	if m.search == nil {
-		return ""
+// providerName is the service used when the model says nothing, or "" when
+// none is configured.
+func (m *Module) providerName() string { return m.defaultService }
+
+// serviceFor picks the service for a mode, falling back to the default when
+// the mode is unknown or its service is not configured.
+func (m *Module) serviceFor(mode string) Searcher {
+	if s := m.services[servesMode[strings.ToLower(strings.TrimSpace(mode))]]; s != nil {
+		return s
 	}
-	return m.search.Name()
+	return m.fallback
 }
+
+// bothServices reports whether there is a choice to offer the model.
+func (m *Module) bothServices() bool { return len(m.services) > 1 }
 
 // Tools implements module.ToolProvider. An unconfigured module offers nothing:
 // a tool the model can call but that always fails is worse than no tool.
 func (m *Module) Tools() []module.Tool {
-	if !m.enabled || m.search == nil {
+	if !m.enabled || m.fallback == nil {
 		return nil
 	}
 	return []module.Tool{
 		{
-			Name: "web.search",
-			Description: "Search the web and read the results. Use it for anything " +
-				"outside this repository that you would otherwise guess at: a library's " +
-				"current API, an error message you do not recognise, what changed in a " +
-				"release. Prefer it to answering from memory about a moving target.",
-			Schema: json.RawMessage(`{"type":"object","required":["query"],"properties":{` +
-				`"query":{"type":"string","description":"what you want to know, in words"},` +
-				`"max_results":{"type":"integer","description":"how many hits, 1-10"}}}`),
-			Run: m.runSearch,
+			Name:        "web.search",
+			Description: searchDescription(m.bothServices()),
+			Schema:      searchSchema(m.bothServices()),
+			Run:         m.runSearch,
 		},
 		{
 			Name: "web.fetch",
@@ -123,9 +154,39 @@ func (m *Module) Tools() []module.Tool {
 	}
 }
 
+// searchDescription tells the model what each mode is for. Without that it
+// picks by the first word it recognises.
+func searchDescription(choice bool) string {
+	base := "Search the web and read the results. Use it for anything outside " +
+		"this repository that you would otherwise guess at: a library's current " +
+		"API, an error message you do not recognise, what changed in a release. " +
+		"Prefer it to answering from memory about a moving target."
+	if !choice {
+		return base
+	}
+	return base + " Two kinds of search are available. Ask for links when you " +
+		"want to choose among sources and follow one with web.fetch, which is " +
+		"most of the time. Ask for an answer when the question is small and " +
+		"factual and you would only be fetching a page to read one sentence " +
+		"out of it."
+}
+
+func searchSchema(choice bool) json.RawMessage {
+	mode := ""
+	if choice {
+		mode = `"mode":{"type":"string","enum":["links","answer"],` +
+			`"description":"links for ranked sources to fetch, answer for a read reply"},`
+	}
+	return json.RawMessage(`{"type":"object","required":["query"],"properties":{` +
+		`"query":{"type":"string","description":"what you want to know, in words"},` +
+		mode +
+		`"max_results":{"type":"integer","description":"how many hits, 1-10"}}}`)
+}
+
 func (m *Module) runSearch(ctx context.Context, _ module.Session, args json.RawMessage) (string, error) {
 	var a struct {
 		Query string `json:"query"`
+		Mode  string `json:"mode"`
 		Max   int    `json:"max_results"`
 	}
 	if err := json.Unmarshal(args, &a); err != nil {
@@ -142,7 +203,7 @@ func (m *Module) runSearch(ctx context.Context, _ module.Session, args json.RawM
 		max = maxMaxResults
 	}
 
-	out, err := m.search.Search(ctx, a.Query, max)
+	out, err := m.serviceFor(a.Mode).Search(ctx, a.Query, max)
 	if err != nil {
 		return "", err
 	}

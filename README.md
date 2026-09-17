@@ -103,11 +103,16 @@ Two services, because they answer different questions:
 - **Tavily** is built for agents: it returns cleaned page text and often a direct
   answer, so a search costs fewer follow-up fetches.
 
-`provider` picks which is in use. Configure both keys and you can switch between them
-with one line and a restart, which is the point: they are worth comparing on your own
-work rather than on somebody's benchmark. With no `provider` and one key, that key is
-used; with neither key the module offers no tools at all, rather than a tool that fails
-the first time the model reaches for it.
+Configure both and **the agent chooses per search**, by what it wants back rather than
+by which company it asks: `mode: "links"` for ranked sources to follow with `web.fetch`,
+`mode: "answer"` for a read reply to a small factual question. The choice only appears
+in the tool's schema when both keys are configured, so the model is never offered a
+decision it cannot act on.
+
+`provider` is the default for a search that names no mode, not a restriction. With one
+key, that service answers everything and the mode parameter is not offered. With
+neither key the module offers no tools at all, rather than a tool that fails the first
+time the model reaches for it.
 
 `web.fetch` reads http and https only, caps a page at 200 KB, and is classed
 medium-risk: what comes back is whatever the page decided to say.
