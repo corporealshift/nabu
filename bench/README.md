@@ -53,20 +53,20 @@ run the command, read the assertion, try again. That measures persistence, and
 every harness has it, which is why the first ten tasks could not tell any of
 them apart.
 
-A task may therefore keep part of its check in , copied over the
+A task may therefore keep part of its check in `_hidden/`, copied over the
 workspace only after the harness has finished. The harness has to satisfy a
 contract it cannot read, from a prompt that deliberately does not spell out
 every edge, which is the thing worth measuring.
 
-Such a task also ships : the change that satisfies the held-back
-check.  applies it and insists the check goes
-quiet, and  insists the visible
+Such a task also ships `_solution/`: the change that satisfies the held-back
+check. `TestEveryHiddenTaskIsAchievable` applies it and insists the check goes
+quiet, and `TestAHiddenCheckActuallyHoldsSomethingBack` insists the visible
 fixture does not already pass. Together they are the evidence the task is
 sound, and they cost nothing — which matters now that the reference harness is
 opt-in.
 
-Both directories begin with an underscore so the go command leaves them out of
-this repository own build.
+Both directories begin with an underscore, so the go command leaves them out of
+this repository's own build.
 
 ## Adding a task
 
