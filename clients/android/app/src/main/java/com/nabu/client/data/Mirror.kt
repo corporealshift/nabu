@@ -158,4 +158,26 @@ abstract class MirrorDb : RoomDatabase() {
         if (rows.isNotEmpty()) events().insert(rows)
         sessions().markSynced(sessionId, cursor, synced, System.currentTimeMillis())
     }
+
+    companion object {
+        @Volatile private var instance: MirrorDb? = null
+
+        /**
+         * The mirror, once per process. The outbox worker runs in the same
+         * process as the app, and two Room instances on one file disagree
+         * about what is in flight.
+         */
+        fun get(context: android.content.Context): MirrorDb =
+            instance ?: synchronized(this) {
+                instance ?: androidx.room.Room
+                    .databaseBuilder(
+                        context.applicationContext,
+                        MirrorDb::class.java,
+                        "nabu-mirror",
+                    )
+                    .fallbackToDestructiveMigration()
+                    .build()
+                    .also { instance = it }
+            }
+    }
 }

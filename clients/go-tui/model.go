@@ -44,7 +44,14 @@ type model struct {
 	// turn. It is shown live and replaced by the final message event, so the
 	// text never appears twice.
 	streaming string
-	turnID    string
+
+	// thoughts maps a transcript slot to the reasoning written there, so
+	// showing or hiding thinking rewrites that slot rather than the list.
+	thoughts     map[int]string
+	showThinking bool
+	thinkingNow  string
+	thinkingTurn string
+	turnID       string
 
 	// pending is the prompt on screen; queued are the ones behind it. The
 	// daemon can ask about several calls, and answering the wrong one would
@@ -148,6 +155,15 @@ func (m *model) appendEvent(ev protocol.Event) {
 				m.goal = &d
 			}
 		}
+	}
+	// The thinking event supersedes the stream it was assembled from.
+	if ev.Type == protocol.EventThinking {
+		m.thinkingNow, m.thinkingTurn = "", ""
+		if line := m.rememberThought(ev); line != "" {
+			m.transcript = append(m.transcript, line)
+		}
+		m.refresh()
+		return
 	}
 	m.transcript = append(m.transcript, renderEvent(ev)...)
 	m.refresh()
@@ -273,6 +289,10 @@ func (m model) transcriptWidth() int {
 // body is the transcript plus the live streaming preview.
 func (m model) body() string {
 	lines := m.transcript
+	if m.showThinking && m.thinkingNow != "" {
+		lines = append(append([]string{}, lines...),
+			strings.Split(thinkingLine(m.thinkingNow, true), "\n")...)
+	}
 	if m.streaming != "" {
 		lines = append(append([]string{}, lines...),
 			strings.Split(m.streaming, "\n")...)

@@ -16,6 +16,7 @@ type EventType string
 const (
 	EventSession       EventType = "session"
 	EventMessage       EventType = "message"
+	EventThinking      EventType = "thinking"
 	EventToolCall      EventType = "tool_call"
 	EventToolResult    EventType = "tool_result"
 	EventOptionsChange EventType = "options_change"
@@ -33,7 +34,8 @@ const (
 
 // EventTypes lists every valid event type in documentation order.
 var EventTypes = []EventType{
-	EventSession, EventMessage, EventToolCall, EventToolResult, EventOptionsChange,
+	EventSession, EventMessage, EventThinking, EventToolCall, EventToolResult,
+	EventOptionsChange,
 	EventStateChange, EventCompaction, EventContext, EventTasks, EventGoal, EventCheck,
 	EventStopVeto, EventBudget, EventNotice, EventReport,
 }
@@ -221,6 +223,13 @@ type BudgetData struct {
 	Source    string  `json:"source"`
 }
 
+// ThinkingData is the model's reasoning for the turn that follows it. It is
+// shown to the reader and never sent back to the model (spec 6.1).
+type ThinkingData struct {
+	Content string `json:"content"`
+	Source  string `json:"source"`
+}
+
 // NoticeData is something a human should see.
 type NoticeData struct {
 	Source  string `json:"source"`
@@ -285,6 +294,8 @@ func DecodeData(e Event) (any, error) {
 		target = &OptionsChangeData{}
 	case EventStateChange:
 		target = &StateChangeData{}
+	case EventThinking:
+		target = &ThinkingData{}
 	case EventCompaction:
 		target = &CompactionData{}
 	case EventContext:

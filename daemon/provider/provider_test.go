@@ -12,15 +12,15 @@ func TestFakePopsScriptInOrder(t *testing.T) {
 		{ToolCalls: []ToolCall{{ID: "c1", Name: "bash", Arguments: []byte(`{"command":"ls"}`)}}},
 	}}
 	var deltas []string
-	r1, err := f.Complete(context.Background(), Request{Model: "m"}, func(s string) { deltas = append(deltas, s) })
+	r1, err := f.Complete(context.Background(), Request{Model: "m"}, func(s string) { deltas = append(deltas, s) }, nil)
 	if err != nil || r1.Content != "first" || len(deltas) != 1 {
 		t.Fatalf("r1: %+v %v deltas=%v", r1, err, deltas)
 	}
-	r2, _ := f.Complete(context.Background(), Request{Model: "m"}, nil)
+	r2, _ := f.Complete(context.Background(), Request{Model: "m"}, nil, nil)
 	if len(r2.ToolCalls) != 1 || r2.ToolCalls[0].Name != "bash" {
 		t.Fatalf("r2: %+v", r2)
 	}
-	if _, err := f.Complete(context.Background(), Request{}, nil); err == nil || !strings.Contains(err.Error(), "no scripted response") {
+	if _, err := f.Complete(context.Background(), Request{}, nil, nil); err == nil || !strings.Contains(err.Error(), "no scripted response") {
 		t.Fatalf("exhausted: %v", err)
 	}
 	if len(f.Calls) != 3 {
@@ -38,7 +38,7 @@ func TestFakeBlocksUntilReleasedOrCancelled(t *testing.T) {
 	f := &Fake{Script: []Response{{Content: "x"}}, BlockOn: make(chan struct{})}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := f.Complete(ctx, Request{}, nil); err != context.Canceled {
+	if _, err := f.Complete(ctx, Request{}, nil, nil); err != context.Canceled {
 		t.Fatalf("want context.Canceled, got %v", err)
 	}
 }

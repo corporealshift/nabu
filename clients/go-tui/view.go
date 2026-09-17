@@ -36,7 +36,8 @@ func (m model) View() string {
 	if m.showTasks() {
 		main = lipgloss.JoinHorizontal(lipgloss.Top, main, m.taskPane())
 	}
-	return main + "\n" + m.composerLine() + "\n" + m.status() + "\n" + m.help()
+	composer := strings.Join(m.composerLines(), "\n")
+	return main + "\n" + composer + "\n" + m.status() + "\n" + m.help()
 }
 
 // spinnerFrames is a braille cycle: it reads as motion in any terminal font.
@@ -51,14 +52,6 @@ func (m model) workingIndicator() string {
 	}
 	frame := spinnerFrames[m.spinner%len(spinnerFrames)]
 	return badgeWarn.Render(frame + " working " + m.elapsed().String())
-}
-
-// composerLine is the input, or a hint about how to open it.
-func (m model) composerLine() string {
-	if m.composing {
-		return userStyle.Render("› ") + m.input + badgeOK.Render("▌")
-	}
-	return dim.Render("press i to type, s for sessions")
 }
 
 // taskPane shows what the agent believes it is doing.
@@ -194,9 +187,9 @@ func (m model) help() string {
 		return dim.Render("enter send · esc cancel · /help for commands")
 	}
 	if terminal(m.state) {
-		return dim.Render("q quit · i type · s sessions · g/G top/bottom — the session has ended")
+		return dim.Render("q quit · i type · s sessions · t thinking · g/G top/bottom — the session has ended")
 	}
-	return dim.Render("q quit (the run continues) · i type · s sessions · ctrl+x interrupt")
+	return dim.Render("q quit (the run continues) · i type · s sessions · t thinking · ctrl+x interrupt")
 }
 
 // overlay is the permission prompt. It takes the whole screen deliberately:

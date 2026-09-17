@@ -96,6 +96,20 @@ Every `source` field, where present, is one of `daemon`, `model`, `client`, or
 messages; `usage` SHOULD be present when the provider reported it; `interrupted` is
 `true` when `nabu.session.interrupt` cut the response short.
 
+#### `thinking`
+
+```jsonc
+{"content":"17 times 23. 17*20 is 340, plus 17*3 is 51, so 391.","source":"model"}
+```
+
+The model's reasoning for the turn that follows it, when the provider reports any.
+It is appended **before** the `message` it produced, so a reader that stops at the
+message has already seen the thinking behind it.
+
+Thinking is for the reader, never for the model: a `thinking` event MUST NOT appear in
+a request (§6.1), and MUST NOT affect the projection (§5). A provider that reports no
+reasoning produces no event — an empty `thinking` event is never written.
+
 #### `tool_call`
 
 ```jsonc
@@ -271,6 +285,9 @@ for the same log (vectors under `vectors/projection/`).
 | `last_event_id` | id of the last event |
 | `compacted_through` | `range_end` of the last `summarize` compaction, or none |
 
+`thinking` events are ignored by the projection entirely: they carry no state,
+and a log that differs only in its thinking projects identically.
+
 ## 6. Request assembly
 
 The model request is a pure function of the log and the static system prompt. This
@@ -291,8 +308,10 @@ Order:
 6. Outstanding `stop_veto`s rendered per §6.4, as one user-role message.
 
 Events of type `options_change`, `state_change`, `tasks`, `goal`, `check`, `budget`,
-`notice`, and `report` are never sent to the model directly; their effect reaches the
-model through tool results (tasks) and the Current state block.
+`notice`, `report`, and `thinking` are never sent to the model directly; their effect
+reaches the model through tool results (tasks) and the Current state block. Thinking
+has no effect to reach it: replaying a model's own reasoning back to it is not
+something every provider accepts, and nothing here depends on it.
 
 ### 6.2 Tool-result clearing
 
@@ -371,6 +390,9 @@ Thereafter the daemon sends notifications (no `id`):
 - `nabu.session.delta {session_id, turn_id, text}` while an assistant message
   streams. Deltas are ephemeral: never logged, never replayed. The final `message`
   event carries the full text and supersedes every delta of that `turn_id`.
+- `nabu.session.thinking {session_id, turn_id, text}` while the model reasons,
+  for providers that report it. Ephemeral in the same way, and superseded by the
+  `thinking` event (§3.1), which is what persists.
 
 `nabu.session.unsubscribe {session_id}` → `{subscribed: false}`.
 

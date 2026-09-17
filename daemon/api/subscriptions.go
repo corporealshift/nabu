@@ -134,6 +134,20 @@ func (h *Handler) Deltas() func(sessionID, turnID, text string) {
 	}
 }
 
+// Thinking returns the sink for the model's reasoning. Ephemeral like a
+// delta: the thinking event is what persists.
+func (h *Handler) Thinking() func(sessionID, turnID, text string) {
+	return func(sessionID, turnID, text string) {
+		for _, cs := range h.subscribers(sessionID) {
+			cs.notify("nabu.session.thinking", map[string]any{
+				"session_id": sessionID,
+				"turn_id":    turnID,
+				"text":       text,
+			})
+		}
+	}
+}
+
 // handleSessionSubscribe implements nabu.session.subscribe (spec 7.6).
 func (h *Handler) handleSessionSubscribe(_ context.Context, cs *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {

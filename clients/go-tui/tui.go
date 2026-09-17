@@ -173,6 +173,10 @@ func attach(ctx context.Context, p *tea.Program, addr, token, sessionID string, 
 			if d, ok := goclient.ParseDelta(msg); ok {
 				p.Send(deltaMsg{d: d})
 			}
+		case "nabu.session.thinking":
+			if d, ok := goclient.ParseThinking(msg); ok {
+				p.Send(thinkingMsg{d: d})
+			}
 		case "nabu.rpc.permission.request":
 			if req, ok := goclient.ParsePermission(msg); ok {
 				p.Send(promptMsg{p: prompt{id: msg.ID, req: req}})

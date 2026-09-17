@@ -27,68 +27,6 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** A stand-in daemon: answers any call, and pushes notifications on demand. */
-private class FakeDaemon {
-    val server = MockWebServer()
-    val received = ConcurrentLinkedQueue<String>()
-    @Volatile var socket: WebSocket? = null
-    val opened = CountDownLatch(1)
-
-    /** Set to refuse the handshake, for the failure path. */
-    @Volatile var refuseHandshake = false
-
-    /** Held open to prove a notification arrives while a call is in flight. */
-    @Volatile var holdCall: CountDownLatch? = null
-
-    fun start() {
-        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
-            override fun onOpen(ws: WebSocket, response: Response) {
-                socket = ws
-                opened.countDown()
-            }
-
-            override fun onMessage(ws: WebSocket, text: String) {
-                received.add(text)
-                val msg = com.nabu.client.protocol.NabuJson
-                    .decodeFromString(Rpc.serializer(), text)
-                val id = msg.id ?: return
-                if (msg.method == "nabu.hello" && refuseHandshake) {
-                    ws.send(errorFor(id, "protocol version mismatch"))
-                    return
-                }
-                holdCall?.let {
-                    // Answer only when the test says so.
-                    Thread {
-                        it.await(10, TimeUnit.SECONDS)
-                        ws.send(resultFor(id, msg.method ?: ""))
-                    }.start()
-                    return
-                }
-                ws.send(resultFor(id, msg.method ?: ""))
-            }
-        }))
-        server.start()
-    }
-
-    fun url(): String = server.url("/").toString()
-
-    fun push(text: String) {
-        requireNotNull(socket) { "no client connected" }.send(text)
-    }
-
-    fun stop() {
-        socket?.close(1000, null)
-        socket = null
-        server.shutdown()
-    }
-
-    private fun resultFor(id: kotlinx.serialization.json.JsonElement, method: String) =
-        """{"jsonrpc":"2.0","id":${id},"result":{"ok":true,"method":"$method"}}"""
-
-    private fun errorFor(id: kotlinx.serialization.json.JsonElement, message: String) =
-        """{"jsonrpc":"2.0","id":${id},"error":{"code":-32000,"message":"$message"}}"""
-}
-
 class DaemonClientTest {
 
     private lateinit var daemon: FakeDaemon

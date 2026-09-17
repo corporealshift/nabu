@@ -52,7 +52,9 @@ import androidx.compose.ui.unit.dp
 import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
 import com.nabu.client.data.SessionRow
+import com.nabu.client.protocol.Task
 import com.nabu.client.settings.Settings
+import com.nabu.client.ui.markdown.MarkdownText
 import com.nabu.client.ui.theme.Mode
 import com.nabu.client.ui.theme.NabuTheme
 import com.nabu.client.ui.theme.Scheme
@@ -208,7 +210,7 @@ fun SessionListScreen(
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                "${project(s.workspace.ifBlank { s.id })}  ·  ${s.state}",
+                                "${projectName(s.workspace.ifBlank { s.id })}  ·  ${s.state}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = NabuTheme.colors.muted,
                             )
@@ -235,7 +237,9 @@ fun TranscriptScreen(
     events: List<EventRow>,
     synced: Boolean,
     pending: List<OutboxRow>,
+    tasks: List<Task>,
     onSend: (String) -> Unit,
+    onTaskDone: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     val lines = remember(events, synced) { transcript(events, synced) }
@@ -257,7 +261,7 @@ fun TranscriptScreen(
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
             )
         },
-        bottomBar = { Composer(pending, onSend) },
+        bottomBar = { Composer(pending, tasks, onSend, onTaskDone) },
     ) { padding ->
         LazyColumn(
             state = listState,
@@ -271,7 +275,12 @@ fun TranscriptScreen(
 }
 
 @Composable
-private fun Composer(pending: List<OutboxRow>, onSend: (String) -> Unit) {
+private fun Composer(
+    pending: List<OutboxRow>,
+    tasks: List<Task>,
+    onSend: (String) -> Unit,
+    onTaskDone: (String) -> Unit,
+) {
     var text by remember { mutableStateOf("") }
     val c = NabuTheme.colors
     Column(
@@ -283,7 +292,9 @@ private fun Composer(pending: List<OutboxRow>, onSend: (String) -> Unit) {
             .imePadding()
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        TaskCard(tasks, onTaskDone)
         if (pending.isNotEmpty()) {
             // A prompt the user believes was sent and was not is the failure
             // the outbox exists to prevent, so pending items are visible.
@@ -371,10 +382,8 @@ private fun LineView(line: Line) {
             )
         }
 
-        is Line.AgentSaid -> Text(
+        is Line.AgentSaid -> MarkdownText(
             line.text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = NabuTheme.colors.ink,
             modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
         )
 
@@ -435,7 +444,7 @@ private fun LineView(line: Line) {
 }
 
 /** The workspace's last segment: the whole path does not fit on a phone. */
-private fun project(workspace: String) =
+fun projectName(workspace: String) =
     workspace.trimEnd('\\', '/').substringAfterLast('\\').substringAfterLast('/')
 
 private fun connectionLabel(c: Connection) = when (c) {

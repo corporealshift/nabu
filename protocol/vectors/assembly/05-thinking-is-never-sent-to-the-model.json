@@ -1,0 +1,71 @@
+{
+  "name": "thinking is never sent to the model",
+  "description": "A thinking event is for the reader. It sits between the prompt and the message it produced, and neither appears in the request nor disturbs the order of what does.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-16T00:00:01.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-16T00:00:02.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "What is 17 times 23?"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-16T00:00:03.000Z",
+      "type": "thinking",
+      "data": {
+        "content": "17 times 20 is 340, plus 17 times 3 is 51, so 391.",
+        "source": "model"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-09-16T00:00:04.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "391.",
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 4,
+          "cached_tokens": 0
+        }
+      }
+    }
+  ],
+  "operation": {
+    "op": "assemble"
+  },
+  "expect": {
+    "segments": [
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000002"
+      },
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000004"
+      }
+    ]
+  }
+}

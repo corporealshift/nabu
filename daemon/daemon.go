@@ -185,8 +185,9 @@ func New(opts Options) (*Daemon, error) {
 	mgr, err := agent.New(agent.Deps{
 		Store: store, Providers: providers, Modules: registry,
 		Builtins: builtins, Root: root, Log: log,
-		Asker:  handler,
-		Deltas: handler.Deltas(),
+		Asker:    handler,
+		Deltas:   handler.Deltas(),
+		Thinking: handler.Thinking(),
 	}, agent.Config{
 		DefaultModel:         cfg.Daemon.DefaultModel,
 		MaxConsecutiveVetoes: cfg.Budget.MaxConsecutiveVetoes,

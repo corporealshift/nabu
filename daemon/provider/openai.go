@@ -48,7 +48,7 @@ func (e *httpError) retryable() bool { return e.Status == 429 || e.Status >= 500
 // Complete implements Provider: acquire a slot, then attempt with retries.
 // A failure after the first delta was delivered is never retried, because the
 // caller has already seen partial output.
-func (p *OpenAI) Complete(ctx context.Context, req Request, onDelta func(string)) (Response, error) {
+func (p *OpenAI) Complete(ctx context.Context, req Request, onDelta, onThinking func(string)) (Response, error) {
 	select {
 	case p.sem <- struct{}{}:
 		defer func() { <-p.sem }()
@@ -62,13 +62,17 @@ func (p *OpenAI) Complete(ctx context.Context, req Request, onDelta func(string)
 	var lastErr error
 	for attempt := 0; attempt < attempts; attempt++ {
 		started := false
-		wrapped := func(s string) {
-			started = true
-			if onDelta != nil {
-				onDelta(s)
+		// Either kind of token means the turn has begun, and a turn that has
+		// begun must not be retried: the reader would see it twice.
+		watch := func(f func(string)) func(string) {
+			return func(s string) {
+				started = true
+				if f != nil {
+					f(s)
+				}
 			}
 		}
-		resp, err := p.once(ctx, req, wrapped)
+		resp, err := p.once(ctx, req, watch(onDelta), watch(onThinking))
 		if err == nil {
 			return resp, nil
 		}
@@ -141,8 +145,11 @@ type wireRequest struct {
 type wireChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content   string `json:"content"`
-			ToolCalls []struct {
+			Content string `json:"content"`
+			// llama-server and the DeepSeek-style APIs both report the model's
+			// reasoning here, alongside the answer rather than inside it.
+			ReasoningContent string `json:"reasoning_content"`
+			ToolCalls        []struct {
 				Index    int    `json:"index"`
 				ID       string `json:"id"`
 				Function struct {
@@ -196,7 +203,7 @@ func toWire(req Request) wireRequest {
 }
 
 // once performs a single streaming attempt.
-func (p *OpenAI) once(ctx context.Context, req Request, onDelta func(string)) (Response, error) {
+func (p *OpenAI) once(ctx context.Context, req Request, onDelta, onThinking func(string)) (Response, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
 	defer cancel()
 	body, err := json.Marshal(toWire(req))
@@ -222,7 +229,7 @@ func (p *OpenAI) once(ctx context.Context, req Request, onDelta func(string)) (R
 		b, _ := io.ReadAll(io.LimitReader(hresp.Body, 4096))
 		return Response{}, &httpError{Status: hresp.StatusCode, Body: strings.TrimSpace(string(b))}
 	}
-	return readStream(hresp.Body, onDelta)
+	return readStream(hresp.Body, onDelta, onThinking)
 }
 
 type partialCall struct {
@@ -231,9 +238,9 @@ type partialCall struct {
 }
 
 // readStream parses SSE chunks into a Response.
-func readStream(r io.Reader, onDelta func(string)) (Response, error) {
+func readStream(r io.Reader, onDelta, onThinking func(string)) (Response, error) {
 	var resp Response
-	var content strings.Builder
+	var content, reasoning strings.Builder
 	var calls []*partialCall
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64<<10), 16<<20)
@@ -264,7 +271,15 @@ func readStream(r io.Reader, onDelta func(string)) (Response, error) {
 		for _, c := range ch.Choices {
 			if c.Delta.Content != "" {
 				content.WriteString(c.Delta.Content)
-				onDelta(c.Delta.Content)
+				if onDelta != nil {
+					onDelta(c.Delta.Content)
+				}
+			}
+			if c.Delta.ReasoningContent != "" {
+				reasoning.WriteString(c.Delta.ReasoningContent)
+				if onThinking != nil {
+					onThinking(c.Delta.ReasoningContent)
+				}
 			}
 			for _, tc := range c.Delta.ToolCalls {
 				for len(calls) <= tc.Index {
@@ -287,10 +302,12 @@ func readStream(r io.Reader, onDelta func(string)) (Response, error) {
 	if err := sc.Err(); err != nil {
 		return Response{}, fmt.Errorf("provider stream: %w", err)
 	}
-	if !done && resp.FinishReason == "" && content.Len() == 0 && len(calls) == 0 {
+	if !done && resp.FinishReason == "" && content.Len() == 0 &&
+		reasoning.Len() == 0 && len(calls) == 0 {
 		return Response{}, errors.New("provider stream ended without data")
 	}
 	resp.Content = content.String()
+	resp.Reasoning = reasoning.String()
 	for i, pc := range calls {
 		id := pc.id
 		if id == "" {

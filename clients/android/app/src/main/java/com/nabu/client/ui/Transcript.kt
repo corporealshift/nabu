@@ -50,16 +50,16 @@ fun transcript(rows: List<EventRow>, synced: Boolean): List<Line> {
         out += Line.Gap(key = "gap-top", neverFetched = rows.isEmpty())
     }
 
-    for (row in rows) {
-        val event = try {
-            NabuJson.decodeFromString(Event.serializer(), row.raw)
-        } catch (_: Exception) {
-            continue // one unreadable row costs its line, not the screen
-        }
-        val line = render(row.id, event) ?: continue
+    for (event in decode(rows)) {
+        val line = render(event.id, event) ?: continue
         out += line
     }
     return out
+}
+
+/** Mirrored rows as events. One unreadable row costs its line, not the screen. */
+fun decode(rows: List<EventRow>): List<Event> = rows.mapNotNull { row ->
+    runCatching { NabuJson.decodeFromString(Event.serializer(), row.raw) }.getOrNull()
 }
 
 private fun render(key: String, e: Event): Line? = when (e.type) {

@@ -20,6 +20,10 @@ type (
 	eventMsg struct{ ev protocol.Event }
 	// deltaMsg is streaming assistant text. Ephemeral: never logged.
 	deltaMsg struct{ d goclient.SessionDelta }
+
+	// thinkingMsg is streaming reasoning, so a slow turn can be watched
+	// rather than waited out. The thinking event supersedes it.
+	thinkingMsg struct{ d goclient.SessionDelta }
 	// promptMsg is a permission request awaiting an answer.
 	promptMsg struct{ p prompt }
 	// resolvedMsg says a request was answered elsewhere, so dismiss it.
@@ -51,11 +55,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		h := msg.Height - 3 // status, help, composer
-		if h < 1 {
-			h = 1
-		}
-		m.viewport.Width, m.viewport.Height = m.transcriptWidth(), h
+		m.relayout()
 		m.refresh()
 		return m, nil
 
@@ -72,6 +72,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case deltaMsg:
 		m.addDelta(msg.d)
+		return m, nil
+
+	case thinkingMsg:
+		m.addThinking(msg.d)
 		return m, nil
 
 	case promptMsg:
@@ -182,18 +186,29 @@ func (m model) onComposerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEnter:
 		return m.submit()
 	case tea.KeyBackspace:
-		if n := len(m.input); n > 0 {
-			m.input = m.input[:n-1]
+		// Runes, not bytes: half an accented character is not a character.
+		if runes := []rune(m.input); len(runes) > 0 {
+			m.input = string(runes[:len(runes)-1])
 		}
+		m.relayout()
 		return m, nil
 	case tea.KeySpace:
 		m.input += " "
+		m.relayout()
 		return m, nil
 	case tea.KeyRunes:
 		m.input += string(msg.Runes)
+		m.relayout()
 		return m, nil
 	}
 	return m, nil
+}
+
+// relayout gives the viewport whatever the composer is not using. The
+// composer grows as it is typed, so this runs on every key, not only on
+// a resize.
+func (m *model) relayout() {
+	m.viewport.Width, m.viewport.Height = m.transcriptWidth(), m.viewportHeight()
 }
 
 // submit acts on the composer's contents.
@@ -229,6 +244,9 @@ func (m model) onTranscriptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "i", "enter":
 		m.composing = true
+		return m, nil
+	case "t":
+		m.toggleThinking()
 		return m, nil
 	case "s":
 		return m, m.emit(action{kind: actListSessions})
