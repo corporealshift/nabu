@@ -142,6 +142,18 @@ func renderEvent(ev protocol.Event) []string {
 		return []string{dim.Render(fmt.Sprintf("%s → %s", d.Key, strings.Trim(string(d.To), `"`)))}
 
 	case protocol.EventCompaction:
+		var d protocol.CompactionData
+		if json.Unmarshal(ev.Data, &d) != nil {
+			return []string{dim.Render("context compacted")}
+		}
+		// Which kind matters: one stubs out old tool results, the other
+		// replaces the conversation with a summary.
+		switch d.Mode {
+		case protocol.CompactionSummarize:
+			return []string{warnStyle.Render("— earlier conversation summarised —")}
+		case protocol.CompactionClearResults:
+			return []string{dim.Render("— older tool output cleared to save context —")}
+		}
 		return []string{dim.Render("context compacted")}
 
 	default:

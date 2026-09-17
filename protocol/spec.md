@@ -77,11 +77,17 @@ Every `source` field, where present, is one of `daemon`, `model`, `client`, or
 #### `session` — first event of every log
 
 ```jsonc
-{"workspace":"C:/Users/kyle/proj","workspace_key":"proj-3f9a1c",
+{"workspace":"C:/Users/kyle/proj","workspace_key":"proj-3f9a1c","context_window":256000,
  "options":{"model":"qwen3.6-35b-a3b","compaction_enabled":true,"permission_mode":"ask"}}
 ```
 
 `permission_mode` ∈ `ask | auto | bypass`.
+
+`context_window` is the model's context size in tokens, as configured when the session
+was created. It is recorded so a client can say how full the context is: the daemon
+knows the size and the log carries the usage, but without this a client holds only the
+numerator. Zero or absent means the size was not configured, and a client should then
+say nothing rather than guess.
 
 #### `message`
 

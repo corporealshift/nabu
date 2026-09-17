@@ -172,7 +172,13 @@ func (m *Manager) Create(ctx context.Context, workspacePath string, co CreateOpt
 		return nil, err
 	}
 	opts := co.resolve(m.cfg.DefaultModel)
-	s, err := m.deps.Store.Create(ws.Path, ws.Key, opts)
+	// The window is recorded on the session so a client can say how full the
+	// context is. Without it a client holds the usage and no denominator.
+	window := 0
+	if _, _, pcfg, err := m.deps.Providers.Resolve(opts.Model); err == nil {
+		window = pcfg.ContextWindow
+	}
+	s, err := m.deps.Store.Create(ws.Path, ws.Key, opts, window)
 	if err != nil {
 		return nil, err
 	}

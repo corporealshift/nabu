@@ -31,7 +31,7 @@ func openAt(t *testing.T, dir string) *Store {
 
 func TestCreateWritesSessionEvent(t *testing.T) {
 	st := newStore(t)
-	s, err := st.Create("C:/w", "w-1", opts)
+	s, err := st.Create("C:/w", "w-1", opts, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestCreateWritesSessionEvent(t *testing.T) {
 
 func TestAppendChainsAndPersists(t *testing.T) {
 	st := newStore(t)
-	s, _ := st.Create("C:/w", "w-1", opts)
+	s, _ := st.Create("C:/w", "w-1", opts, 0)
 	e1, err := s.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "hi"})
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestAppendChainsAndPersists(t *testing.T) {
 
 func TestAppendRejectsInvalidAndWritesNothing(t *testing.T) {
 	st := newStore(t)
-	s, _ := st.Create("C:/w", "w-1", opts)
+	s, _ := st.Create("C:/w", "w-1", opts, 0)
 	_, err := s.Append(protocol.EventMessage, protocol.MessageData{Role: "system", Content: "no"})
 	if err == nil || !strings.Contains(err.Error(), `role "system" invalid`) {
 		t.Fatalf("want validation error, got %v", err)
@@ -98,7 +98,7 @@ func TestAppendRejectsInvalidAndWritesNothing(t *testing.T) {
 
 func TestEventsAfterUnknownCursor(t *testing.T) {
 	st := newStore(t)
-	s, _ := st.Create("C:/w", "w-1", opts)
+	s, _ := st.Create("C:/w", "w-1", opts, 0)
 	bad := "01JEVENT000000000000000099"
 	_, _, err := s.EventsAfter(&bad)
 	var rpc *protocol.RPCError
@@ -120,7 +120,7 @@ func TestGetUnknownAndCorrupt(t *testing.T) {
 	if _, err := st.Get("nope"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("non-ULID id must be not found, got %v", err)
 	}
-	s, _ := st.Create("C:/w", "w-1", opts)
+	s, _ := st.Create("C:/w", "w-1", opts, 0)
 	s.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "hi"})
 	path := filepath.Join(st.root, s.ID()+".jsonl")
 	b, _ := os.ReadFile(path)

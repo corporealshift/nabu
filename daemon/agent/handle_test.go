@@ -38,7 +38,7 @@ func newHandle(t *testing.T) (*sessionHandle, *fakeCore) {
 	}
 	t.Cleanup(func() { st.Close() })
 	s, err := st.Create("C:/w", "w-1", protocol.Options{
-		Model: "m", CompactionEnabled: true, PermissionMode: protocol.PermissionAsk})
+		Model: "m", CompactionEnabled: true, PermissionMode: protocol.PermissionAsk}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

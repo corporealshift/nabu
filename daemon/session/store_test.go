@@ -9,7 +9,7 @@ import (
 
 func TestSubscribeReceivesAppends(t *testing.T) {
 	st := newStore(t)
-	s, _ := st.Create("C:/w", "w-1", opts)
+	s, _ := st.Create("C:/w", "w-1", opts, 0)
 	ch, cancel := s.Subscribe(8)
 	defer cancel()
 	e, _ := s.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "hi"})
@@ -25,7 +25,7 @@ func TestSubscribeReceivesAppends(t *testing.T) {
 
 func TestSlowSubscriberIsDropped(t *testing.T) {
 	st := newStore(t)
-	s, _ := st.Create("C:/w", "w-1", opts)
+	s, _ := st.Create("C:/w", "w-1", opts, 0)
 	ch, cancel := s.Subscribe(1)
 	defer cancel()
 	s.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "1"})
@@ -38,8 +38,8 @@ func TestSlowSubscriberIsDropped(t *testing.T) {
 
 func TestListAndRecover(t *testing.T) {
 	st := newStore(t)
-	a, _ := st.Create("C:/a", "a-1", opts)
-	b, _ := st.Create("C:/b", "b-1", opts)
+	a, _ := st.Create("C:/a", "a-1", opts, 0)
+	b, _ := st.Create("C:/b", "b-1", opts, 0)
 	b.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "go"})
 	b.Append(protocol.EventStateChange, protocol.StateChangeData{To: protocol.StateRunning, Reason: "prompt"})
 	b.Append(protocol.EventGoal, protocol.GoalData{Condition: "tests pass", State: "set", Source: "client"})
@@ -81,7 +81,7 @@ func TestListIsNewestFirst(t *testing.T) {
 	st := newStore(t)
 	var ids []string
 	for i := 0; i < 4; i++ {
-		s, err := st.Create("C:/w", "w-1", opts)
+		s, err := st.Create("C:/w", "w-1", opts, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

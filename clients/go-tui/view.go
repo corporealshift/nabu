@@ -141,6 +141,9 @@ func (m model) status() string {
 	if g := m.goalBadge(); g != "" {
 		parts = append(parts, g)
 	}
+	if c := m.contextBadge(); c != "" {
+		parts = append(parts, c)
+	}
 	if n := len(m.queued); n > 0 {
 		parts = append(parts, badgeWarn.Render(fmt.Sprintf("%d prompts queued", n)))
 	}
@@ -148,6 +151,26 @@ func (m model) status() string {
 		parts = append(parts, dim.Render(shortID(m.sessionID)))
 	}
 	return statusBar.Render(strings.Join(parts, "  "))
+}
+
+// contextBadge says how full the context is, and warns before compaction
+// rather than after it. Nothing is shown when the window was never configured:
+// a percentage of an unknown number would be an invention.
+func (m model) contextBadge() string {
+	if m.contextWindow <= 0 || m.lastInput <= 0 {
+		return ""
+	}
+	used := float64(m.lastInput) / float64(m.contextWindow)
+	label := fmt.Sprintf("context %.0f%%", used*100)
+
+	switch {
+	case used >= 0.85:
+		return badgeErr.Render(label)
+	case used >= 0.6:
+		return badgeWarn.Render(label)
+	default:
+		return dim.Render(label)
+	}
 }
 
 // goalBadge shows the run goal. An unmet goal is the interesting one: it means
