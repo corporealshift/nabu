@@ -15,6 +15,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -54,10 +56,20 @@ data class PermissionRequest(
     val risk: String,
 )
 
+/** A question a module put to whoever is watching. */
+data class AskRequest(
+    val id: JsonElement,
+    val requestId: String,
+    val sessionId: String,
+    val question: String,
+    val choices: List<String>,
+)
+
 /** What the client emits while it is connected. */
 sealed interface Incoming {
     data class Event(val value: SessionEvent) : Incoming
     data class Permission(val value: PermissionRequest) : Incoming
+    data class Ask(val value: AskRequest) : Incoming
     data class Delta(val sessionId: String, val text: String) : Incoming
     data class Other(val value: Rpc) : Incoming
 }
@@ -253,6 +265,19 @@ class DaemonClient(
                 tool = p?.get("tool")?.jsonPrimitive?.content ?: "",
                 summary = p?.get("summary")?.jsonPrimitive?.content ?: "",
                 risk = p?.get("risk")?.jsonPrimitive?.content ?: "low",
+            ))
+        }
+
+        "nabu.rpc.ui.ask" -> {
+            val p = msg.params?.jsonObject
+            Incoming.Ask(AskRequest(
+                id = msg.id ?: JsonPrimitive(""),
+                requestId = p?.get("request_id")?.jsonPrimitive?.content ?: "",
+                sessionId = p?.get("session_id")?.jsonPrimitive?.content ?: "",
+                question = p?.get("question")?.jsonPrimitive?.content ?: "",
+                choices = p?.get("choices")?.jsonArray
+                    ?.mapNotNull { it.jsonPrimitive.contentOrNull }
+                    ?: emptyList(),
             ))
         }
 

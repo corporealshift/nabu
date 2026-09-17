@@ -22,6 +22,7 @@ type actionKind int
 
 const (
 	actAnswer actionKind = iota
+	actAnswerAsk
 	actPrompt
 	actInterrupt
 	actStop

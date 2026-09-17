@@ -139,6 +139,7 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
                             }
                         }
                         is Incoming.Permission -> _pendingPermission.value = msg.value
+                        is Incoming.Ask -> _pendingAsk.value = msg.value
                         else -> Unit
                     }
                 }
@@ -161,6 +162,26 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
                 c.respond(req.id, permissionReply(approve))
             }
             _pendingPermission.value = null
+        }
+    }
+
+    /**
+     * The question the agent is waiting on, if any. One at a time: the agent is
+     * blocked until it is answered, so it cannot ask a second thing meanwhile.
+     */
+    private val _pendingAsk = MutableStateFlow<com.nabu.client.net.AskRequest?>(null)
+    val pendingAsk: StateFlow<com.nabu.client.net.AskRequest?> = _pendingAsk.asStateFlow()
+
+    /** Answers the agent's question. A blank answer is not one, and is ignored. */
+    fun answerQuestion(answer: String) {
+        val req = _pendingAsk.value ?: return
+        if (!canSend(answer)) return
+        val c = client ?: return
+        viewModelScope.launch {
+            runCatching {
+                c.respond(req.id, askReply(answer))
+            }
+            _pendingAsk.value = null
         }
     }
 

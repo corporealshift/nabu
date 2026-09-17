@@ -26,6 +26,7 @@ import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
 import com.nabu.client.ui.Connection
 import com.nabu.client.ui.NabuViewModel
+import com.nabu.client.ui.AskSheet
 import com.nabu.client.ui.PermissionSheet
 import com.nabu.client.ui.SessionListScreen
 import com.nabu.client.ui.SettingsScreen
@@ -71,6 +72,7 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
     val sessions by vm.sessions.collectAsState()
     val connection by vm.connection.collectAsState()
     val permission by vm.pendingPermission.collectAsState()
+    val ask by vm.pendingAsk.collectAsState()
     val error by vm.error.collectAsState()
 
     // With nowhere to connect to, the first screen is the one that fixes that.
@@ -82,6 +84,10 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
 
     permission?.let { req ->
         PermissionSheet(request = req, onAnswer = { vm.answerPermission(it) })
+    }
+
+    ask?.let { req ->
+        AskSheet(request = req, onAnswer = { vm.answerQuestion(it) })
     }
 
     when (val s = screen) {

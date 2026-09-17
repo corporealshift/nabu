@@ -333,7 +333,10 @@ func words(s string) map[string]bool {
 var toolTiers = map[string]Tier{
 	"read": TierLow, "glob": TierLow, "grep": TierLow, "task.update": TierLow,
 	"web.search": TierLow,
-	"write":      TierMedium, "edit": TierMedium,
+	// Asking changes nothing, and gating it would prompt twice for one
+	// question.
+	"ask":   TierLow,
+	"write": TierMedium, "edit": TierMedium,
 	// Fetching is medium because the page decides what comes back: a
 	// result the model was told to read is somebody else's writing.
 	"web.fetch": TierMedium,

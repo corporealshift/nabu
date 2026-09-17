@@ -28,6 +28,9 @@ func (m model) View() string {
 	if m.pending != nil {
 		return m.overlay()
 	}
+	if m.asking != nil {
+		return m.askOverlay()
+	}
 	if m.picking {
 		return m.picker()
 	}
