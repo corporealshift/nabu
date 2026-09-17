@@ -5,3 +5,6 @@ bin/
 *.test
 coverage.out
 dist/
+
+# Benchmark results are local measurements, not source.
+bench/results/
