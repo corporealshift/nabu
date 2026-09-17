@@ -288,14 +288,16 @@ func (m model) transcriptWidth() int {
 
 // body is the transcript plus the live streaming preview.
 func (m model) body() string {
-	lines := m.transcript
+	// Wrapped here rather than when the event was rendered: the width is not
+	// known then, and it changes when the terminal does.
+	lines := wrapAll(m.transcript, m.transcriptWidth())
 	if m.showThinking && m.thinkingNow != "" {
 		lines = append(append([]string{}, lines...),
-			strings.Split(thinkingLine(m.thinkingNow, true), "\n")...)
+			wrapAll(strings.Split(thinkingLine(m.thinkingNow, true), "\n"), m.transcriptWidth())...)
 	}
 	if m.streaming != "" {
 		lines = append(append([]string{}, lines...),
-			strings.Split(m.streaming, "\n")...)
+			wrapAll(strings.Split(m.streaming, "\n"), m.transcriptWidth())...)
 	}
 	return strings.Join(lines, "\n")
 }
