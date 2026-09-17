@@ -7,6 +7,7 @@ import (
 	"github.com/corporealshift/nabu/daemon/modules/report"
 	"github.com/corporealshift/nabu/daemon/modules/skills"
 	"github.com/corporealshift/nabu/daemon/modules/verify"
+	"github.com/corporealshift/nabu/daemon/modules/web"
 )
 
 // All is the registration list: every module compiled into the daemon, in
@@ -17,6 +18,7 @@ import (
 var All = []module.Module{
 	&skills.Module{},
 	&memory.Module{},
+	&web.Module{},
 	&guard.Module{},
 	&verify.Module{},
 	&report.Module{},

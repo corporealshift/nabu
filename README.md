@@ -80,6 +80,38 @@ That is the minimum. Two things to know:
 Unknown fields are rejected rather than ignored, so a typo fails loudly at startup
 instead of silently doing nothing.
 
+### Searching the web
+
+Off until you give it a key. Add a `modules.web` block:
+
+```json
+{
+  "modules": {
+    "web": {
+      "provider": "brave",
+      "brave_api_key": "...",
+      "tavily_api_key": "..."
+    }
+  }
+}
+```
+
+Two services, because they answer different questions:
+
+- **Brave** returns an index's links and snippets, which the model follows with
+  `web.fetch`. The free tier needs an account but no card.
+- **Tavily** is built for agents: it returns cleaned page text and often a direct
+  answer, so a search costs fewer follow-up fetches.
+
+`provider` picks which is in use. Configure both keys and you can switch between them
+with one line and a restart, which is the point: they are worth comparing on your own
+work rather than on somebody's benchmark. With no `provider` and one key, that key is
+used; with neither key the module offers no tools at all, rather than a tool that fails
+the first time the model reaches for it.
+
+`web.fetch` reads http and https only, caps a page at 200 KB, and is classed
+medium-risk: what comes back is whatever the page decided to say.
+
 ## Use it
 
 ```bash
@@ -93,6 +125,7 @@ if one isn't running, and opens the terminal UI.
 |---|---|
 | `i` | Type a prompt |
 | `s` | Switch sessions |
+| `t` | Show or hide the model's thinking |
 | `y` / `n` | Answer a permission prompt |
 | `ctrl+x` | Interrupt the current turn |
 | `g` / `G` | Jump to the top or bottom of the transcript |
