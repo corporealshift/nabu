@@ -50,19 +50,29 @@ func Report(w io.Writer, r Results) {
 		fmt.Fprintln(w)
 	}
 
-	fmt.Fprintf(w, "\n%-24s", "PASS RATE")
-	for _, h := range harnesses {
-		passed, attempts := 0, 0
-		for _, t := range tallies {
-			if t.Harness != h || t.Suspect {
-				continue
-			}
-			passed += t.Passed
-			attempts += t.Attempts
-		}
-		fmt.Fprintf(w, "%-16s", fmt.Sprintf("%d/%d", passed, attempts))
-	}
 	fmt.Fprintln(w)
+	// Per tier, because a tier every harness passes cannot show movement.
+	// Basic says a harness works at all; hard is what separates them once
+	// they all do.
+	for _, tier := range tiersIn(r) {
+		fmt.Fprintf(w, "%-24s", "PASS RATE "+tier)
+		for _, h := range harnesses {
+			passed, attempts := 0, 0
+			for _, t := range tallies {
+				if t.Harness != h || t.Suspect || r.Tiers[t.Task] != tier {
+					continue
+				}
+				passed += t.Passed
+				attempts += t.Attempts
+			}
+			cell := "–"
+			if attempts > 0 {
+				cell = fmt.Sprintf("%d/%d", passed, attempts)
+			}
+			fmt.Fprintf(w, "%-16s", cell)
+		}
+		fmt.Fprintln(w)
+	}
 
 	fmt.Fprintf(w, "%-24s", "CRAFT (of 5)")
 	for _, h := range harnesses {
@@ -178,6 +188,25 @@ func rateIndex(r Results) map[string]float64 {
 	return out
 }
 
+// tiersIn lists the tiers present, basic first: it is the floor, and a hard
+// score read without knowing the floor holds is misleading.
+func tiersIn(r Results) []string {
+	seen := map[string]bool{}
+	for _, t := range r.Tiers {
+		seen[t] = true
+	}
+	var out []string
+	for _, tier := range []string{"basic", "hard"} {
+		if seen[tier] {
+			out = append(out, tier)
+		}
+	}
+	if len(out) == 0 {
+		return []string{""}
+	}
+	return out
+}
+
 func isSuspect(r Results, task string) bool {
 	for _, s := range r.Suspects {
 		if s == task {
@@ -231,13 +260,6 @@ func dedupe(lines []string) []string {
 		}
 	}
 	return out
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
 
 func clipLeft(s string, max int) string {

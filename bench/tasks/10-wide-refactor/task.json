@@ -1,0 +1,15 @@
+{
+  "id": "10-wide-refactor",
+  "tier": "hard",
+  "prompt": "TestEveryFetchUsesTheNewError fails. Make every Fetch return ErrNoID instead of ErrMissing, then delete ErrMissing now that nothing uses it. Do not change the test.",
+  "verify": [
+    "go",
+    "test",
+    "./..."
+  ],
+  "unchanged": [
+    "store/store_test.go"
+  ],
+  "max_turns": 25,
+  "timeout_seconds": 1500
+}

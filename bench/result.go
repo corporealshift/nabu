@@ -11,16 +11,19 @@ import (
 
 // Run is one harness's single attempt at one task.
 type Run struct {
-	Task     string   `json:"task"`
-	Harness  string   `json:"harness"`
-	Repeat   int      `json:"repeat"`
-	Outcome  Outcome  `json:"outcome"`
-	Broke    []string `json:"broke,omitempty"`
-	Changed  []string `json:"changed,omitempty"`
-	Cost     Cost     `json:"cost"`
-	Craft    Craft    `json:"craft"`
-	Note     string   `json:"note,omitempty"`
-	Finished string   `json:"finished"`
+	Task    string   `json:"task"`
+	Harness string   `json:"harness"`
+	Repeat  int      `json:"repeat"`
+	Outcome Outcome  `json:"outcome"`
+	Broke   []string `json:"broke,omitempty"`
+	Changed []string `json:"changed,omitempty"`
+	Cost    Cost     `json:"cost"`
+	Craft   Craft    `json:"craft"`
+	Note    string   `json:"note,omitempty"`
+	// Tail is the last of what the harness printed, kept for runs that need
+	// explaining. It is the difference between a number and a diagnosis.
+	Tail     string `json:"tail,omitempty"`
+	Finished string `json:"finished"`
 }
 
 // Results is everything one invocation measured, and enough about how it was
@@ -34,6 +37,9 @@ type Results struct {
 	Harness  []string `json:"harnesses"`
 	Runs     []Run    `json:"runs"`
 	Suspects []string `json:"suspect_tasks,omitempty"`
+	// Tiers is each task's tier, so a saved run can be read back without the
+	// fixtures it was run against.
+	Tiers map[string]string `json:"tiers,omitempty"`
 }
 
 // Models records what each harness ran on. A comparison between runs on
@@ -157,6 +163,12 @@ func suspectTasks(runs []Run, reference string) []string {
 	passed := map[string]bool{}
 	for _, r := range runs {
 		if r.Harness != reference {
+			continue
+		}
+		// A reference that could not run says nothing about the task. Counting
+		// it would let a rate limit quietly delete tasks from the headline.
+		switch r.Outcome {
+		case Errored, TimedOut, Unusable:
 			continue
 		}
 		attempted[r.Task] = true

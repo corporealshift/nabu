@@ -31,6 +31,15 @@ presented as neutral.
 A task Claude fails is marked `?` and left out of the headline rates. Claude is
 expected to pass everything, so its failure is evidence about the task.
 
+## Tiers
+
+ tasks confirm a harness works at all.  tasks are the ones meant to
+tell good harnesses apart, and they are reported on their own line: a tier every
+harness passes cannot show movement, and averaging it into the headline hides
+the difference you are looking for.
+
+If the hard tier stops discriminating, it needs harder tasks, not a new metric.
+
 ## Adding a task
 
 `bench/tasks/<id>/task.json` plus a `repo/` holding the fixture.
@@ -39,6 +48,7 @@ expected to pass everything, so its failure is evidence about the task.
 { "id": "07-something",
   "prompt": "what every harness is asked, verbatim",
   "verify": ["go", "test", "./..."],
+  "tier": "hard",
   "unchanged": ["thing_test.go"],
   "max_turns": 14,
   "timeout_seconds": 900 }

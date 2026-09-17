@@ -22,9 +22,12 @@ type Task struct {
 	Verify []string `json:"verify"`
 	// Unchanged names files the task forbids touching, usually the test that
 	// defines success.
-	Unchanged      []string `json:"unchanged"`
-	MaxTurns       int      `json:"max_turns"`
-	TimeoutSeconds int      `json:"timeout_seconds"`
+	Unchanged []string `json:"unchanged"`
+	// Tier separates tasks that confirm a harness works at all from tasks meant
+	// to tell good harnesses apart. A tier everyone passes measures nothing.
+	Tier           string `json:"tier"`
+	MaxTurns       int    `json:"max_turns"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
 
 	// Dir is where the task was loaded from; its repo/ is the fixture.
 	Dir string `json:"-"`
@@ -97,6 +100,13 @@ func (t Task) validate() error {
 	}
 	if info, err := os.Stat(t.Fixture()); err != nil || !info.IsDir() {
 		return fmt.Errorf("has no repo/ fixture")
+	}
+	switch t.Tier {
+	case "basic", "hard":
+	case "":
+		return fmt.Errorf("has no tier (basic or hard)")
+	default:
+		return fmt.Errorf("has unknown tier %q", t.Tier)
 	}
 	return nil
 }

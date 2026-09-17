@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -55,8 +56,10 @@ func (r *Runner) Run(ctx context.Context) (Results, error) {
 		Judge:   r.opts.Judge.Name(),
 		Models:  r.opts.Models,
 	}
+	res.Tiers = map[string]string{}
 	for _, t := range r.opts.Tasks {
 		res.Tasks = append(res.Tasks, t.ID)
+		res.Tiers[t.ID] = t.Tier
 	}
 	for _, h := range r.opts.Harnesses {
 		res.Harness = append(res.Harness, h.Name())
@@ -110,6 +113,9 @@ func (r *Runner) one(ctx context.Context, parent string, task Task, h Harness, r
 	if runErr != nil {
 		out.Note = runErr.Error()
 	}
+	// Whatever the harness last said is the only evidence of why a run went
+	// wrong. Without it a bad result is indistinguishable from a bad harness.
+	out.Tail = tail(attempt.Output, 400)
 
 	changed, err := ws.Changed(ctx)
 	if err != nil {
@@ -121,6 +127,9 @@ func (r *Runner) one(ctx context.Context, parent string, task Task, h Harness, r
 
 	verified, runnable := verify(ctx, ws, task)
 	out.Outcome = outcome(attempt, runErr == nil, verified, runnable, out.Broke)
+	if out.Outcome == Passed {
+		out.Tail = "" // nothing to explain
+	}
 
 	// Craft is only worth scoring on work that runs. Grading the elegance of a
 	// change that does not pass rewards tidy failure.
@@ -147,4 +156,13 @@ func (r *Runner) craft(ctx context.Context, task Task, ws *Workspace, h Harness)
 
 func judgeIsRelated(judge, harness string) bool {
 	return harness == "claude" && len(judge) >= 6 && judge[:6] == "claude"
+}
+
+// tail is the last n characters, which is where a CLI puts its reason.
+func tail(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= n {
+		return s
+	}
+	return "…" + s[len(s)-n:]
 }

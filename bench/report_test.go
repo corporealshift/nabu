@@ -16,7 +16,39 @@ func results(runs ...Run) Results {
 		Runs:    runs,
 	}
 	r.Suspects = suspectTasks(r.Runs, "claude")
+	r.Tiers = map[string]string{}
+	for _, run := range runs {
+		r.Tiers[run.Task] = "basic"
+	}
 	return r
+}
+
+// The reason tiers exist: a suite everyone passes cannot show movement, so
+// the hard tier is reported on its own rather than averaged into the floor.
+func TestTiersAreReportedSeparately(t *testing.T) {
+	r := results(
+		pass("easy", "pi", 20), pass("easy", "claude", 5),
+		fail("tricky", "pi"), pass("tricky", "claude", 8),
+	)
+	r.Tiers = map[string]string{"easy": "basic", "tricky": "hard"}
+
+	var buf bytes.Buffer
+	Report(&buf, r)
+	out := buf.String()
+
+	if !strings.Contains(out, "PASS RATE basic") || !strings.Contains(out, "PASS RATE hard") {
+		tf(t, out, "both tiers should have their own line")
+	}
+	// pi passed the floor and failed the discriminating task. That difference
+	// is the whole point and has to survive into the report.
+	if !strings.Contains(out, "0/1") {
+		tf(t, out, "the hard tier should show pi failing")
+	}
+}
+
+func tf(t *testing.T, out, msg string) {
+	t.Helper()
+	t.Errorf("%s:\n%s", msg, out)
 }
 
 func pass(task, harness string, secs int) Run {

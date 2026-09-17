@@ -8,5 +8,6 @@
   ],
   "unchanged": [],
   "max_turns": 14,
-  "timeout_seconds": 900
+  "timeout_seconds": 900,
+  "tier": "basic"
 }

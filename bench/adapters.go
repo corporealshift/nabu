@@ -313,8 +313,52 @@ func (c *Claude) Run(ctx context.Context, ws *Workspace, task Task) (Attempt, er
 	if err != nil {
 		return a, err
 	}
+	// A refusal comes back in under a second and looks exactly like a harness
+	// that tried and produced nothing. Scoring it as a failure is how a rate
+	// limit came to read as Claude being unable to do the task.
+	if reason := claudeRefused(a.Output); reason != "" {
+		return a, fmt.Errorf("claude: %s", reason)
+	}
 	a.Cost = claudeCost(a.Output, a.Cost.Duration)
 	return a, nil
+}
+
+// claudeRefused reports why the CLI declined to run, or "".
+func claudeRefused(out string) string {
+	line := lastJSONObject(out)
+	if line == "" {
+		return "no result was printed: " + firstLine(strings.TrimSpace(out))
+	}
+	var wire struct {
+		IsError bool   `json:"is_error"`
+		Subtype string `json:"subtype"`
+		Result  string `json:"result"`
+		Error   string `json:"error"`
+	}
+	if json.Unmarshal([]byte(line), &wire) != nil {
+		return "unreadable result"
+	}
+	if wire.IsError {
+		reason := wire.Error
+		if reason == "" {
+			reason = wire.Result
+		}
+		if reason == "" {
+			reason = wire.Subtype
+		}
+		return firstLine(reason)
+	}
+	return ""
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		return s[:i]
+	}
+	if len(s) > 160 {
+		return s[:160]
+	}
+	return s
 }
 
 func claudeCost(out string, fallback time.Duration) Cost {
