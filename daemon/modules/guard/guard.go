@@ -332,7 +332,11 @@ func words(s string) map[string]bool {
 // are considered. An unknown tool is read-only until proven otherwise.
 var toolTiers = map[string]Tier{
 	"read": TierLow, "glob": TierLow, "grep": TierLow, "task.update": TierLow,
-	"write": TierMedium, "edit": TierMedium,
+	"web.search": TierLow,
+	"write":      TierMedium, "edit": TierMedium,
+	// Fetching is medium because the page decides what comes back: a
+	// result the model was told to read is somebody else's writing.
+	"web.fetch": TierMedium,
 }
 
 // classify assigns a risk tier. A path outside the workspace is high risk
