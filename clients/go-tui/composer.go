@@ -94,3 +94,35 @@ func (m model) viewportHeight() int {
 	}
 	return h
 }
+
+// wrapAll breaks rendered transcript lines to the width they will be read in.
+//
+// It happens here rather than when an event is rendered, because the width is
+// not known then and changes when the terminal does. A line is stored once and
+// wrapped afresh every draw.
+func wrapAll(lines []string, width int) []string {
+	if width < 2 {
+		return lines
+	}
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, wrapStyled(line, width)...)
+	}
+	return out
+}
+
+// wrapStyled wraps one line that already carries its styling. lipgloss counts
+// what is visible rather than what is in the string, which matters because the
+// escape sequences are several characters that occupy no columns at all.
+func wrapStyled(line string, width int) []string {
+	if visibleWidth(line) <= width {
+		return []string{line}
+	}
+	wrapped := lipgloss.NewStyle().Width(width).Render(line)
+
+	out := strings.Split(wrapped, "\n")
+	for i := range out {
+		out[i] = strings.TrimRight(out[i], " ")
+	}
+	return out
+}
