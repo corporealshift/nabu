@@ -41,7 +41,7 @@ func (st *Store) Dir() string { return st.root }
 
 // Create starts a new session whose first event records the workspace and
 // options.
-func (st *Store) Create(workspace, key string, opts protocol.Options) (*Session, error) {
+func (st *Store) Create(workspace, key string, opts protocol.Options, contextWindow int) (*Session, error) {
 	// Session ids order listings, so two sessions created in the same
 	// millisecond must still sort by creation order.
 	st.mu.Lock()
@@ -55,7 +55,8 @@ func (st *Store) Create(workspace, key string, opts protocol.Options) (*Session,
 	}
 	s := &Session{id: id, path: path, f: f, subs: map[int]chan protocol.Event{}}
 	if _, err := s.Append(protocol.EventSession, protocol.SessionData{
-		Workspace: workspace, WorkspaceKey: key, Options: opts}); err != nil {
+		Workspace: workspace, WorkspaceKey: key, Options: opts,
+		ContextWindow: contextWindow}); err != nil {
 		f.Close()
 		os.Remove(path)
 		return nil, err

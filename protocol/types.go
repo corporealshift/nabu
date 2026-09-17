@@ -83,6 +83,10 @@ type SessionData struct {
 	Workspace    string  `json:"workspace"`
 	WorkspaceKey string  `json:"workspace_key"`
 	Options      Options `json:"options"`
+	// ContextWindow is the model's context size in tokens when the session was
+	// created. Recorded so a client can say how full the context is: the log
+	// carries the usage, and without this a client holds only the numerator.
+	ContextWindow int `json:"context_window,omitempty"`
 }
 
 // Usage is the token accounting reported on assistant messages.

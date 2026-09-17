@@ -73,6 +73,13 @@ type model struct {
 	// visibly alive.
 	spinner int
 
+	// contextWindow and lastInput are the denominator and numerator of how
+	// full the context is. The window comes from the session event, the usage
+	// from the last assistant message: a sum would be wrong, since each
+	// request carries the whole conversation again.
+	contextWindow int
+	lastInput     int
+
 	// tasks and goal are what the agent believes it is doing. They come from
 	// events but never reach the transcript: re-rendering a task list inline
 	// on every update would drown the conversation.
@@ -138,6 +145,18 @@ func (m *model) appendEvent(ev protocol.Event) {
 	if ev.Type == protocol.EventStateChange {
 		if st, ok := stateOf(ev); ok {
 			m.setState(st)
+		}
+	}
+	if ev.Type == protocol.EventSession {
+		var d protocol.SessionData
+		if unmarshal(ev, &d) == nil {
+			m.contextWindow = d.ContextWindow
+		}
+	}
+	if ev.Type == protocol.EventMessage {
+		var d protocol.MessageData
+		if unmarshal(ev, &d) == nil && d.Role == "assistant" && d.Usage != nil {
+			m.lastInput = d.Usage.InputTokens
 		}
 	}
 	if ev.Type == protocol.EventTasks {
@@ -207,6 +226,8 @@ func (m *model) reset(sessionID string) {
 	m.turnID = ""
 	m.tasks = nil
 	m.goal = nil
+	m.contextWindow = 0
+	m.lastInput = 0
 	m.pending = nil
 	m.queued = nil
 	m.state = protocol.StateIdle

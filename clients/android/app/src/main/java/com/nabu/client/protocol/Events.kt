@@ -46,6 +46,8 @@ data class SessionData(
     val workspace: String = "",
     @SerialName("workspace_key") val workspaceKey: String = "",
     val options: Options = Options(),
+    /** The model's context size when the session was created; 0 when unknown. */
+    @SerialName("context_window") val contextWindow: Int = 0,
 )
 
 @Serializable

@@ -270,6 +270,7 @@ fun TranscriptScreen(
                     titleContentColor = NabuTheme.colors.ink,
                 ),
                 title = { Text(title, style = MaterialTheme.typography.titleSmall) },
+                actions = { ContextBadge(events) },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
             )
         },
@@ -542,6 +543,29 @@ private fun ThoughtLine(line: Line.Thought) {
             }
         }
     }
+}
+
+/**
+ * How full the model's context is, warning before compaction rather than after.
+ *
+ * Silent when the window was never configured: a percentage of an unknown
+ * number would be an invention.
+ */
+@Composable
+private fun ContextBadge(events: List<EventRow>) {
+    val used = remember(events) { contextUsed(events) } ?: return
+    val c = NabuTheme.colors
+
+    Text(
+        "context ${(used * 100).toInt()}%",
+        style = MaterialTheme.typography.labelMedium,
+        color = when {
+            used >= 0.85f -> c.danger
+            used >= 0.6f -> c.accent
+            else -> c.muted
+        },
+        modifier = Modifier.padding(end = 12.dp),
+    )
 }
 
 /** The workspace's last segment: the whole path does not fit on a phone. */
