@@ -1,0 +1,15 @@
+{
+  "id": "12-config-precedence",
+  "tier": "hard",
+  "prompt": "Implement Resolve in config.go. A setting can come from four places. Later ones win: built-in defaults, then the config file, then the environment, then command-line flags. The visible test covers one case and is not the whole specification \u2014 be careful about what it means for a layer to have said nothing, as against having said something empty. Do not change the test.",
+  "verify": [
+    "go",
+    "test",
+    "./..."
+  ],
+  "unchanged": [
+    "config_test.go"
+  ],
+  "max_turns": 25,
+  "timeout_seconds": 1500
+}

@@ -29,7 +29,10 @@ type Task struct {
 	MaxTurns       int    `json:"max_turns"`
 	TimeoutSeconds int    `json:"timeout_seconds"`
 
-	// Dir is where the task was loaded from; its repo/ is the fixture.
+	// Dir is where the task was loaded from; its repo/ is the fixture and
+	// its _hidden/, if any, is the half the harness never sees. Both that and
+	// _solution/ start with an underscore, which is how the go command knows
+	// to leave them out of this repository own build.
 	Dir string `json:"-"`
 }
 
@@ -43,6 +46,32 @@ func (t Task) Timeout() time.Duration {
 
 // Fixture is the pristine repository this task's workspaces are copied from.
 func (t Task) Fixture() string { return filepath.Join(t.Dir, "repo") }
+
+// Hidden is the directory of files laid over the workspace after the harness
+// has finished and before the check runs.
+//
+// A check the harness can run is a check it can grind against: it changes
+// something, runs the command, reads the assertion that failed, and tries
+// again until the command is quiet. That measures persistence. Holding the
+// real test back measures whether the harness understood the contract it was
+// given, which is the thing worth knowing.
+func (t Task) Hidden() string { return filepath.Join(t.Dir, "_hidden") }
+
+// HasHidden reports whether this task holds part of its check back.
+func (t Task) HasHidden() bool {
+	info, err := os.Stat(t.Hidden())
+	return err == nil && info.IsDir()
+}
+
+// Solution is the known-good patch that proves the task is possible. It is
+// never copied into a workspace a harness sees.
+func (t Task) Solution() string { return filepath.Join(t.Dir, "_solution") }
+
+// HasSolution reports whether this task can be checked for being achievable.
+func (t Task) HasSolution() bool {
+	info, err := os.Stat(t.Solution())
+	return err == nil && info.IsDir()
+}
 
 // LoadTasks reads every task under dir, in id order so a report's rows do not
 // move between runs.

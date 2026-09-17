@@ -117,6 +117,8 @@ func (r *Runner) one(ctx context.Context, parent string, task Task, h Harness, r
 	// wrong. Without it a bad result is indistinguishable from a bad harness.
 	out.Tail = tail(attempt.Output, 400)
 
+	// Read before the overlay, or the held-back files count as the
+	// harness's own edits.
 	changed, err := ws.Changed(ctx)
 	if err != nil {
 		out.Outcome, out.Note = Unusable, err.Error()
@@ -124,6 +126,13 @@ func (r *Runner) one(ctx context.Context, parent string, task Task, h Harness, r
 	}
 	out.Changed = changed
 	out.Broke = violations(changed, task.Unchanged)
+
+	// The held-back half arrives only now: the harness is finished and the
+	// diff has been read, so nothing it did can have been aimed at this.
+	if err := ws.Overlay(task.Hidden()); err != nil {
+		out.Outcome, out.Note = Unusable, "hidden check could not be applied: "+err.Error()
+		return out
+	}
 
 	verified, runnable, why := verify(ctx, ws, task)
 	if why != "" {

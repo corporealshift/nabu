@@ -67,6 +67,19 @@ func (w *Workspace) git(ctx context.Context, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
+// Overlay copies a directory over the workspace, replacing what it lands on.
+// It is how the held-back half of a check arrives, after the harness has
+// finished and can no longer read it.
+func (w *Workspace) Overlay(dir string) error {
+	if dir == "" {
+		return nil
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return nil
+	}
+	return copyTree(dir, w.Dir)
+}
+
 // Changed is every file the run added, edited or deleted, in sorted order.
 func (w *Workspace) Changed(ctx context.Context) ([]string, error) {
 	if out, err := w.git(ctx, "add", "-A"); err != nil {
