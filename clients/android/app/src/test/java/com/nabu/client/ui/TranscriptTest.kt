@@ -169,3 +169,52 @@ class TranscriptTest {
         assertEquals("what happened", (lines.single() as Line.Compacted).summary)
     }
 }
+
+// Issue 39: thinking reaches the phone but was rendering as nothing.
+class ThinkingLineTest {
+
+    private fun ev(id: String, type: String, data: String) = EventRow(
+        id = id, sessionId = "S1", ordinal = 1, type = type,
+        raw = """{"id":"$id","type":"$type","timestamp":"2026-09-17T00:00:00Z","data":$data}""",
+    )
+
+    @Test
+    fun `a thinking event becomes its own kind of line`() {
+        val lines = transcript(
+            listOf(ev("E1", "thinking", """{"content":"I should read the test first.","source":"model"}""")),
+            synced = true,
+        )
+
+        val thought = lines.single() as? Line.Thought
+            ?: error("thinking rendered as ${lines.single()::class.simpleName}, not a Thought")
+        assertEquals("I should read the test first.", thought.text)
+    }
+
+    // A provider that reports no reasoning must leave no trace.
+    @Test
+    fun `an empty thought is not a line`() {
+        val lines = transcript(
+            listOf(ev("E1", "thinking", """{"content":"   ","source":"model"}""")),
+            synced = true,
+        )
+        assertTrue("an empty thought should render nothing", lines.isEmpty())
+    }
+
+    // It must not be mistaken for the answer or for a tool call.
+    @Test
+    fun `a thought sits between the prompt and the answer`() {
+        val lines = transcript(
+            listOf(
+                ev("E1", "message", """{"role":"user","content":"go"}"""),
+                ev("E2", "thinking", """{"content":"weighing it up","source":"model"}"""),
+                ev("E3", "message", """{"role":"assistant","content":"done"}"""),
+            ),
+            synced = true,
+        )
+
+        assertEquals(3, lines.size)
+        assertTrue(lines[0] is Line.UserSaid)
+        assertTrue(lines[1] is Line.Thought)
+        assertTrue(lines[2] is Line.AgentSaid)
+    }
+}

@@ -107,6 +107,13 @@ data class Task(
     @SerialName("blocked_by") val blockedBy: List<String> = emptyList(),
 )
 
+/** The model's reasoning for the turn that follows it (spec 3.1). */
+@Serializable
+data class ThinkingData(
+    val content: String = "",
+    val source: String = "",
+)
+
 @Serializable
 data class TasksData(val tasks: List<Task> = emptyList(), val source: String = "")
 

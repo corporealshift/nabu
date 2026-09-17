@@ -112,6 +112,7 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
                 title = row?.workspace?.let { projectName(it) }?.ifBlank { s.id } ?: s.id,
                 events = events,
                 synced = row?.synced ?: false,
+                state = row?.state ?: "idle",
                 pending = pending,
                 tasks = tasks,
                 onSend = { vm.sendPrompt(s.id, it) },
