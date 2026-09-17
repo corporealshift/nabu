@@ -1,6 +1,11 @@
 package bench
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -118,5 +123,63 @@ func TestPreflightRefusesWhatCannotBeMeasured(t *testing.T) {
 	}
 	if err := (&Claude{Model: "sonnet"}).Preflight(t.Context()); err != nil {
 		t.Errorf("claude with a pinned model should be fine: %v", err)
+	}
+}
+
+// A daemon that never started is not a harness that tried and failed. Left
+// unclassified it scores zero, which reads as the harness being bad at its job
+// — the exact way this benchmark first reported nabu at 0/18.
+func TestNabuDaemonFailureIsNotAScore(t *testing.T) {
+	tests := []struct {
+		name string
+		out  string
+		want bool
+	}{
+		{
+			"the daemon never came up",
+			"nabu: no daemon listening, starting one\nnabu: daemon: none listening under C:/tmp/root after 20s\n",
+			true,
+		},
+		{"the port was taken", "listen tcp 127.0.0.1:8761: address already in use\n", true},
+		{"an ordinary run", `{"type":"message","data":{"role":"assistant"}}` + "\n", false},
+		{"a run that failed on its merits", "tests still failing\n", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := nabuDidNotStart(tt.out) != ""
+			if got != tt.want {
+				t.Errorf("nabuDidNotStart = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// Two suites must not fight over one port.
+func TestEachNabuGetsItsOwnPort(t *testing.T) {
+	providers := json.RawMessage(`{"local":{"base_url":"http://x/v1"}}`)
+
+	a := &Nabu{Root: t.TempDir()}
+	b := &Nabu{Root: t.TempDir()}
+	if err := a.WriteConfig(providers, "m"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.WriteConfig(providers, "m"); err != nil {
+		t.Fatal(err)
+	}
+
+	if a.Port == 0 || b.Port == 0 {
+		t.Fatalf("ports were not chosen: %d, %d", a.Port, b.Port)
+	}
+	if a.Port == b.Port {
+		t.Errorf("both suites took port %d", a.Port)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(a.Root, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), fmt.Sprintf("127.0.0.1:%d", a.Port)) {
+		t.Errorf("the config does not carry the chosen port:\n%s", raw)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/corporealshift/nabu/bench"
 )
@@ -72,6 +73,16 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "nabubench: writing the isolated config: %v\n", err)
 		return 1
 	}
+	// The suite's daemon must not outlive it. A leftover one holds its port, and
+	// the next suite then waits for a daemon that can never start — which is
+	// exactly how this tool first reported nabu as scoring zero.
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := nabu.Shutdown(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "nabubench: the benchmark daemon may still be running: %v\n", err)
+		}
+	}()
 
 	harnesses := pick(*only, []bench.Harness{
 		nabu,

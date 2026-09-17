@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,10 @@ type Nabu struct {
 	Exe   string // default "nabu"
 	Root  string // isolated --root
 	Model string
+	// Port is chosen when the config is written. A fixed one collides with a
+	// daemon left over from an earlier suite, and every run then waits for a
+	// daemon that can never start.
+	Port int
 }
 
 func (n *Nabu) Name() string { return "nabu" }
@@ -47,8 +52,39 @@ func (n *Nabu) Run(ctx context.Context, ws *Workspace, task Task) (Attempt, erro
 	if err != nil {
 		return a, err
 	}
+	// A daemon that never came up is not a harness that tried and failed. Left
+	// unclassified it scores zero and reads as the harness being bad at the job.
+	if reason := nabuDidNotStart(a.Output); reason != "" {
+		return a, fmt.Errorf("nabu: %s", reason)
+	}
 	a.Cost.Turns, a.Cost.InputTokens, a.Cost.OutputTokens = nabuUsage(a.Output)
 	return a, nil
+}
+
+// nabuDidNotStart reports why the run never reached the model, or "".
+func nabuDidNotStart(out string) string {
+	for _, line := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.Contains(line, "none listening under"):
+			return line
+		case strings.Contains(line, "address already in use"):
+			return line
+		}
+	}
+	return ""
+}
+
+// Shutdown stops the daemon this harness started. Without it the port stays
+// held and the next suite collides with it, which is exactly how this adapter
+// first reported nabu as scoring zero.
+func (n *Nabu) Shutdown(ctx context.Context) error {
+	exe := n.Exe
+	if exe == "" {
+		exe = "nabu"
+	}
+	cmd := exec.CommandContext(ctx, exe, "daemon", "stop", "--root", n.Root)
+	return cmd.Run()
 }
 
 // nabuUsage reads the turn count and token totals out of nabu's --json stream.
@@ -89,9 +125,16 @@ func (n *Nabu) WriteConfig(providers json.RawMessage, defaultModel string) error
 	if err := os.MkdirAll(n.Root, 0o755); err != nil {
 		return err
 	}
+	if n.Port == 0 {
+		port, err := freePort()
+		if err != nil {
+			return err
+		}
+		n.Port = port
+	}
 	cfg := map[string]any{
 		"daemon": map[string]any{
-			"bind":          "127.0.0.1:8761",
+			"bind":          fmt.Sprintf("127.0.0.1:%d", n.Port),
 			"log_level":     "warn",
 			"default_model": defaultModel,
 		},
@@ -106,6 +149,17 @@ func (n *Nabu) WriteConfig(providers json.RawMessage, defaultModel string) error
 		return err
 	}
 	return os.WriteFile(filepath.Join(n.Root, "config.json"), raw, 0o644)
+}
+
+// freePort asks the operating system for an unused port by taking one and
+// giving it straight back.
+func freePort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
 // ----------------------------------------------------------------------- pi

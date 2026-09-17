@@ -1,0 +1,1074 @@
+{
+  "started": "2026-09-17T02:35:05Z",
+  "repeat": 3,
+  "judge": "claude/sonnet",
+  "models": {
+    "local": "local/C:\\models\\Qwen3.6-35B-A3B-UD-Q4_K_XL-MTP.gguf",
+    "claude": "sonnet"
+  },
+  "tasks": [
+    "01-off-by-one",
+    "02-implement-from-test",
+    "03-find-the-bug",
+    "04-follow-the-pattern",
+    "05-minimal-fix",
+    "06-two-places"
+  ],
+  "harnesses": [
+    "nabu",
+    "pi",
+    "claude"
+  ],
+  "runs": [
+    {
+      "task": "01-off-by-one",
+      "harness": "nabu",
+      "repeat": 1,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20033835800
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:35:05Z"
+    },
+    {
+      "task": "01-off-by-one",
+      "harness": "nabu",
+      "repeat": 2,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20034906500
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:35:27Z"
+    },
+    {
+      "task": "01-off-by-one",
+      "harness": "nabu",
+      "repeat": 3,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20040178900
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:35:48Z"
+    },
+    {
+      "task": "01-off-by-one",
+      "harness": "pi",
+      "repeat": 1,
+      "outcome": "passed",
+      "changed": [
+        "slice.go"
+      ],
+      "cost": {
+        "duration_ns": 24671766600
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Single-character off-by-one fix, no test changes, nothing else touched, matching an instruction not to add tests."
+      },
+      "finished": "2026-09-17T02:36:09Z"
+    },
+    {
+      "task": "01-off-by-one",
+      "harness": "pi",
+      "repeat": 2,
+      "outcome": "passed",
+      "changed": [
+        "slice.go"
+      ],
+      "cost": {
+        "duration_ns": 21224942200
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Single-character off-by-one fix, nothing else touched, and tests were correctly left untouched per instructions."
+      },
+      "finished": "2026-09-17T02:36:41Z"
+    },
+    {
+      "task": "01-off-by-one",
+      "harness": "pi",
+      "repeat": 3,
+      "outcome": "passed",
+      "changed": [
+        "slice.go"
+      ],
+      "cost": {
+        "duration_ns": 20627417700
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Single-character off-by-one fix, nothing extraneous, and tests were correctly left untouched per instructions."
+      },
+      "finished": "2026-09-17T02:37:07Z"
+    },
+    {
+      "task": "01-off-by-one",
+      "harness": "claude",
+      "repeat": 1,
+      "outcome": "passed",
+      "changed": [
+        "slice.go"
+      ],
+      "cost": {
+        "duration_ns": 23050000000,
+        "turns": 9,
+        "input_tokens": 12,
+        "output_tokens": 1004,
+        "usd": 0.12799719999999998
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Single-character off-by-one fix, nothing extraneous, no test changes as instructed.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T02:37:34Z"
+    },
+    {
+      "task": "01-off-by-one",
+      "harness": "claude",
+      "repeat": 2,
+      "outcome": "passed",
+      "changed": [
+        "slice.go"
+      ],
+      "cost": {
+        "duration_ns": 14281000000,
+        "turns": 8,
+        "input_tokens": 12,
+        "output_tokens": 954,
+        "usd": 0.12739440000000002
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "One-character off-by-one fix, correctly minimal and focused, with no test changes as instructed.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T02:38:06Z"
+    },
+    {
+      "task": "01-off-by-one",
+      "harness": "claude",
+      "repeat": 3,
+      "outcome": "passed",
+      "changed": [
+        "slice.go"
+      ],
+      "cost": {
+        "duration_ns": 18712000000,
+        "turns": 9,
+        "input_tokens": 12,
+        "output_tokens": 832,
+        "usd": 0.125497
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Single-line off-by-one fix exactly as scoped, with tests correctly left untouched per instructions.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T02:38:28Z"
+    },
+    {
+      "task": "02-implement-from-test",
+      "harness": "nabu",
+      "repeat": 1,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20035758000
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:38:59Z"
+    },
+    {
+      "task": "02-implement-from-test",
+      "harness": "nabu",
+      "repeat": 2,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20038358600
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:39:20Z"
+    },
+    {
+      "task": "02-implement-from-test",
+      "harness": "nabu",
+      "repeat": 3,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20033803300
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:39:42Z"
+    },
+    {
+      "task": "02-implement-from-test",
+      "harness": "pi",
+      "repeat": 1,
+      "outcome": "passed",
+      "changed": [
+        "wrap.go"
+      ],
+      "cost": {
+        "duration_ns": 233976821700
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "The implementation is tightly scoped to wrap.go with no unrelated changes, and the task explicitly forbade touching the test."
+      },
+      "finished": "2026-09-17T02:40:03Z"
+    },
+    {
+      "task": "02-implement-from-test",
+      "harness": "pi",
+      "repeat": 2,
+      "outcome": "passed",
+      "changed": [
+        "wrap.go"
+      ],
+      "cost": {
+        "duration_ns": 59479040700
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 3,
+        "tested": 3,
+        "focused": 4,
+        "reason": "Implementation is reasonably scoped and left the test untouched, but the wrapping logic is more convoluted than needed and no additional edge-case tests were added despite an existing bug risk (empty-word skip on split)."
+      },
+      "finished": "2026-09-17T02:44:04Z"
+    },
+    {
+      "task": "02-implement-from-test",
+      "harness": "pi",
+      "repeat": 3,
+      "outcome": "passed",
+      "changed": [
+        "wrap.go"
+      ],
+      "cost": {
+        "duration_ns": 107019974100
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 4,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Implementation is appropriately scoped to just wrap.go with no test changes, though correctness under the untouched test is unverified here."
+      },
+      "finished": "2026-09-17T02:45:09Z"
+    },
+    {
+      "task": "02-implement-from-test",
+      "harness": "claude",
+      "repeat": 1,
+      "outcome": "passed",
+      "changed": [
+        "wrap.go"
+      ],
+      "cost": {
+        "duration_ns": 40949000000,
+        "turns": 9,
+        "input_tokens": 14,
+        "output_tokens": 2610,
+        "usd": 0.16264060000000002
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Clean, self-contained implementation of Wrap with no unrelated changes, and no test changes as instructed.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T02:47:02Z"
+    },
+    {
+      "task": "02-implement-from-test",
+      "harness": "claude",
+      "repeat": 2,
+      "outcome": "passed",
+      "changed": [
+        "wrap.go"
+      ],
+      "cost": {
+        "duration_ns": 38786000000,
+        "turns": 8,
+        "input_tokens": 12,
+        "output_tokens": 3137,
+        "usd": 0.15941519999999998
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Implementation is a tight, self-contained fix to Wrap with no test changes, as instructed, and no unrelated edits.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T02:47:50Z"
+    },
+    {
+      "task": "02-implement-from-test",
+      "harness": "claude",
+      "repeat": 3,
+      "outcome": "passed",
+      "changed": [
+        "wrap.go"
+      ],
+      "cost": {
+        "duration_ns": 32324000000,
+        "turns": 6,
+        "input_tokens": 10,
+        "output_tokens": 2752,
+        "usd": 0.1275952
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Change is a tight, correct implementation confined to wrap.go with no unrelated edits, and tests were rightly left untouched per the task.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T02:48:37Z"
+    },
+    {
+      "task": "03-find-the-bug",
+      "harness": "nabu",
+      "repeat": 1,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20028843800
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:49:17Z"
+    },
+    {
+      "task": "03-find-the-bug",
+      "harness": "nabu",
+      "repeat": 2,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20032913600
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:49:38Z"
+    },
+    {
+      "task": "03-find-the-bug",
+      "harness": "nabu",
+      "repeat": 3,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20026506400
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:49:59Z"
+    },
+    {
+      "task": "03-find-the-bug",
+      "harness": "pi",
+      "repeat": 1,
+      "outcome": "passed",
+      "changed": [
+        "dedupe.go",
+        "dedupe_test.go"
+      ],
+      "cost": {
+        "duration_ns": 62362752400
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 4,
+        "focused": 5,
+        "reason": "The fix and test are tightly scoped to dedupe.go/dedupe_test.go with no touches under cmd/, though the empty-slice test covers an extra case beyond the originally broken scenario."
+      },
+      "finished": "2026-09-17T02:50:20Z"
+    },
+    {
+      "task": "03-find-the-bug",
+      "harness": "pi",
+      "repeat": 2,
+      "outcome": "passed",
+      "changed": [
+        "dedupe.go",
+        "dedupe_test.go"
+      ],
+      "cost": {
+        "duration_ns": 54303092600
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 4,
+        "focused": 5,
+        "reason": "Fix is a clean minimal rewrite of Dedupe with a matching regression test added, no unrelated changes."
+      },
+      "finished": "2026-09-17T02:51:28Z"
+    },
+    {
+      "task": "03-find-the-bug",
+      "harness": "pi",
+      "repeat": 3,
+      "outcome": "passed",
+      "changed": [
+        "dedupe.go",
+        "dedupe_test.go"
+      ],
+      "cost": {
+        "duration_ns": 47654979000
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 5,
+        "focused": 5,
+        "reason": "The change is a precise fix in dedupe.go plus targeted regression tests covering both the broken case and an edge case, with no unrelated edits."
+      },
+      "finished": "2026-09-17T02:52:29Z"
+    },
+    {
+      "task": "03-find-the-bug",
+      "harness": "claude",
+      "repeat": 1,
+      "outcome": "passed",
+      "changed": [
+        "dedupe.go",
+        "dedupe_test.go"
+      ],
+      "cost": {
+        "duration_ns": 35209000000,
+        "turns": 12,
+        "input_tokens": 16,
+        "output_tokens": 2408,
+        "usd": 0.168357
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 4,
+        "focused": 5,
+        "reason": "Fix is a minimal one-line-scope change to dedupe.go with a focused regression test added, no unrelated churn.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T02:53:22Z"
+    },
+    {
+      "task": "03-find-the-bug",
+      "harness": "claude",
+      "repeat": 2,
+      "outcome": "passed",
+      "changed": [
+        "dedupe.go",
+        "dedupe_test.go"
+      ],
+      "cost": {
+        "duration_ns": 36836000000,
+        "turns": 12,
+        "input_tokens": 18,
+        "output_tokens": 2272,
+        "usd": 0.17540239999999999
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 5,
+        "focused": 5,
+        "reason": "The diff fixes exactly the adjacency bug in dedupe.go and adds a precisely targeted regression test, touching nothing else.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T02:54:05Z"
+    },
+    {
+      "task": "03-find-the-bug",
+      "harness": "claude",
+      "repeat": 3,
+      "outcome": "passed",
+      "changed": [
+        "dedupe.go",
+        "dedupe_test.go"
+      ],
+      "cost": {
+        "duration_ns": 27631000000,
+        "turns": 11,
+        "input_tokens": 16,
+        "output_tokens": 1885,
+        "usd": 0.16000460000000002
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 5,
+        "focused": 5,
+        "reason": "Fix and test are both tightly scoped to the exact broken behavior, with no unrelated changes and no touching of cmd/.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T02:54:59Z"
+    },
+    {
+      "task": "04-follow-the-pattern",
+      "harness": "nabu",
+      "repeat": 1,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20034076000
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:55:34Z"
+    },
+    {
+      "task": "04-follow-the-pattern",
+      "harness": "nabu",
+      "repeat": 2,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20038053000
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:55:54Z"
+    },
+    {
+      "task": "04-follow-the-pattern",
+      "harness": "nabu",
+      "repeat": 3,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20029680000
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:56:15Z"
+    },
+    {
+      "task": "04-follow-the-pattern",
+      "harness": "pi",
+      "repeat": 1,
+      "outcome": "passed",
+      "changed": [
+        "convert.go"
+      ],
+      "cost": {
+        "duration_ns": 29755206100
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Adds exactly the requested function matching existing style, leaves test untouched, no unrelated changes."
+      },
+      "finished": "2026-09-17T02:56:35Z"
+    },
+    {
+      "task": "04-follow-the-pattern",
+      "harness": "pi",
+      "repeat": 2,
+      "outcome": "passed",
+      "changed": [
+        "convert.go"
+      ],
+      "cost": {
+        "duration_ns": 28286334100
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "The change adds exactly the requested function in the existing style without touching the test, as instructed."
+      },
+      "finished": "2026-09-17T02:57:10Z"
+    },
+    {
+      "task": "04-follow-the-pattern",
+      "harness": "pi",
+      "repeat": 3,
+      "outcome": "passed",
+      "changed": [
+        "convert.go"
+      ],
+      "cost": {
+        "duration_ns": 33526362400
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "The change adds exactly the requested function without touching the test, matching the existing style."
+      },
+      "finished": "2026-09-17T02:57:44Z"
+    },
+    {
+      "task": "04-follow-the-pattern",
+      "harness": "claude",
+      "repeat": 1,
+      "outcome": "passed",
+      "changed": [
+        "convert.go"
+      ],
+      "cost": {
+        "duration_ns": 12170000000,
+        "turns": 6,
+        "input_tokens": 10,
+        "output_tokens": 992,
+        "usd": 0.10340640000000001
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "The change adds exactly the requested function matching the file's existing style without touching tests, as instructed.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T02:58:30Z"
+    },
+    {
+      "task": "04-follow-the-pattern",
+      "harness": "claude",
+      "repeat": 2,
+      "outcome": "passed",
+      "changed": [
+        "convert.go"
+      ],
+      "cost": {
+        "duration_ns": 16831000000,
+        "turns": 9,
+        "input_tokens": 14,
+        "output_tokens": 1300,
+        "usd": 0.1428464
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Adds exactly the requested function matching existing style without touching the test, and no tests were needed since the task forbade changing the test.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T02:58:50Z"
+    },
+    {
+      "task": "04-follow-the-pattern",
+      "harness": "claude",
+      "repeat": 3,
+      "outcome": "passed",
+      "changed": [
+        "convert.go"
+      ],
+      "cost": {
+        "duration_ns": 14746000000,
+        "turns": 6,
+        "input_tokens": 10,
+        "output_tokens": 1196,
+        "usd": 0.106386
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "The change adds exactly the required function without touching tests, matching the existing style, though no new test was added since the task forbade editing the test file.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T02:59:17Z"
+    },
+    {
+      "task": "05-minimal-fix",
+      "harness": "nabu",
+      "repeat": 1,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20024844800
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:59:39Z"
+    },
+    {
+      "task": "05-minimal-fix",
+      "harness": "nabu",
+      "repeat": 2,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20023229200
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T02:59:59Z"
+    },
+    {
+      "task": "05-minimal-fix",
+      "harness": "nabu",
+      "repeat": 3,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20016813400
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T03:00:20Z"
+    },
+    {
+      "task": "05-minimal-fix",
+      "harness": "pi",
+      "repeat": 1,
+      "outcome": "passed",
+      "changed": [
+        "report.go"
+      ],
+      "cost": {
+        "duration_ns": 24427556900
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "The fix precisely addresses the vet format-string mismatch with no extraneous changes, though no test was added to guard against regression."
+      },
+      "finished": "2026-09-17T03:00:40Z"
+    },
+    {
+      "task": "05-minimal-fix",
+      "harness": "pi",
+      "repeat": 2,
+      "outcome": "passed",
+      "changed": [
+        "report.go"
+      ],
+      "cost": {
+        "duration_ns": 23072965600
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Single-character fix exactly matching the vet-flagged format verb mismatch, with no unrelated changes; no tests added but task scope didn't call for them."
+      },
+      "finished": "2026-09-17T03:01:10Z"
+    },
+    {
+      "task": "05-minimal-fix",
+      "harness": "pi",
+      "repeat": 3,
+      "outcome": "passed",
+      "changed": [
+        "report.go"
+      ],
+      "cost": {
+        "duration_ns": 23412766500
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Exactly the one vet-flagged format verb was fixed with no other changes, though no test was added to lock it in."
+      },
+      "finished": "2026-09-17T03:01:38Z"
+    },
+    {
+      "task": "05-minimal-fix",
+      "harness": "claude",
+      "repeat": 1,
+      "outcome": "passed",
+      "changed": [
+        "report.go"
+      ],
+      "cost": {
+        "duration_ns": 15136000000,
+        "turns": 5,
+        "input_tokens": 10,
+        "output_tokens": 650,
+        "usd": 0.09660480000000002
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Change is a single-character format-verb fix exactly matching the vet complaint, with no unrelated edits, though no test was added to guard the fix.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T03:02:07Z"
+    },
+    {
+      "task": "05-minimal-fix",
+      "harness": "claude",
+      "repeat": 2,
+      "outcome": "passed",
+      "changed": [
+        "report.go"
+      ],
+      "cost": {
+        "duration_ns": 20455000000,
+        "turns": 6,
+        "input_tokens": 12,
+        "output_tokens": 684,
+        "usd": 0.10440619999999999
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Single-character fix exactly matching the vet complaint, no tests added but task didn't call for them.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T03:02:31Z"
+    },
+    {
+      "task": "05-minimal-fix",
+      "harness": "claude",
+      "repeat": 3,
+      "outcome": "passed",
+      "changed": [
+        "report.go"
+      ],
+      "cost": {
+        "duration_ns": 14605000000,
+        "turns": 5,
+        "input_tokens": 10,
+        "output_tokens": 639,
+        "usd": 0.09647699999999998
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Single-character fix exactly matching the vet complaint, no test added but task didn't request one and change is trivially verified by vet itself.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T03:02:59Z"
+    },
+    {
+      "task": "06-two-places",
+      "harness": "nabu",
+      "repeat": 1,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20021738000
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T03:03:21Z"
+    },
+    {
+      "task": "06-two-places",
+      "harness": "nabu",
+      "repeat": 2,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20037551100
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T03:03:42Z"
+    },
+    {
+      "task": "06-two-places",
+      "harness": "nabu",
+      "repeat": 3,
+      "outcome": "failed",
+      "cost": {
+        "duration_ns": 20022299400
+      },
+      "craft": {
+        "scored": false
+      },
+      "finished": "2026-09-17T03:04:03Z"
+    },
+    {
+      "task": "06-two-places",
+      "harness": "pi",
+      "repeat": 1,
+      "outcome": "passed",
+      "changed": [
+        "labels.go"
+      ],
+      "cost": {
+        "duration_ns": 32620732800
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "The fix adds exactly the two missing status labels needed to satisfy the existing test, with no unrelated changes, and the task explicitly said not to touch tests."
+      },
+      "finished": "2026-09-17T03:04:24Z"
+    },
+    {
+      "task": "06-two-places",
+      "harness": "pi",
+      "repeat": 2,
+      "outcome": "passed",
+      "changed": [
+        "labels.go"
+      ],
+      "cost": {
+        "duration_ns": 29020006900
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "The diff adds exactly the two missing label entries needed to satisfy the existing test without touching anything else."
+      },
+      "finished": "2026-09-17T03:05:02Z"
+    },
+    {
+      "task": "06-two-places",
+      "harness": "pi",
+      "repeat": 3,
+      "outcome": "passed",
+      "changed": [
+        "labels.go"
+      ],
+      "cost": {
+        "duration_ns": 28791188700
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "The diff adds exactly the two missing status labels needed to make the test pass, with no unrelated changes; tests were not touched per instructions, which is appropriate here."
+      },
+      "finished": "2026-09-17T03:05:37Z"
+    },
+    {
+      "task": "06-two-places",
+      "harness": "claude",
+      "repeat": 1,
+      "outcome": "passed",
+      "changed": [
+        "labels.go"
+      ],
+      "cost": {
+        "duration_ns": 13695000000,
+        "turns": 11,
+        "input_tokens": 12,
+        "output_tokens": 1061,
+        "usd": 0.12992479999999998
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Adds exactly the two missing label entries needed to make the existing test pass, with no unrelated changes; task explicitly forbade touching tests.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T03:06:10Z"
+    },
+    {
+      "task": "06-two-places",
+      "harness": "claude",
+      "repeat": 2,
+      "outcome": "passed",
+      "changed": [
+        "labels.go"
+      ],
+      "cost": {
+        "duration_ns": 24332000000,
+        "turns": 10,
+        "input_tokens": 14,
+        "output_tokens": 1288,
+        "usd": 0.14149460000000003
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Adds exactly the two missing label entries needed to fix the failing test, with no unrelated changes; tests weren't touched since the task forbade it.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T03:06:33Z"
+    },
+    {
+      "task": "06-two-places",
+      "harness": "claude",
+      "repeat": 3,
+      "outcome": "passed",
+      "changed": [
+        "labels.go"
+      ],
+      "cost": {
+        "duration_ns": 34387000000,
+        "turns": 11,
+        "input_tokens": 12,
+        "output_tokens": 990,
+        "usd": 0.1287534
+      },
+      "craft": {
+        "scored": true,
+        "minimal": 5,
+        "tested": 3,
+        "focused": 5,
+        "reason": "Adds exactly the two missing label entries needed to satisfy the existing test, with no unrelated changes.",
+        "self_judged": true
+      },
+      "finished": "2026-09-17T03:07:05Z"
+    }
+  ]
+}
