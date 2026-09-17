@@ -51,11 +51,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		h := msg.Height - 3 // status, help, composer
-		if h < 1 {
-			h = 1
-		}
-		m.viewport.Width, m.viewport.Height = m.transcriptWidth(), h
+		m.relayout()
 		m.refresh()
 		return m, nil
 
@@ -182,18 +178,29 @@ func (m model) onComposerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEnter:
 		return m.submit()
 	case tea.KeyBackspace:
-		if n := len(m.input); n > 0 {
-			m.input = m.input[:n-1]
+		// Runes, not bytes: half an accented character is not a character.
+		if runes := []rune(m.input); len(runes) > 0 {
+			m.input = string(runes[:len(runes)-1])
 		}
+		m.relayout()
 		return m, nil
 	case tea.KeySpace:
 		m.input += " "
+		m.relayout()
 		return m, nil
 	case tea.KeyRunes:
 		m.input += string(msg.Runes)
+		m.relayout()
 		return m, nil
 	}
 	return m, nil
+}
+
+// relayout gives the viewport whatever the composer is not using. The
+// composer grows as it is typed, so this runs on every key, not only on
+// a resize.
+func (m *model) relayout() {
+	m.viewport.Width, m.viewport.Height = m.transcriptWidth(), m.viewportHeight()
 }
 
 // submit acts on the composer's contents.
