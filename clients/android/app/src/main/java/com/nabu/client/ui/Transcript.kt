@@ -7,6 +7,7 @@ import com.nabu.client.protocol.MessageData
 import com.nabu.client.protocol.NabuJson
 import com.nabu.client.protocol.NoticeData
 import com.nabu.client.protocol.StopVetoData
+import com.nabu.client.protocol.ThinkingData
 import com.nabu.client.protocol.ToolCallData
 import com.nabu.client.protocol.ToolResultData
 import com.nabu.client.protocol.payload
@@ -24,6 +25,13 @@ sealed interface Line {
         val text: String,
         val truncated: Boolean,
     ) : Line
+
+    /**
+     * What the model thought before answering. Its own kind of line because it
+     * is neither the answer nor a tool call, and reading it as either is
+     * misleading.
+     */
+    data class Thought(override val key: String, val text: String) : Line
 
     data class Note(override val key: String, val text: String, val level: String) : Line
     data class Veto(override val key: String, val module: String, val reason: String) : Line
@@ -84,6 +92,11 @@ private fun render(key: String, e: Event): Line? = when (e.type) {
             text = text,
             truncated = text.length > COLLAPSED_OUTPUT_CHARS,
         )
+    }
+
+    "thinking" -> e.payload<ThinkingData>()?.let { d ->
+        val text = d.content.trim()
+        if (text.isEmpty()) null else Line.Thought(key, text)
     }
 
     "notice" -> e.payload<NoticeData>()?.let { Line.Note(key, it.message, it.level) }

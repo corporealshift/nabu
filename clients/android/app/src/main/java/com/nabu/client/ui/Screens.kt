@@ -1,6 +1,13 @@
 package com.nabu.client.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.alpha
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,6 +16,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -236,6 +247,7 @@ fun TranscriptScreen(
     title: String,
     events: List<EventRow>,
     synced: Boolean,
+    state: String,
     pending: List<OutboxRow>,
     tasks: List<Task>,
     onSend: (String) -> Unit,
@@ -261,7 +273,7 @@ fun TranscriptScreen(
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
             )
         },
-        bottomBar = { Composer(pending, tasks, onSend, onTaskDone) },
+        bottomBar = { Composer(state, pending, tasks, onSend, onTaskDone) },
     ) { padding ->
         LazyColumn(
             state = listState,
@@ -276,6 +288,7 @@ fun TranscriptScreen(
 
 @Composable
 private fun Composer(
+    state: String,
     pending: List<OutboxRow>,
     tasks: List<Task>,
     onSend: (String) -> Unit,
@@ -294,6 +307,7 @@ private fun Composer(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        WorkingIndicator(state)
         TaskCard(tasks, onTaskDone)
         if (pending.isNotEmpty()) {
             // A prompt the user believes was sent and was not is the failure
@@ -422,6 +436,8 @@ private fun LineView(line: Line) {
             }
         }
 
+        is Line.Thought -> ThoughtLine(line)
+
         is Line.Note -> Text(
             "note: ${line.text}",
             style = MaterialTheme.typography.bodySmall,
@@ -440,6 +456,91 @@ private fun LineView(line: Line) {
             style = MaterialTheme.typography.labelMedium,
             color = NabuTheme.colors.muted,
         )
+    }
+}
+
+/**
+ * Says the agent is alive while a slow model works.
+ *
+ * A turn can be silent for minutes, and a screen that has stopped changing is
+ * otherwise indistinguishable from a dropped connection. The dot moves, so
+ * nothing has to be inferred from stillness.
+ */
+@Composable
+private fun WorkingIndicator(state: String) {
+    if (state != "running") return
+    val c = NabuTheme.colors
+
+    val move = rememberInfiniteTransition(label = "working")
+    val alpha by move.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulse",
+    )
+
+    Row(
+        Modifier.fillMaxWidth().padding(bottom = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .alpha(alpha)
+                .background(c.accent)
+        )
+        Text(
+            "working",
+            style = MaterialTheme.typography.labelMedium,
+            color = c.muted,
+        )
+    }
+}
+
+/**
+ * A thought, collapsed to one line until asked for.
+ *
+ * Neither a bubble nor a tool block: reasoning is not the answer and not a
+ * command, and dressing it as either misleads. A rule down the left marks it as
+ * an aside, and it stays out of the way until tapped.
+ */
+@Composable
+private fun ThoughtLine(line: Line.Thought) {
+    val c = NabuTheme.colors
+    var expanded by remember(line.key) { mutableStateOf(false) }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .clickable { expanded = !expanded }
+            .padding(vertical = 4.dp)
+            .height(IntrinsicSize.Min),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.width(2.dp).fillMaxHeight().background(c.line))
+        Column {
+            Text(
+                if (expanded) "thought · tap to hide"
+                else "thought · ${line.text.split(Regex("\\s+")).size} words, tap to read",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.muted,
+            )
+            if (expanded) {
+                Text(
+                    line.text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.muted,
+                    fontStyle = FontStyle.Italic,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+            }
+        }
     }
 }
 
