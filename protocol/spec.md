@@ -128,10 +128,32 @@ reasoning produces no event — an empty `thinking` event is never written.
 
 ```jsonc
 {"call_id":"call_01","tool":"bash","content":"ok  \t./protocol\t0.4s","status":"ok"}
+{"call_id":"call_02","tool":"bash","content":"exit status 1","status":"error","kind":"exit","exit_code":1}
 ```
 
 `status` ∈ `ok | error`. A denied gate produces `status: error` with the denial
 reason as `content`.
+
+`kind` and `exit_code` are optional and describe **how** a call failed, so a
+reader does not have to parse `content` to find out. Both MUST be absent when
+`status` is `ok`.
+
+| `kind` | meaning |
+|---|---|
+| `exit` | the process ran and returned non-zero |
+| `timeout` | the call outlived its deadline |
+| `denied` | a gate or the user refused it |
+| `invalid_args` | the arguments were unusable |
+| `not_found` | the tool, file or program is not there |
+| `io` | the filesystem or the operating system refused |
+
+`kind` MAY be absent on a failure: absent means **unclassified**, never "fine" —
+`status` is what says whether the call succeeded. A reader that knows only
+`status` and `content` is still correct, because `content` is unchanged by the
+presence of either field.
+
+`exit_code` is present only where the tool ran a process. Zero is a valid exit
+code, so its absence and a value of `0` are different facts.
 
 #### `options_change`
 

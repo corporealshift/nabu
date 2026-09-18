@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/protocol"
 )
 
 // skipDir names directories never walked by glob and grep.
@@ -41,7 +42,7 @@ func (b *Builtins) readTool() module.Tool {
 			}
 			f, err := os.Open(p)
 			if err != nil {
-				return "", err
+				return "", osFail(err)
 			}
 			defer f.Close()
 			if a.Offset < 1 {
@@ -67,7 +68,7 @@ func (b *Builtins) readTool() module.Tool {
 				shown++
 			}
 			if err := sc.Err(); err != nil {
-				return "", err
+				return "", osFail(err)
 			}
 			if shown == 0 && n == 0 {
 				return "(empty file)", nil
@@ -97,10 +98,10 @@ func (b *Builtins) writeTool() module.Tool {
 				return "", err
 			}
 			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-				return "", err
+				return "", osFail(err)
 			}
 			if err := os.WriteFile(p, []byte(a.Content), 0o644); err != nil {
-				return "", err
+				return "", osFail(err)
 			}
 			return fmt.Sprintf("wrote %d bytes to %s", len(a.Content), rel(s, p)), nil
 		},
@@ -125,7 +126,7 @@ func (b *Builtins) editTool() module.Tool {
 				return "", err
 			}
 			if a.Old == "" {
-				return "", fmt.Errorf("old must not be empty")
+				return "", module.Fail(protocol.ToolErrorInvalidArgs, "old must not be empty")
 			}
 			p, err := resolve(s, a.Path)
 			if err != nil {
@@ -133,22 +134,22 @@ func (b *Builtins) editTool() module.Tool {
 			}
 			data, err := os.ReadFile(p)
 			if err != nil {
-				return "", err
+				return "", osFail(err)
 			}
 			text := string(data)
 			n := strings.Count(text, a.Old)
 			switch {
 			case n == 0:
-				return "", fmt.Errorf("old text not found in %s", rel(s, p))
+				return "", module.Fail(protocol.ToolErrorNotFound, "old text not found in %s", rel(s, p))
 			case n > 1 && !a.ReplaceAll:
-				return "", fmt.Errorf("old text occurs %d times in %s; make it unique or set replace_all", n, rel(s, p))
+				return "", module.Fail(protocol.ToolErrorInvalidArgs, "old text occurs %d times in %s; make it unique or set replace_all", n, rel(s, p))
 			}
 			if !a.ReplaceAll {
 				n = 1
 			}
 			text = strings.Replace(text, a.Old, a.New, n)
 			if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
-				return "", err
+				return "", osFail(err)
 			}
 			return fmt.Sprintf("replaced %d occurrence(s) in %s", n, rel(s, p)), nil
 		},
@@ -171,7 +172,7 @@ func (b *Builtins) globTool() module.Tool {
 				return "", err
 			}
 			if a.Pattern == "" {
-				return "", fmt.Errorf("pattern is required")
+				return "", module.Fail(protocol.ToolErrorInvalidArgs, "pattern is required")
 			}
 			root := s.Workspace().Path
 			if a.Path != "" {
@@ -222,7 +223,7 @@ func (b *Builtins) grepTool() module.Tool {
 				return "", err
 			}
 			if a.Pattern == "" {
-				return "", fmt.Errorf("pattern is required")
+				return "", module.Fail(protocol.ToolErrorInvalidArgs, "pattern is required")
 			}
 			pat := a.Pattern
 			if a.IgnoreCase {
@@ -230,7 +231,7 @@ func (b *Builtins) grepTool() module.Tool {
 			}
 			re, err := regexp.Compile(pat)
 			if err != nil {
-				return "", fmt.Errorf("bad pattern: %w", err)
+				return "", module.Fail(protocol.ToolErrorInvalidArgs, "bad pattern: %s", err)
 			}
 			var nameRe *regexp.Regexp
 			if a.Glob != "" {

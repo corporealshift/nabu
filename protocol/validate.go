@@ -81,6 +81,15 @@ func ValidateEvent(e Event) error {
 		if d.Status != "ok" && d.Status != "error" {
 			return fail(fmt.Sprintf("status %q invalid", d.Status))
 		}
+		if d.Kind != "" && !IsToolErrorKind(d.Kind) {
+			return fail(fmt.Sprintf("kind %q invalid", d.Kind))
+		}
+		// A kind describes a failure. On a result that says it succeeded it is
+		// a contradiction, and silently keeping it would let the two fields
+		// disagree in the log forever.
+		if d.Status == "ok" && (d.Kind != "" || d.ExitCode != nil) {
+			return fail("kind and exit_code belong to a failure, not to status ok")
+		}
 	case *OptionsChangeData:
 		switch d.Key {
 		case "model", "compaction_enabled", "permission_mode":

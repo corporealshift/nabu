@@ -2,11 +2,14 @@ package tools
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"time"
 
 	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/protocol"
 )
 
 // Builtins is the module that provides nabu's built-in tools. It registers
@@ -57,22 +60,35 @@ func (b *Builtins) maxOutput() int {
 }
 
 // decode unmarshals tool arguments leniently (unknown fields ignored).
+//
+// Every built-in funnels its arguments through here, so classifying the failure
+// once covers all of them.
 func decode[T any](args json.RawMessage) (T, error) {
 	var v T
 	if len(args) == 0 {
 		return v, nil
 	}
 	if err := json.Unmarshal(args, &v); err != nil {
-		return v, fmt.Errorf("invalid arguments: %w", err)
+		return v, module.Fail(protocol.ToolErrorInvalidArgs, "invalid arguments: %s", err)
 	}
 	return v, nil
+}
+
+// osFail classifies a filesystem error. A path that is not there is a different
+// problem from one the OS refused, and the model can act on the difference:
+// create the file, or stop trying.
+func osFail(err error) error {
+	if errors.Is(err, fs.ErrNotExist) {
+		return module.FailWith(protocol.ToolErrorNotFound, err)
+	}
+	return module.FailWith(protocol.ToolErrorIO, err)
 }
 
 // resolve turns a tool path into an absolute path under the workspace unless
 // it is already absolute.
 func resolve(s module.Session, p string) (string, error) {
 	if p == "" {
-		return "", fmt.Errorf("path is required")
+		return "", module.Fail(protocol.ToolErrorInvalidArgs, "path is required")
 	}
 	if filepath.IsAbs(p) {
 		return filepath.Clean(p), nil

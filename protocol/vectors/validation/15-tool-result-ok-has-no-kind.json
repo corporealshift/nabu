@@ -1,0 +1,36 @@
+{
+  "name": "a successful tool result carries no failure kind",
+  "description": "kind and exit_code describe a failure; on status ok they contradict it.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-10T00:26:42.000Z",
+      "type": "tool_result",
+      "data": {
+        "call_id": "call_01",
+        "tool": "bash",
+        "content": "ok",
+        "status": "ok",
+        "exit_code": 0
+      }
+    }
+  ],
+  "operation": { "op": "validate" },
+  "expect": { "valid": false, "error": "belong to a failure" }
+}
