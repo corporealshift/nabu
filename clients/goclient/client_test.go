@@ -482,15 +482,24 @@ func TestALargeEventDoesNotKillTheConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Stream returns as soon as the callback asks it to stop, so on a loaded
+	// machine its nil return is ready before the delivery that prompted it,
+	// and select picks between them at random. A stop only means the
+	// connection dropped if nothing arrived with it.
+	var n int
 	select {
-	case n := <-got:
-		if n != len(big) {
-			t.Errorf("received %d bytes of content, want %d", n, len(big))
+	case n = <-got:
+	case stopped := <-errs:
+		select {
+		case n = <-got:
+		default:
+			t.Fatalf("the connection dropped instead of delivering the event: %v", stopped)
 		}
-	case err := <-errs:
-		t.Fatalf("the connection dropped instead of delivering the event: %v", err)
 	case <-time.After(15 * time.Second):
 		t.Fatal("the large event never arrived")
+	}
+	if n != len(big) {
+		t.Errorf("received %d bytes of content, want %d", n, len(big))
 	}
 }
 
