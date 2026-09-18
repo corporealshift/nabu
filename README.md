@@ -11,8 +11,8 @@ no plugin system and no extension API, because there is nothing to extend around
 should behave differently, I change it. The source is the customisation layer.
 
 > **Status:** early, and built for one person's daily use. It drives a local model
-> through real work every day. Interfaces still move, there is no release or installer,
-> and the Android client speaks the protocol but its screens are unfinished.
+> through real work every day. Interfaces still move and there is no release or
+> installer: both clients are built from source.
 
 ## Requirements
 
@@ -75,7 +75,9 @@ That is the minimum. Two things to know:
 - **`default_model` is `provider/model`.** The part before the slash picks the provider
   block; the rest is sent to the endpoint as the model name.
 - **Set `context_window`.** Without it nabu cannot tell how full the context is, so it
-  never compacts, and a long session grows until your model refuses the request.
+  never compacts, and a long session grows until your model refuses the request. It is
+  also what the clients read to show how full the window is, and they say nothing rather
+  than guess when it is unset.
 
 Unknown fields are rejected rather than ignored, so a typo fails loudly at startup
 instead of silently doing nothing.
@@ -135,6 +137,14 @@ if one isn't running, and opens the terminal UI.
 | `ctrl+x` | Interrupt the current turn |
 | `g` / `G` | Jump to the top or bottom of the transcript |
 | `q` | Quit, leaving the run going |
+
+When the agent asks you something, the question takes the screen: a number picks one of
+the offered answers, or type your own and press enter. Everything else you type goes
+into the answer, so `q` does not quit while one is on screen.
+
+In the composer, a line starting with `/` is a command rather than a prompt: `/goal
+<text>` sets the run goal, `/goal` on its own clears it, `/stop` ends the session,
+`/sessions` switches, `/help` lists them.
 
 Quitting does not stop the run. Reopen with `nabu --session <id>` or press `s` and pick
 it.
@@ -273,15 +283,17 @@ same session at once.
 **It only interrupts for things that matter.** A guard judges a command by what it
 would do rather than what it is called. `rm -rf build` runs. `rm -rf /etc` asks.
 
-> **Status:** early, and built for one person's daily use. It drives a local model
-> through real work every day. Interfaces still move, there is no release or installer,
-> and the Android client speaks the protocol but its screens are unfinished.
+**It asks instead of guessing.** When the work genuinely forks and the choice is yours
+— which of two designs, which file you meant, whether to do something that cannot be
+undone — the agent can put the question to whichever client is attached, phone included,
+and waits. The first answer wins. This is separate from permission, which is asked for
+it rather than by it.
 
 ## What the agent can do
 
 Built-in tools: `read`, `write`, `edit`, `glob`, `grep`, `bash`, and `task.update` for
-its own task list. Modules add `skill.load`, `memory.recall`, `memory.save` and
-`memory.forget`.
+its own task list. Modules add `skill.load`, `memory.recall`, `memory.save`,
+`memory.forget`, and `ask`. With a key configured, `web.search` and `web.fetch` as well.
 
 ## Making it yours
 
@@ -331,8 +343,10 @@ Turns are the unit. A run that exhausts its budget pauses rather than dying, and
 
 - **Terminal UI** — the default, in this repo, built with the daemon.
 - **Headless CLI** — `nabu run`, same binary.
-- **Android** — Kotlin and Compose, under `clients/android`. Partly built: it speaks
-  the protocol and mirrors sessions locally, but the screens are unfinished.
+- **Android** — Kotlin and Compose, under `clients/android`. Sessions, a transcript
+  with markdown, the model's thinking, tasks, permission prompts and questions, and an
+  outbox that holds a prompt written with no signal and sends it when there is one.
+  Built and installed from source; there is no release.
 - **Desktop GUI** — a later milestone, not started.
 
 The protocol is JSON-RPC over WebSocket and is specified in `protocol/spec.md` with
@@ -359,18 +373,36 @@ private network rather than exposing the port.
   sessions/     one append-only .jsonl per session
   memory/       markdown, and a git repository
   skills/
-  daemon.log
+  modules/      whatever a module keeps for itself
+  daemon.log    beside daemon.pid and daemon.port
 ```
 
 Session logs are plain JSON lines. You can read one with `cat`, and nothing is hidden
 from you.
+
+## Measuring it
+
+`bench/` runs the same tasks through nabu, pi and Claude Code and reports what each one
+completed, what it cost, and how the diff reads.
+
+```bash
+go run ./cmd/nabubench                  # nabu against pi, the whole suite
+go run ./cmd/nabubench --claude         # add the reference, and spend Claude quota
+```
+
+Never in CI, and there is no pass mark: the exit code says the suite ran, not that
+anything did well. Tasks are split into a `basic` tier that confirms a harness works at
+all and a `hard` tier meant to tell good ones apart, and some keep part of their check
+back until the harness has finished — a check the agent can run is a check it can grind
+against, which measures persistence rather than understanding. `bench/README.md` has the
+rest.
 
 ## Contributing
 
 Read `ARCHITECTURE.md` first; it is short and states the invariants. The full design,
 including every rejected alternative, is under `docs/superpowers/specs/`.
 
-The gate, which CI runs on Linux and Windows:
+The gate, which CI runs on Linux, macOS and Windows:
 
 ```bash
 go build ./... && go vet ./... && go test ./... && gofmt -l .
