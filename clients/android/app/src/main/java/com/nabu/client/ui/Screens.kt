@@ -33,6 +33,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -282,7 +283,13 @@ fun TranscriptScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            items(lines, key = { it.key }) { LineView(it) }
+            // One container per line rather than one around the list: a
+            // LazyColumn recycles its items, and a selection spanning an item
+            // that scrolls out of composition loses its anchor. Per line, a
+            // selection survives because everything it covers stays composed.
+            items(lines, key = { it.key }) {
+                SelectionContainer { LineView(it) }
+            }
         }
     }
 }
@@ -384,8 +391,10 @@ private fun LineView(line: Line) {
         is Line.UserSaid -> Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Spacer(Modifier.width(40.dp))
+            Spacer(Modifier.width(12.dp))
+            LineCopyButton(line)
             Text(
                 line.text,
                 style = MaterialTheme.typography.bodyMedium,
@@ -397,43 +406,61 @@ private fun LineView(line: Line) {
             )
         }
 
-        is Line.AgentSaid -> MarkdownText(
-            line.text,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-        )
+        is Line.AgentSaid -> Row(Modifier.fillMaxWidth()) {
+            MarkdownText(
+                line.text,
+                modifier = Modifier.weight(1f).padding(vertical = 2.dp),
+            )
+            LineCopyButton(line)
+        }
 
-        is Line.ToolRan -> Text(
-            "▸ ${line.tool}  ${line.summary}",
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            color = NabuTheme.colors.accent,
-        )
+        is Line.ToolRan -> Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "▸ ${line.tool}  ${line.summary}",
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                color = NabuTheme.colors.accent,
+                modifier = Modifier.weight(1f),
+            )
+            LineCopyButton(line)
+        }
 
         is Line.ToolOutput -> {
             var expanded by remember(line.key) { mutableStateOf(false) }
             val shown =
                 if (expanded || !line.truncated) line.text
                 else line.text.take(COLLAPSED_OUTPUT_CHARS)
-            Column(
-                Modifier.fillMaxWidth()
-                    .background(NabuTheme.colors.code, RoundedCornerShape(6.dp))
-                    .clickable(enabled = line.truncated) { expanded = !expanded }
-                    .padding(10.dp)
-            ) {
-                Text(
-                    shown,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = NabuTheme.colors.codeInk,
-                )
-                if (line.truncated) {
+            Box(Modifier.fillMaxWidth()) {
+                Column(
+                    Modifier.fillMaxWidth()
+                        .background(NabuTheme.colors.code, RoundedCornerShape(6.dp))
+                        .clickable(enabled = line.truncated) { expanded = !expanded }
+                        .padding(10.dp)
+                ) {
                     Text(
-                        if (expanded) "tap to collapse"
-                        else "… ${line.text.length - COLLAPSED_OUTPUT_CHARS} more, tap to expand",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NabuTheme.colors.muted,
+                        shown,
+                        // Room for the copy control, which floats over the
+                        // corner rather than taking a line of its own.
+                        modifier = Modifier.padding(end = 24.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = NabuTheme.colors.codeInk,
                     )
+                    if (line.truncated) {
+                        Text(
+                            if (expanded) "tap to collapse"
+                            else "… ${line.text.length - COLLAPSED_OUTPUT_CHARS} more, tap to expand",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NabuTheme.colors.muted,
+                        )
+                    }
                 }
+                // Copies the whole result, not the part on screen: a reader who
+                // reaches for copy wants the output, not what happened to fit.
+                LineCopyButton(line, Modifier.align(Alignment.TopEnd).padding(2.dp))
             }
         }
 
@@ -452,11 +479,20 @@ private fun LineView(line: Line) {
             color = NabuTheme.colors.danger,
         )
 
-        is Line.Compacted -> Text(
-            "— earlier conversation summarised —",
-            style = MaterialTheme.typography.labelMedium,
-            color = NabuTheme.colors.muted,
-        )
+        // The marker says a summary happened; the copy control is how the
+        // summary itself gets out, since it is not otherwise on screen.
+        is Line.Compacted -> Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "— earlier conversation summarised —",
+                style = MaterialTheme.typography.labelMedium,
+                color = NabuTheme.colors.muted,
+                modifier = Modifier.weight(1f),
+            )
+            LineCopyButton(line)
+        }
     }
 }
 
@@ -525,7 +561,7 @@ private fun ThoughtLine(line: Line.Thought) {
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(Modifier.width(2.dp).fillMaxHeight().background(c.line))
-        Column {
+        Column(Modifier.weight(1f)) {
             Text(
                 if (expanded) "thought · tap to hide"
                 else "thought · ${line.text.split(Regex("\\s+")).size} words, tap to read",
@@ -542,6 +578,9 @@ private fun ThoughtLine(line: Line.Thought) {
                 )
             }
         }
+        // Only once it is open: a copy control beside a collapsed one-liner
+        // offers to copy something the reader cannot see.
+        if (expanded) LineCopyButton(line)
     }
 }
 
