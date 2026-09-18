@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.AnnotatedString
@@ -31,6 +32,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nabu.client.ui.CopyButton
 import com.nabu.client.ui.theme.NabuColors
 import com.nabu.client.ui.theme.NabuTheme
 
@@ -111,28 +113,39 @@ private fun Item(marker: String, spans: List<Span>, c: NabuColors) {
 @Composable
 private fun CodeBlock(block: Block.Code, c: NabuColors) {
     // Code is not reflowed: it scrolls sideways rather than wrapping mid-token.
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(c.code)
-            .padding(10.dp),
-    ) {
-        if (block.language.isNotEmpty()) {
+    Box(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(c.code)
+                .padding(10.dp),
+        ) {
+            if (block.language.isNotEmpty()) {
+                Text(
+                    block.language,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.muted,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
             Text(
-                block.language,
-                style = MaterialTheme.typography.labelSmall,
-                color = c.muted,
-                modifier = Modifier.padding(bottom = 4.dp),
+                block.text,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                color = c.codeInk,
+                softWrap = false,
+                modifier = Modifier
+                    .padding(end = 24.dp)
+                    .horizontalScroll(rememberScrollState()),
             )
         }
-        Text(
+        // The block's own text, never the reply around it: a command copied out
+        // of a fence should paste into a shell and run.
+        CopyButton(
             block.text,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            color = c.codeInk,
-            softWrap = false,
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            description = "Copy code",
+            modifier = Modifier.align(Alignment.TopEnd).padding(2.dp),
         )
     }
 }

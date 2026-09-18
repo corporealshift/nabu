@@ -18,7 +18,18 @@ sealed interface Line {
 
     data class UserSaid(override val key: String, val text: String) : Line
     data class AgentSaid(override val key: String, val text: String) : Line
-    data class ToolRan(override val key: String, val tool: String, val summary: String) : Line
+    /**
+     * A tool call. [summary] is shortened to fit one line; [full] is what it
+     * was shortened from, so copying yields the whole command rather than an
+     * ellipsis.
+     */
+    data class ToolRan(
+        override val key: String,
+        val tool: String,
+        val summary: String,
+        val full: String,
+    ) : Line
+
     data class ToolOutput(
         override val key: String,
         val tool: String,
@@ -81,7 +92,8 @@ private fun render(key: String, e: Event): Line? = when (e.type) {
     }
 
     "tool_call" -> e.payload<ToolCallData>()?.let { d ->
-        Line.ToolRan(key, d.tool, summarise(d))
+        val full = interesting(d)
+        Line.ToolRan(key, d.tool, shorten(full), full)
     }
 
     "tool_result" -> e.payload<ToolResultData>()?.let { d ->
@@ -112,11 +124,35 @@ private fun render(key: String, e: Event): Line? = when (e.type) {
     else -> null
 }
 
-/** A one-line description of a tool call: what it did, not its whole payload. */
-private fun summarise(d: ToolCallData): String {
+/** The argument worth showing: the command, path, pattern, name or query. */
+private fun interesting(d: ToolCallData): String {
     val args = d.arguments.toString()
-    val interesting = Regex(""""(command|path|pattern|name|query)"\s*:\s*"((\\.|[^"\\])*)"""")
-        .find(args)?.groupValues?.get(2)
-    val text = interesting ?: args
-    return if (text.length > 120) text.take(120) + "…" else text
+    return Regex(""""(command|path|pattern|name|query)"\s*:\s*"((\\.|[^"\\])*)"""")
+        .find(args)?.groupValues?.get(2) ?: args
+}
+
+/** A one-line description of a tool call: what it did, not its whole payload. */
+private fun shorten(text: String): String =
+    if (text.length > 120) text.take(120) + "…" else text
+
+/**
+ * What this line puts on the clipboard, or null when it has nothing worth
+ * copying.
+ *
+ * Source, not render. An agent reply copies as the markdown it was written in,
+ * so a table pasted into a terminal still has its pipes and a code block has no
+ * invented indentation. A tool result copies whole even when the screen has it
+ * collapsed: someone reaching for copy wants the output, not the part that fit.
+ */
+fun Line.copyText(): String? = when (this) {
+    is Line.UserSaid -> text.ifBlank { null }
+    is Line.AgentSaid -> text.ifBlank { null }
+    is Line.Thought -> text.ifBlank { null }
+    is Line.ToolRan -> if (full.isBlank()) null else "$tool $full"
+    is Line.ToolOutput -> text.ifBlank { null }
+    is Line.Note -> text.ifBlank { null }
+    is Line.Veto -> "$module refused the stop: $reason"
+    is Line.Compacted -> summary.ifBlank { null }
+    // A gap is the absence of events. There is nothing behind it to copy.
+    is Line.Gap -> null
 }

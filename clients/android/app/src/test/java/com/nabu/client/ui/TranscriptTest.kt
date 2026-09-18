@@ -55,6 +55,27 @@ class TranscriptTest {
         val line = lines.single() as Line.ToolRan
         assertEquals("bash", line.tool)
         assertEquals("go test ./...", line.summary)
+        assertEquals("go test ./...", line.full)
+    }
+
+    // The line has room for about 120 characters. The command it stands for can
+    // be any length, and copy needs the whole one.
+    @Test
+    fun `a long tool call keeps the full command beside the shortened one`() {
+        val command = "go test ./... -run " + "Test".repeat(60)
+        val lines = transcript(
+            listOf(
+                row(
+                    "E1", "tool_call",
+                    """{"call_id":"c1","tool":"bash","source":"model","arguments":{"command":"$command"}}""",
+                )
+            ),
+            synced = true,
+        )
+
+        val line = lines.single() as Line.ToolRan
+        assertTrue("the shown summary should be cut", line.summary.endsWith("…"))
+        assertEquals(command, line.full)
     }
 
     @Test
