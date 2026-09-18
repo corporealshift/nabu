@@ -248,13 +248,27 @@ class SessionRepositoryTest {
     }
 
     /**
-     * Relisting must not undo activity already mirrored here. The daemon's
-     * view of a session can lag what this device just watched arrive.
+     * The daemon knows every event, so its word wins even when it is older
+     * than what this device recorded. Without that, a mirror carrying the
+     * times this bug wrote would keep them forever and never re-sort.
      */
     @Test
-    fun `a relist never moves a session backwards`() {
-        val mirrored = interactionTime("2026-09-17T18:00:00Z", existing = 0, fallback = 1)
-        assertEquals(mirrored, interactionTime("2026-09-17T09:00:00Z", existing = mirrored, fallback = 1))
+    fun `the daemon's time replaces one this device guessed`() {
+        val guessed = 4_000_000_000_000L // a local clock, far ahead of the event
+        val real = interactionTime("2026-09-17T09:00:00Z", existing = guessed, fallback = 1)
+
+        assertTrue("the guessed time survived: $real", real < guessed)
+    }
+
+    /** Mirroring an old batch is not news, so it cannot pull a session down. */
+    @Test
+    fun `catching up never moves a session backwards`() {
+        val known = interactionTime("2026-09-17T18:00:00Z", existing = 0, fallback = 1)
+        val after = interactionAfter(
+            listOf(event("E1", at = "2026-09-17T09:00:00Z")), existing = known, fallback = 1,
+        )
+
+        assertEquals(known, after)
     }
 
     /** An unreadable timestamp is no reason to reshuffle the list. */

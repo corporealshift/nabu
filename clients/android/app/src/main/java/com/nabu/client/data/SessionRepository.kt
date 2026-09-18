@@ -120,9 +120,8 @@ class SessionRepository(
         }
         val cursor = events.lastOrNull()?.id
             ?: db.sessions().get(sessionId)?.cursor.orEmpty()
-        val newest = events.mapNotNull { parseInstant(it.timestamp) }.maxOrNull()
         db.append(sessionId, rows, cursor, synced,
-            interactionTime(newest, existing?.updatedAt ?: 0, now()))
+            interactionAfter(events, existing?.updatedAt ?: 0, now()))
 
         events.forEach { e ->
             if (e.type == "state_change") {
@@ -198,16 +197,23 @@ class SessionRepository(
  * — and since it lists newest-created first, that put the oldest session on
  * top (issue 50).
  *
- * It never moves backwards: the daemon's view can lag an event this device
- * has already watched arrive, and a relist must not undo that.
+ * The daemon's word replaces this device's, even when it is older: a mirror
+ * that recorded a wrong time once would otherwise keep it forever.
  */
 internal fun interactionTime(updatedAt: String, existing: Long, fallback: Long): Long =
-    interactionTime(parseInstant(updatedAt), existing, fallback)
+    parseInstant(updatedAt) ?: if (existing > 0) existing else fallback
 
-/** The same rule for a time already parsed, such as an event's own. */
-internal fun interactionTime(parsed: Long?, existing: Long, fallback: Long): Long {
-    if (parsed != null) return maxOf(parsed, existing)
-    return if (existing > 0) existing else fallback
+/**
+ * The same question answered by a batch of events rather than by a listing.
+ *
+ * This one never moves a session backwards: a device catching up on an old
+ * session already knows something newer, and mirroring the old batch is not
+ * news.
+ */
+internal fun interactionAfter(events: List<Event>, existing: Long, fallback: Long): Long {
+    val newest = events.mapNotNull { parseInstant(it.timestamp) }.maxOrNull()
+        ?: return if (existing > 0) existing else fallback
+    return maxOf(newest, existing)
 }
 
 /** Go writes RFC 3339 with nanoseconds, and with an offset rather than always Z. */
