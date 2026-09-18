@@ -197,6 +197,7 @@ sequenceDiagram
     participant Daemon
     participant Log as session log
     participant Model
+    participant Judge as judge · fresh context
 
     You->>Client: a prompt
     Client->>Daemon: nabu.session.send_prompt
@@ -218,6 +219,19 @@ sequenceDiagram
             Daemon->>Log: append tool_call, tool_result
             Log-->>Client: events
         end
+
+        opt the model says it is done
+            Note over Daemon: the cheap checks first:<br/>open tasks, failed checks,<br/>the project gate, a clean tree
+            opt a run goal is set
+                Daemon->>Judge: the goal, the tasks,<br/>a window of transcript
+                Judge-->>Daemon: met, unmet or impossible
+            end
+            alt any gate objects
+                Daemon->>Log: append stop_veto
+                Log-->>Client: event
+                Note over Daemon: round again
+            end
+        end
     end
 
     Daemon->>Log: append report
@@ -229,6 +243,14 @@ finished: it says so, and the stop gates are asked whether that is true. Any obj
 appends a veto and sends it back round. That is why the same session can keep working
 after you close the terminal, and why two clients can watch it at once — neither is
 driving it.
+
+The last of those gates is another model. When a run has a goal, the judge is given the
+condition, the tasks and a window of transcript — never the loop's own history, so it is
+not being asked to agree with itself — and answers met, unmet or impossible. It is a
+second model call on every stop attempt, which is why the mechanical checks are asked
+first: a stop that is obviously wrong should never cost one. A judge call that fails or
+answers in the wrong shape counts as unmet, because a judge that fails open would make
+the whole mechanism theatre.
 
 ## What it actually does
 
