@@ -154,9 +154,18 @@ abstract class MirrorDb : RoomDatabase() {
 
     /** Appends and advances the cursor together, so the two cannot disagree. */
     @Transaction
-    open suspend fun append(sessionId: String, rows: List<EventRow>, cursor: String, synced: Boolean) {
+    open suspend fun append(
+        sessionId: String,
+        rows: List<EventRow>,
+        cursor: String,
+        synced: Boolean,
+        // When the session was last worked on. The caller passes the events'
+        // own time: stamping the clock here would make catching up on an old
+        // session look like activity.
+        at: Long = System.currentTimeMillis(),
+    ) {
         if (rows.isNotEmpty()) events().insert(rows)
-        sessions().markSynced(sessionId, cursor, synced, System.currentTimeMillis())
+        sessions().markSynced(sessionId, cursor, synced, at)
     }
 
     companion object {

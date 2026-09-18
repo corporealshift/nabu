@@ -44,7 +44,7 @@ class SessionRepository(
                     cursor = existing?.cursor ?: "",
                     synced = existing?.synced ?: false,
                     workspaceKey = existing?.workspaceKey ?: "",
-                    updatedAt = now(),
+                    updatedAt = interactionTime(s.updatedAt, existing?.updatedAt ?: 0, now()),
                 )
             )
         }
@@ -103,7 +103,8 @@ class SessionRepository(
 
     /** Ordinals continue, so a later batch cannot sort above an earlier one. */
     internal suspend fun apply(sessionId: String, events: List<Event>, synced: Boolean) {
-        if (db.sessions().get(sessionId) == null) {
+        val existing = db.sessions().get(sessionId)
+        if (existing == null) {
             db.sessions().upsert(SessionRow(id = sessionId, updatedAt = now()))
         }
         var ordinal = db.events().lastOrdinal(sessionId) ?: 0L
@@ -119,7 +120,9 @@ class SessionRepository(
         }
         val cursor = events.lastOrNull()?.id
             ?: db.sessions().get(sessionId)?.cursor.orEmpty()
-        db.append(sessionId, rows, cursor, synced)
+        val newest = events.mapNotNull { parseInstant(it.timestamp) }.maxOrNull()
+        db.append(sessionId, rows, cursor, synced,
+            interactionTime(newest, existing?.updatedAt ?: 0, now()))
 
         events.forEach { e ->
             if (e.type == "state_change") {
@@ -184,4 +187,33 @@ class SessionRepository(
             }
         }
     }
+}
+
+/**
+ * When a session was last worked on, which is what the list is ordered by.
+ *
+ * The daemon's `updated_at` is its last event's timestamp, so it is the only
+ * honest answer. Stamping the local clock as each row was recorded instead
+ * ordered the list by the order the daemon happened to list them in, reversed
+ * — and since it lists newest-created first, that put the oldest session on
+ * top (issue 50).
+ *
+ * It never moves backwards: the daemon's view can lag an event this device
+ * has already watched arrive, and a relist must not undo that.
+ */
+internal fun interactionTime(updatedAt: String, existing: Long, fallback: Long): Long =
+    interactionTime(parseInstant(updatedAt), existing, fallback)
+
+/** The same rule for a time already parsed, such as an event's own. */
+internal fun interactionTime(parsed: Long?, existing: Long, fallback: Long): Long {
+    if (parsed != null) return maxOf(parsed, existing)
+    return if (existing > 0) existing else fallback
+}
+
+/** Go writes RFC 3339 with nanoseconds, and with an offset rather than always Z. */
+internal fun parseInstant(text: String): Long? {
+    if (text.isBlank()) return null
+    return runCatching { java.time.OffsetDateTime.parse(text).toInstant().toEpochMilli() }
+        .recoverCatching { java.time.Instant.parse(text).toEpochMilli() }
+        .getOrNull()
 }

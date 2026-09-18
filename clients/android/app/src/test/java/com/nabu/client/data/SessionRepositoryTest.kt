@@ -35,10 +35,15 @@ class SessionRepositoryTest {
     @After
     fun close() = db.close()
 
-    private fun event(id: String, type: String = "message", body: String = """{"role":"user","content":"hi"}""") =
+    private fun event(
+        id: String,
+        type: String = "message",
+        body: String = """{"role":"user","content":"hi"}""",
+        at: String = "2026-09-16T00:00:00Z",
+    ) =
         NabuJson.decodeFromString(
             Event.serializer(),
-            """{"id":"$id","type":"$type","timestamp":"2026-09-16T00:00:00Z","data":$body}""",
+            """{"id":"$id","type":"$type","timestamp":"$at","data":$body}""",
         )
 
     /** Empty and missing must not look alike (spec 15). */
@@ -170,6 +175,99 @@ class SessionRepositoryTest {
         assertEquals("deploy it", pending[0].content)
         assertEquals("C1", pending[0].clientId)
         assertEquals(0, db.events().count("S1"))
+    }
+
+    /**
+     * Issue 50: the list is ordered by when each session was last worked on.
+     * The daemon lists newest-created first and stamping the local clock per
+     * row turned that into exactly the wrong order — the oldest session on top.
+     */
+    @Test
+    fun `sessions are ordered by the daemon's last interaction`() = runBlocking {
+        repo.recordSessions(listOf(
+            SessionSummary("S-old", "C:/a", "idle", updatedAt = "2026-09-17T09:00:00Z"),
+            SessionSummary("S-new", "C:/b", "idle", updatedAt = "2026-09-17T18:30:00Z"),
+            SessionSummary("S-mid", "C:/c", "idle", updatedAt = "2026-09-17T12:00:00Z"),
+        ))
+
+        assertEquals(
+            listOf("S-new", "S-mid", "S-old"),
+            repo.watchSessions().first().map { it.id },
+        )
+    }
+
+    /**
+     * Catching up on an old session must not push it to the top. Every session
+     * is synced on connect, so stamping the clock as each batch landed put the
+     * list back in the daemon's order — the bug the timestamps above fix.
+     */
+    @Test
+    fun `mirroring old events does not make a session look recent`() = runBlocking {
+        repo.recordSessions(listOf(
+            SessionSummary("S-old", "C:/a", "idle", updatedAt = "2026-09-17T09:00:00Z"),
+            SessionSummary("S-new", "C:/b", "idle", updatedAt = "2026-09-17T18:30:00Z"),
+        ))
+
+        repo.apply("S-old", listOf(event("E1", at = "2026-09-17T09:00:00Z")), synced = true)
+
+        assertEquals(
+            listOf("S-new", "S-old"),
+            repo.watchSessions().first().map { it.id },
+        )
+    }
+
+    /** A prompt that just arrived does move its session to the top. */
+    @Test
+    fun `a new event moves its session up`() = runBlocking {
+        repo.recordSessions(listOf(
+            SessionSummary("S-old", "C:/a", "idle", updatedAt = "2026-09-17T09:00:00Z"),
+            SessionSummary("S-new", "C:/b", "idle", updatedAt = "2026-09-17T18:30:00Z"),
+        ))
+
+        repo.apply("S-old", listOf(event("E1", at = "2026-09-17T21:00:00Z")), synced = true)
+
+        assertEquals(
+            listOf("S-old", "S-new"),
+            repo.watchSessions().first().map { it.id },
+        )
+    }
+
+    /** The daemon writes a time zone offset, not always Z. */
+    @Test
+    fun `an offset timestamp is read as the same instant as its UTC form`() {
+        assertEquals(
+            interactionTime("2026-09-17T12:00:00Z", existing = 0, fallback = 1),
+            interactionTime("2026-09-17T07:00:00-05:00", existing = 0, fallback = 1),
+        )
+    }
+
+    /** Go writes nanoseconds; Instant.parse must not be handed them raw. */
+    @Test
+    fun `sub-second precision parses`() {
+        assertTrue(interactionTime("2026-09-17T12:00:00.123456789Z", existing = 0, fallback = 1) > 1)
+    }
+
+    /**
+     * Relisting must not undo activity already mirrored here. The daemon's
+     * view of a session can lag what this device just watched arrive.
+     */
+    @Test
+    fun `a relist never moves a session backwards`() {
+        val mirrored = interactionTime("2026-09-17T18:00:00Z", existing = 0, fallback = 1)
+        assertEquals(mirrored, interactionTime("2026-09-17T09:00:00Z", existing = mirrored, fallback = 1))
+    }
+
+    /** An unreadable timestamp is no reason to reshuffle the list. */
+    @Test
+    fun `an unreadable timestamp keeps what is already known`() {
+        assertEquals(500L, interactionTime("", existing = 500, fallback = 999))
+        assertEquals(500L, interactionTime("whenever", existing = 500, fallback = 999))
+    }
+
+    /** With nothing known, a new session belongs at the top, not the bottom. */
+    @Test
+    fun `an unreadable timestamp on a new session falls back to now`() {
+        assertEquals(999L, interactionTime("", existing = 0, fallback = 999))
     }
 
     @Test
