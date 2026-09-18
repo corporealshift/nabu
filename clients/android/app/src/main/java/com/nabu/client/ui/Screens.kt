@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -642,9 +643,11 @@ fun BrowseScreen(
     state: BrowseState,
     onOpen: (String?) -> Unit,
     onStartHere: (String) -> Unit,
+    onCreateDirectory: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     val c = NabuTheme.colors
+    var naming by remember { mutableStateOf(false) }
     Scaffold(
         containerColor = c.background,
         topBar = {
@@ -662,6 +665,13 @@ fun BrowseScreen(
                     )
                 },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Cancel") } },
+                actions = {
+                    // Only below a root: the top level lists roots, and there is
+                    // no directory there to create anything inside.
+                    if (!state.atTop) {
+                        TextButton(onClick = { naming = true }) { Text("New folder") }
+                    }
+                },
             )
         },
         bottomBar = {
@@ -690,6 +700,16 @@ fun BrowseScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = c.muted,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+            if (naming) {
+                NewFolderDialog(
+                    into = crumbs(state.at),
+                    onDismiss = { naming = false },
+                    onConfirm = { name ->
+                        naming = false
+                        onCreateDirectory(name)
+                    },
                 )
             }
             LazyColumn(Modifier.fillMaxSize()) {
@@ -752,4 +772,47 @@ private fun BrowseRow(label: String, isRepo: Boolean, onClick: () -> Unit) {
             )
         }
     }
+}
+
+/**
+ * Asks for a directory name.
+ *
+ * The name is not validated here. The daemon owns that rule, and a second copy
+ * of it in the client would drift from the one that actually decides. Only the
+ * obviously-empty case is stopped, to save a round trip that cannot succeed.
+ */
+@Composable
+private fun NewFolderDialog(
+    into: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New folder") },
+        text = {
+            Column {
+                Text(
+                    "in $into",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NabuTheme.colors.muted,
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    placeholder = { Text("name") },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(name.trim()) },
+                enabled = name.isNotBlank(),
+            ) { Text("Create") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

@@ -482,7 +482,23 @@ They exist so that a client cannot enumerate the machine for the asking.
 
 Roots come from `daemon.browse_roots`, defaulting to the user's home directory.
 
-### 7.16 Daemon → client requests
+### 7.16 `nabu.workspace.create_directory {parent, name}` → `{path, parent, entries}`
+
+Creates one directory inside `parent` and returns **the new directory's listing**, in the
+same shape as §7.15, so a client can move into what it just made rather than asking again.
+
+`parent` must be inside the configured roots, checked exactly as §7.15 checks it. `name`
+is **one directory name, never a path**: separators, `.`, `..`, a leading dot, a leading
+or trailing space, the characters `: * ? " < > |`, and anything over 64 characters are all
+`nabu_invalid_params`. A name that already exists is `nabu_invalid_params` too — a client
+listing the directory has already been shown what is there.
+
+This is the only method by which a client causes the daemon to write to its filesystem. It
+is not a new level of access: §7.3 already lets a client start a session at any path, whose
+agent can create directories. It is listed separately because the daemon acts here on a
+client's word rather than a model's.
+
+### 7.17 Daemon → client requests
 
 Sent as JSON-RPC requests (with `id`) to every subscriber of the session. The first
 response wins; later responders receive `nabu_already_resolved`.

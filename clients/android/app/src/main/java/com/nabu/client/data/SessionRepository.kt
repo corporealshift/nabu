@@ -203,6 +203,22 @@ class SessionRepository(
     }
 
     /**
+     * Creates one directory inside [parent] and returns the new directory's
+     * listing, so the caller can move into what it just made.
+     *
+     * [name] is one directory name, never a path. The daemon enforces that; the
+     * client does not pre-validate, because two copies of the same rule drift
+     * and only one of them is the one that matters.
+     */
+    suspend fun createDirectory(client: DaemonClient, parent: String, name: String): BrowseResult {
+        val result = client.callOrThrow("nabu.workspace.create_directory", buildJsonObject {
+            put("parent", parent)
+            put("name", name)
+        })
+        return NabuJson.decodeFromJsonElement(BrowseResult.serializer(), result)
+    }
+
+    /**
      * Starts a session in [workspace] and returns its id.
      *
      * The path handed in is one the daemon itself produced, so nothing here

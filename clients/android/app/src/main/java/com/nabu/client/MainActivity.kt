@@ -110,6 +110,7 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
                 onStartHere = { path ->
                     vm.createSession(path) { id -> screen = Screen.Transcript(id) }
                 },
+                onCreateDirectory = { vm.createDirectory(it) },
                 onBack = { screen = Screen.Sessions },
             )
         }

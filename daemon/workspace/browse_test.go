@@ -218,3 +218,99 @@ func TestWithin(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateDirectory(t *testing.T) {
+	root := tree(t, "projects")
+	parent := filepath.Join(root, "projects")
+
+	l, err := CreateDirectory([]string{root}, parent, "new-thing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The listing is the new directory, so a picker moves into what it made
+	// rather than asking again.
+	if l.Path != filepath.ToSlash(filepath.Join(parent, "new-thing")) {
+		t.Errorf("path = %q, want the new directory", l.Path)
+	}
+	if l.Parent == nil || *l.Parent != filepath.ToSlash(parent) {
+		t.Errorf("parent = %v, want %q", l.Parent, filepath.ToSlash(parent))
+	}
+	if info, err := os.Stat(filepath.Join(parent, "new-thing")); err != nil || !info.IsDir() {
+		t.Errorf("the directory was not created: %v", err)
+	}
+}
+
+// The name comes from a client and is never a path: a separator or a ".." would
+// be a way to write outside the roots the parent check already approved.
+func TestCreateDirectoryRejectsAnythingThatIsNotAName(t *testing.T) {
+	root := tree(t, "projects")
+	parent := filepath.Join(root, "projects")
+
+	cases := []struct{ name, arg string }{
+		{"empty", ""},
+		{"only spaces", "   "},
+		{"a path", "a/b"},
+		{"a windows path", `a\b`},
+		{"climbing out", "../escape"},
+		{"dot dot", ".."},
+		{"dot", "."},
+		{"a hidden directory", ".secret"},
+		{"a leading space", " leading"},
+		{"a trailing space", "trailing "},
+		{"too long", strings.Repeat("x", 65)},
+		{"a character windows refuses", "a:b"},
+		{"a wildcard", "a*b"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := CreateDirectory([]string{root}, parent, tc.arg); err == nil {
+				t.Fatalf("creating %q should have been refused", tc.arg)
+			}
+		})
+	}
+
+	// Nothing was created anywhere, including above the root.
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("a refused name still created something: %v", entries)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(root), "escape")); err == nil {
+		t.Error("a name climbed out of the root")
+	}
+}
+
+func TestCreateDirectoryRefusesOutsideTheRoots(t *testing.T) {
+	root := tree(t, "inside")
+	outside := t.TempDir()
+
+	if _, err := CreateDirectory([]string{root}, outside, "nope"); err == nil {
+		t.Error("creating below a directory outside the roots should be refused")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "nope")); err == nil {
+		t.Error("it was created anyway")
+	}
+}
+
+// The picker lists what is there, so asking to create an existing directory
+// means the reader did not see it. Saying so beats silently succeeding.
+func TestCreateDirectorySaysWhenItAlreadyExists(t *testing.T) {
+	root := tree(t, "projects/taken")
+
+	_, err := CreateDirectory([]string{root}, filepath.Join(root, "projects"), "taken")
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("err = %v, want it to say the name is taken", err)
+	}
+}
+
+func TestCreateDirectoryRefusesAParentThatIsNotThere(t *testing.T) {
+	root := tree(t)
+	if _, err := CreateDirectory([]string{root}, filepath.Join(root, "nope"), "child"); err == nil {
+		t.Error("a missing parent should be refused")
+	}
+}

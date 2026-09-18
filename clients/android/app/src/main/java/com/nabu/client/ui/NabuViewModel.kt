@@ -263,6 +263,32 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Creates a directory where the picker currently is, and moves into it.
+     *
+     * Moving in is the point: a directory made and then left behind is a step
+     * for nothing, and "Start here" is the next tap.
+     */
+    fun createDirectory(name: String) {
+        val c = client
+        val at = _browse.value.at
+        if (c == null || at.isEmpty()) {
+            _browse.value = _browse.value.copy(error = "not connected")
+            return
+        }
+        _browse.value = _browse.value.copy(loading = true, error = null)
+        viewModelScope.launch {
+            try {
+                _browse.value = _browse.value.applied(repo.createDirectory(c, at, name))
+            } catch (e: Exception) {
+                _browse.value = _browse.value.copy(
+                    loading = false,
+                    error = e.message ?: "could not create that directory",
+                )
+            }
+        }
+    }
+
+    /**
      * Starts a session in [workspace] and hands its id to [onCreated].
      *
      * The caller navigates rather than this doing it, so the view model does

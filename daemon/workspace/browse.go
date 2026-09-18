@@ -183,3 +183,74 @@ func DefaultRoots() []string {
 	}
 	return []string{filepath.Clean(home)}
 }
+
+// badName rejects anything that is not a single directory name.
+//
+// The name comes from a client, so it is never treated as a path: a separator
+// or a ".." here would be a way to write outside the roots that the parent
+// check has already approved.
+func badName(name string) error {
+	trimmed := strings.TrimSpace(name)
+	switch {
+	case trimmed == "":
+		return fmt.Errorf("a name is required")
+	case trimmed != name:
+		return fmt.Errorf("a name cannot begin or end with a space")
+	case strings.ContainsAny(name, `/\`):
+		return fmt.Errorf("a name is one directory, not a path")
+	case name == "." || name == "..":
+		return fmt.Errorf("%q is not a name", name)
+	case strings.HasPrefix(name, "."):
+		// Browsing hides dotted directories, so creating one would make
+		// something the reader then could not see.
+		return fmt.Errorf("a name cannot start with a dot")
+	case len(name) > 64:
+		return fmt.Errorf("a name is limited to 64 characters")
+	case strings.ContainsAny(name, `:*?"<>|`):
+		// Windows refuses these, and failing here says why rather than
+		// surfacing an errno the reader cannot act on.
+		return fmt.Errorf(`a name cannot contain any of : * ? " < > |`)
+	}
+	return nil
+}
+
+// CreateDirectory makes one directory inside parent and lists it.
+//
+// It returns the new directory's listing rather than its path, so a picker can
+// navigate into what it just made instead of asking again.
+//
+// This is the one place a client writes to the daemon's filesystem. It is not a
+// new tier of access — a client may already create a session anywhere and have
+// the agent make directories — but it is the daemon acting because a client
+// asked, so both halves are checked: parent must be inside the roots, and name
+// must be a name.
+func CreateDirectory(roots []string, parent, name string) (Listing, error) {
+	if err := badName(name); err != nil {
+		return Listing{}, err
+	}
+	// Browse does the root containment check and proves parent is a directory
+	// that exists, so nothing is created below somewhere unlistable.
+	if _, err := Browse(roots, parent); err != nil {
+		return Listing{}, err
+	}
+	abs, err := filepath.Abs(parent)
+	if err != nil {
+		return Listing{}, err
+	}
+	target := filepath.Join(filepath.Clean(abs), name)
+
+	// Join cleans, so a name that somehow slipped through still cannot land
+	// outside. Belt and braces on the one call that writes.
+	if !Within(filepath.Clean(abs), target) {
+		return Listing{}, fmt.Errorf("%q would be outside %s", name, parent)
+	}
+	if _, err := os.Stat(target); err == nil {
+		// The picker lists what is already there, so asking to create it means
+		// the reader did not see it. Saying so beats silently succeeding.
+		return Listing{}, fmt.Errorf("%s already exists", name)
+	}
+	if err := os.Mkdir(target, 0o755); err != nil {
+		return Listing{}, err
+	}
+	return Browse(roots, target)
+}

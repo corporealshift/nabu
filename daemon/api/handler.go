@@ -64,6 +64,7 @@ func NewHandler(m *agent.Manager, st *session.Store, log *slog.Logger) *Handler 
 	}
 	h.register("nabu.session.list", h.handleSessionList)
 	h.register("nabu.workspace.browse", h.handleWorkspaceBrowse)
+	h.register("nabu.workspace.create_directory", h.handleWorkspaceCreateDirectory)
 	h.register("nabu.session.create", h.handleSessionCreate)
 	h.register("nabu.session.events_after", h.handleSessionEventsAfter)
 	h.register("nabu.session.state", h.handleSessionState)
@@ -358,6 +359,31 @@ func (h *Handler) handleWorkspaceBrowse(_ context.Context, _ *connState, params 
 		return nil, rpcErr
 	}
 	listing, err := workspace.Browse(h.roots(), p.Path)
+	if err != nil {
+		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
+	}
+	return listing, nil
+}
+
+// handleWorkspaceCreateDirectory implements nabu.workspace.create_directory
+// (spec 7.16).
+//
+// The one place a client writes to the daemon's filesystem. Not a new tier of
+// access — a client may already start a session anywhere and have the agent
+// make directories — but the daemon acts here because a client asked, so the
+// parent is checked against the roots and the name is checked for being a name.
+func (h *Handler) handleWorkspaceCreateDirectory(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
+	var p struct {
+		Parent string `json:"parent"`
+		Name   string `json:"name"`
+	}
+	if rpcErr := decodeParams(params, &p); rpcErr != nil {
+		return nil, rpcErr
+	}
+	if strings.TrimSpace(p.Parent) == "" {
+		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, "parent is required")
+	}
+	listing, err := workspace.CreateDirectory(h.roots(), p.Parent, p.Name)
 	if err != nil {
 		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
 	}

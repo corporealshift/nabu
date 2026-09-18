@@ -449,3 +449,77 @@ func TestBrowseThenCreateSessionThere(t *testing.T) {
 		t.Fatalf("create with a browsed path failed: %+v", resp)
 	}
 }
+
+// Creating a directory is the one thing a client makes the daemon write, so the
+// checks on both halves matter more than the happy path.
+func TestWorkspaceCreateDirectoryOverRPC(t *testing.T) {
+	hn := newHarness(t)
+	root := t.TempDir()
+	parent := filepath.Join(root, "projects")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hn.h.SetBrowseRoots([]string{root})
+
+	t.Run("creates and returns the new directory", func(t *testing.T) {
+		var out workspace.Listing
+		result(t, hn.call(t, 1, "nabu.workspace.create_directory",
+			map[string]any{"parent": parent, "name": "fresh"}), &out)
+
+		want := filepath.ToSlash(filepath.Join(parent, "fresh"))
+		if out.Path != want {
+			t.Fatalf("path = %q, want %q", out.Path, want)
+		}
+		if info, err := os.Stat(filepath.Join(parent, "fresh")); err != nil || !info.IsDir() {
+			t.Fatalf("not created: %v", err)
+		}
+	})
+
+	// And the path it returns is one session.create accepts unchanged, which is
+	// the whole flow: make a directory, start work in it.
+	t.Run("a session starts in what was just created", func(t *testing.T) {
+		var out workspace.Listing
+		result(t, hn.call(t, 2, "nabu.workspace.create_directory",
+			map[string]any{"parent": parent, "name": "brand-new"}), &out)
+
+		resp := hn.call(t, 3, "nabu.session.create", map[string]any{"workspace": out.Path})
+		if resp == nil || resp.Error != nil {
+			t.Fatalf("create in the new directory failed: %+v", resp)
+		}
+	})
+
+	t.Run("a name that is a path is refused", func(t *testing.T) {
+		for _, name := range []string{"a/b", "../escape", "..", ".hidden", ""} {
+			resp := hn.call(t, 4, "nabu.workspace.create_directory",
+				map[string]any{"parent": parent, "name": name})
+			if resp == nil || resp.Error == nil {
+				t.Fatalf("name %q should have been refused", name)
+			}
+			if resp.Error.Code != protocol.CodeInvalidParams {
+				t.Errorf("name %q: code = %d, want invalid params", name, resp.Error.Code)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(filepath.Dir(root), "escape")); err == nil {
+			t.Error("a refused name still wrote outside the root")
+		}
+	})
+
+	t.Run("a parent outside the roots is refused", func(t *testing.T) {
+		outside := t.TempDir()
+		resp := hn.call(t, 5, "nabu.workspace.create_directory",
+			map[string]any{"parent": outside, "name": "nope"})
+		if resp == nil || resp.Error == nil {
+			t.Fatal("a parent outside the roots should be refused")
+		}
+		if _, err := os.Stat(filepath.Join(outside, "nope")); err == nil {
+			t.Error("it was created anyway")
+		}
+	})
+
+	t.Run("a missing parent is refused", func(t *testing.T) {
+		resp := hn.call(t, 6, "nabu.workspace.create_directory", map[string]any{"name": "x"})
+		if resp == nil || resp.Error == nil {
+			t.Fatal("no parent should be refused")
+		}
+	})
+}
