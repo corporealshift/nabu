@@ -629,3 +629,47 @@ func TestEscapesWorkspace(t *testing.T) {
 		}
 	}
 }
+
+// git and gh read by default and write only for named ops, so the verb has to
+// decide the tier. Rating them by tool name would either gate every "git
+// status" or wave through "git commit".
+func TestVcsToolsAreRatedByTheirOp(t *testing.T) {
+	cases := []struct {
+		name string
+		tool string
+		op   string
+		want Tier
+	}{
+		{"git status reads", "git", "status", TierLow},
+		{"git log reads", "git", "log", TierLow},
+		{"git diff reads", "git", "diff", TierLow},
+		{"git blame reads", "git", "blame", TierLow},
+		{"git commit writes", "git", "commit", TierMedium},
+		{"gh pr.list reads", "gh", "pr.list", TierLow},
+		{"gh run.view reads", "gh", "run.view", TierLow},
+		{"a call with no op cannot do anything", "git", "", TierLow},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classify(callInfo{tool: tc.tool, op: tc.op, inWorkspace: true})
+			if got != tc.want {
+				t.Errorf("tier = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// The op has to survive the trip from the tool call's arguments, or classify
+// rates everything as the no-op case.
+func TestInspectReadsTheOpArgument(t *testing.T) {
+	info := inspect(nil, protocol.ToolCallData{
+		Tool:      "git",
+		Arguments: json.RawMessage(`{"op":"commit","message":"x"}`),
+	})
+	if info.op != "commit" {
+		t.Fatalf("op = %q, want commit", info.op)
+	}
+	if info.tier != TierMedium {
+		t.Errorf("tier = %v, want medium", info.tier)
+	}
+}
