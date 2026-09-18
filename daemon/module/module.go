@@ -71,6 +71,26 @@ func (c Config) Strings(key string, def []string) []string {
 	return def
 }
 
+// StringMap returns the key as a map of string to string, or nil. Entries whose
+// value is not a string are dropped rather than coerced: a config that says
+// something unreadable should lose that entry, not gain a stringified one.
+func (c Config) StringMap(key string) map[string]string {
+	raw, ok := c[key].(map[string]any)
+	if !ok {
+		if already, ok := c[key].(map[string]string); ok {
+			return already
+		}
+		return nil
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		if s, ok := v.(string); ok {
+			out[k] = s
+		}
+	}
+	return out
+}
+
 // Enabled reports the conventional `enabled` flag, default true.
 func (c Config) Enabled() bool { return c.Bool("enabled", true) }
 

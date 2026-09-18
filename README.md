@@ -80,6 +80,37 @@ That is the minimum. Two things to know:
 Unknown fields are rejected rather than ignored, so a typo fails loudly at startup
 instead of silently doing nothing.
 
+### Reading another repository
+
+A session is bound to one workspace, and writing never leaves it. Reading can, if you
+list the repositories it may read. Add a `modules.builtins` block:
+
+```json
+{
+  "modules": {
+    "builtins": {
+      "workspaces": {
+        "nabu": "C:/Users/you/projects/nabu",
+        "mealemon-web": "C:/Users/you/projects/mealemon-web"
+      }
+    }
+  }
+}
+```
+
+`read`, `glob` and `grep` then take an optional `workspace` naming one of these, and
+hits come back relative to that repository's root so the model can pass a path straight
+back. With nothing configured the argument does not appear in the tools' schemas at all,
+so the model is never offered an ability the daemon has not been given.
+
+**Writes never cross.** `write`, `edit` and `bash` do not take the argument and stay in
+the session's workspace. Reading another repository is a convenience with a bounded
+blast radius; writing to one is not.
+
+The list is names, not paths the model supplies: there is no spelling of a name that
+reaches a directory you did not list, and a path that climbs out of a named root with
+`../` is refused.
+
 ### Searching the web
 
 Off until you give it a key. Add a `modules.web` block:

@@ -256,3 +256,30 @@ func TestConfigAccessors(t *testing.T) {
 		t.Fatal("defaults")
 	}
 }
+
+// A config that says something unreadable should lose that entry, not gain a
+// stringified one: a root spelled as a number is a mistake, and coercing it to
+// "42" would turn it into a path.
+func TestConfigStringMap(t *testing.T) {
+	cfg := Config{
+		"workspaces": map[string]any{"a": "/one", "b": "/two", "n": 42, "nested": map[string]any{}},
+		"notamap":    "just a string",
+	}
+
+	got := cfg.StringMap("workspaces")
+	if len(got) != 2 || got["a"] != "/one" || got["b"] != "/two" {
+		t.Fatalf("StringMap = %v, want just the two string entries", got)
+	}
+	if cfg.StringMap("notamap") != nil {
+		t.Error("a non-map key should yield nil")
+	}
+	if cfg.StringMap("absent") != nil {
+		t.Error("an absent key should yield nil")
+	}
+
+	// A decoder that already produced map[string]string is accepted as is.
+	direct := Config{"m": map[string]string{"k": "v"}}
+	if direct.StringMap("m")["k"] != "v" {
+		t.Error("an already-typed map should pass through")
+	}
+}

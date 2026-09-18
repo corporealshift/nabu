@@ -21,6 +21,9 @@ type Builtins struct {
 	BashTimeout time.Duration
 	// MaxOutput caps tool output bytes. 0 = 32 KiB.
 	MaxOutput int
+	// Roots are other repositories this daemon may read, by name. Reads only:
+	// write, edit and bash never consult it.
+	Roots Roots
 }
 
 // Name implements module.Module.
@@ -36,6 +39,9 @@ func (b *Builtins) Init(_ module.Host, cfg module.Config) error {
 	}
 	if b.MaxOutput == 0 {
 		b.MaxOutput = cfg.Int("max_output", 32<<10)
+	}
+	if b.Roots == nil {
+		b.Roots = parseRoots(cfg)
 	}
 	return nil
 }
@@ -82,7 +88,14 @@ func resolve(s module.Session, p string) (string, error) {
 
 // rel renders a path relative to the workspace with forward slashes.
 func rel(s module.Session, abs string) string {
-	if r, err := filepath.Rel(s.Workspace().Path, abs); err == nil {
+	return relTo(s.Workspace().Path, abs)
+}
+
+// relTo names a path relative to the root it was found under. A hit in another
+// workspace reported relative to this one would come back as a pile of "..",
+// which is unreadable and, pasted into a tool call, wrong.
+func relTo(root, abs string) string {
+	if r, err := filepath.Rel(root, abs); err == nil {
 		return filepath.ToSlash(r)
 	}
 	return filepath.ToSlash(abs)
