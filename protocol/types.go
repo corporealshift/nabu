@@ -118,12 +118,47 @@ type ToolCallData struct {
 	Source    string          `json:"source"`
 }
 
+// Tool failure kinds. A model that wants to know whether a call timed out or
+// exited non-zero should not have to read English to find out.
+const (
+	ToolErrorExit        = "exit"         // the process ran and returned non-zero
+	ToolErrorTimeout     = "timeout"      // the call outlived its deadline
+	ToolErrorDenied      = "denied"       // a gate or the user refused it
+	ToolErrorInvalidArgs = "invalid_args" // the arguments were unusable
+	ToolErrorNotFound    = "not_found"    // the tool, file or program is not there
+	ToolErrorIO          = "io"           // the filesystem or the OS refused
+)
+
+// ToolErrorKinds is every value Kind may take, in the order the spec lists them.
+var ToolErrorKinds = []string{
+	ToolErrorExit, ToolErrorTimeout, ToolErrorDenied,
+	ToolErrorInvalidArgs, ToolErrorNotFound, ToolErrorIO,
+}
+
 // ToolResultData records the outcome of a tool invocation.
 type ToolResultData struct {
 	CallID  string `json:"call_id"`
 	Tool    string `json:"tool"`
 	Content string `json:"content"`
 	Status  string `json:"status"`
+	// Kind says how the call failed, one of the ToolError constants. Empty on
+	// success, and empty on a failure nothing classified: absent means
+	// unknown, never "fine". Content is unchanged either way, so a reader that
+	// knows only Status keeps working.
+	Kind string `json:"kind,omitempty"`
+	// ExitCode is the process status, where the tool ran a process. A pointer
+	// because zero is a real exit code and "no process" is not zero.
+	ExitCode *int `json:"exit_code,omitempty"`
+}
+
+// IsToolErrorKind reports whether k is a kind this version of the spec defines.
+func IsToolErrorKind(k string) bool {
+	for _, known := range ToolErrorKinds {
+		if k == known {
+			return true
+		}
+	}
+	return false
 }
 
 // OptionsChangeData records a mid-session change to one option.

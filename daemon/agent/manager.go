@@ -635,7 +635,10 @@ func (m *Manager) invokeTool(ctx context.Context, h *sessionHandle, call protoco
 	}
 	if _, err := h.s.Append(protocol.EventToolCall, call); err != nil {
 		m.log.Error("tool call append failed", "session", h.ID(), "err", err)
-		return protocol.ToolResultData{CallID: call.CallID, Tool: call.Tool, Content: err.Error(), Status: "error"}
+		return protocol.ToolResultData{
+			CallID: call.CallID, Tool: call.Tool, Content: err.Error(),
+			Status: "error", Kind: protocol.ToolErrorIO,
+		}
 	}
 	res := m.executeTool(ctx, h, call)
 	if _, err := h.s.Append(protocol.EventToolResult, res); err != nil {
@@ -646,21 +649,28 @@ func (m *Manager) invokeTool(ctx context.Context, h *sessionHandle, call protoco
 }
 
 func (m *Manager) executeTool(ctx context.Context, h *sessionHandle, call protocol.ToolCallData) protocol.ToolResultData {
-	fail := func(msg string) protocol.ToolResultData {
-		return protocol.ToolResultData{CallID: call.CallID, Tool: call.Tool, Content: msg, Status: "error"}
+	// kind is what the spec calls the shape of the failure. The daemon knows it
+	// for everything it decides itself; for a tool's own error it asks the
+	// error, and leaves it empty when nothing classified it.
+	fail := func(kind, msg string) protocol.ToolResultData {
+		return protocol.ToolResultData{
+			CallID: call.CallID, Tool: call.Tool, Content: msg, Status: "error", Kind: kind,
+		}
 	}
 	tool, ok := m.toolsByName[call.Tool]
 	if !ok {
-		return fail(fmt.Sprintf("unknown tool %q; available: %s", call.Tool, strings.Join(m.toolNames(), ", ")))
+		return fail(protocol.ToolErrorNotFound,
+			fmt.Sprintf("unknown tool %q; available: %s", call.Tool, strings.Join(m.toolNames(), ", ")))
 	}
 	v := m.deps.Modules.GateTool(ctx, h, call)
 	switch v.Decision {
 	case module.Deny:
-		return fail("denied: " + v.Reason)
+		return fail(protocol.ToolErrorDenied, "denied: "+v.Reason)
 	case module.Ask:
 		if h.State().Options.PermissionMode != protocol.PermissionBypass {
 			if m.deps.Asker == nil {
-				return fail("denied: this call needs approval and no client is attached")
+				return fail(protocol.ToolErrorDenied,
+					"denied: this call needs approval and no client is attached")
 			}
 			summary := v.Summary
 			if summary == "" {
@@ -671,7 +681,7 @@ func (m *Manager) executeTool(ctx context.Context, h *sessionHandle, call protoc
 				if reason == "" {
 					reason = "not approved"
 				}
-				return fail("denied by the user: " + reason)
+				return fail(protocol.ToolErrorDenied, "denied by the user: "+reason)
 			}
 		}
 	}
@@ -681,7 +691,10 @@ func (m *Manager) executeTool(ctx context.Context, h *sessionHandle, call protoc
 		if strings.TrimSpace(out) != "" {
 			msg = out
 		}
-		return fail(msg)
+		kind, exitCode := module.ClassifyToolError(err)
+		res := fail(kind, msg)
+		res.ExitCode = exitCode
+		return res
 	}
 	return protocol.ToolResultData{CallID: call.CallID, Tool: call.Tool, Content: out, Status: "ok"}
 }

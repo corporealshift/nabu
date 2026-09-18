@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/protocol"
 )
 
 // shellBase reduces a configured shell to a bare lowercase interpreter name, so
@@ -54,10 +55,10 @@ func (b *Builtins) bashTool() module.Tool {
 		Run: func(ctx context.Context, s module.Session, raw json.RawMessage) (string, error) {
 			a, err := decode[args](raw)
 			if err != nil {
-				return "", err
+				return "", module.FailWith(protocol.ToolErrorInvalidArgs, err)
 			}
 			if a.Command == "" {
-				return "", fmt.Errorf("command is required")
+				return "", module.Fail(protocol.ToolErrorInvalidArgs, "command is required")
 			}
 			timeout := b.BashTimeout
 			if timeout == 0 {
@@ -70,7 +71,7 @@ func (b *Builtins) bashTool() module.Tool {
 			defer cancel()
 			sh, flag, err := b.shellCommand()
 			if err != nil {
-				return "", err
+				return "", module.FailWith(protocol.ToolErrorNotFound, err)
 			}
 			cmd := exec.CommandContext(cctx, sh, flag, a.Command)
 			cmd.Dir = s.Workspace().Path
@@ -85,17 +86,20 @@ func (b *Builtins) bashTool() module.Tool {
 			cmd.Stderr = &buf
 			runErr := cmd.Run()
 			out := truncate(buf.String(), b.maxOutput())
+			// The bracketed note stays in the output: it is what a reader sees,
+			// and the structured kind beside it is what the model branches on.
 			if cctx.Err() == context.DeadlineExceeded {
 				out += fmt.Sprintf("\n[timed out after %s]", timeout)
-				return out, fmt.Errorf("command timed out after %s", timeout)
+				return out, module.Fail(protocol.ToolErrorTimeout, "command timed out after %s", timeout)
 			}
 			var exitErr *exec.ExitError
 			if errors.As(runErr, &exitErr) {
 				out += fmt.Sprintf("\n[exit status %d]", exitErr.ExitCode())
-				return out, fmt.Errorf("exit status %d", exitErr.ExitCode())
+				return out, module.Exited(exitErr.ExitCode(), "exit status %d", exitErr.ExitCode())
 			}
 			if runErr != nil {
-				return out, runErr
+				// The shell never ran: not found, not executable, no fork.
+				return out, module.FailWith(protocol.ToolErrorIO, runErr)
 			}
 			return out, nil
 		},

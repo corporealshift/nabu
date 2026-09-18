@@ -422,3 +422,64 @@ func newHarnessWithProvider(t *testing.T, pcfg provider.Config, script []provide
 	t.Cleanup(func() { m.Shutdown(context.Background()) })
 	return &harness{m: m, fake: fake, store: store, dir: dir}
 }
+
+// The daemon decides some failures itself rather than asking a tool, and those
+// carry a kind too: a model should not have to grep "denied:" out of prose.
+func TestDaemonDecidedFailuresCarryTheirKind(t *testing.T) {
+	t.Run("an unknown tool is not_found", func(t *testing.T) {
+		h := newHarness(t, nil, nil)
+		s := h.create(t)
+		handle, _ := h.m.handle(s.ID())
+		res := h.m.invokeTool(context.Background(), handle, protocol.ToolCallData{
+			CallID: "c1", Tool: "nope", Arguments: json.RawMessage(`{}`), Source: "model"})
+		if res.Kind != protocol.ToolErrorNotFound {
+			t.Fatalf("kind = %q, want %q", res.Kind, protocol.ToolErrorNotFound)
+		}
+	})
+
+	t.Run("a gate refusal is denied", func(t *testing.T) {
+		h := newHarness(t, []module.Module{denier{}}, nil)
+		s := h.create(t)
+		handle, _ := h.m.handle(s.ID())
+		res := h.m.invokeTool(context.Background(), handle, protocol.ToolCallData{
+			CallID: "c1", Tool: "bash", Arguments: json.RawMessage(`{"command":"ls"}`), Source: "model"})
+		if res.Kind != protocol.ToolErrorDenied {
+			t.Fatalf("kind = %q, want %q", res.Kind, protocol.ToolErrorDenied)
+		}
+	})
+
+	// Every result is appended to an append-only log that validates on read. A
+	// kind the spec does not define would make the session unloadable.
+	t.Run("whatever kind is recorded validates", func(t *testing.T) {
+		h := newHarness(t, []module.Module{denier{}}, nil)
+		s := h.create(t)
+		handle, _ := h.m.handle(s.ID())
+		h.m.invokeTool(context.Background(), handle, protocol.ToolCallData{
+			CallID: "c1", Tool: "bash", Arguments: json.RawMessage(`{"command":"ls"}`), Source: "model"})
+		if err := protocol.ValidateLog(s.Events()); err != nil {
+			t.Fatalf("the log a denial produced does not validate: %v", err)
+		}
+	})
+}
+
+// A call that succeeds says nothing about failure. The spec forbids the two
+// fields on status ok, and ValidateLog enforces it, so a leak here would make
+// the session unloadable rather than merely untidy.
+func TestASuccessfulResultCarriesNoKind(t *testing.T) {
+	h := newHarness(t, nil, nil)
+	s := h.create(t)
+	handle, _ := h.m.handle(s.ID())
+	res := h.m.invokeTool(context.Background(), handle, protocol.ToolCallData{
+		CallID: "c1", Tool: "task.update",
+		Arguments: json.RawMessage(`{"tasks":[{"id":"t1","title":"go","status":"pending","done_when":"it is done"}]}`),
+		Source:    "model"})
+	if res.Status != "ok" {
+		t.Fatalf("setup: wanted a successful call, got %+v", res)
+	}
+	if res.Kind != "" || res.ExitCode != nil {
+		t.Fatalf("kind = %q, exit_code = %v, want neither", res.Kind, res.ExitCode)
+	}
+	if err := protocol.ValidateLog(s.Events()); err != nil {
+		t.Fatalf("log does not validate: %v", err)
+	}
+}

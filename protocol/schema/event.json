@@ -105,7 +105,9 @@
         "call_id": { "type": "string", "minLength": 1 },
         "tool": { "type": "string", "minLength": 1 },
         "content": { "type": "string" },
-        "status": { "type": "string", "enum": ["ok", "error"] }
+        "status": { "type": "string", "enum": ["ok", "error"] },
+        "kind": { "type": "string", "enum": ["exit", "timeout", "denied", "invalid_args", "not_found", "io"] },
+        "exit_code": { "type": "integer" }
       }
     },
     "options_change": {
