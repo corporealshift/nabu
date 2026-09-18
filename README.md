@@ -113,6 +113,35 @@ The list is names, not paths the model supplies: there is no spelling of a name 
 reaches a directory you did not list, and a path that climbs out of a named root with
 `../` is refused.
 
+### Noticing changes you make yourself
+
+If you edit the workspace from another terminal while a session is running, the agent
+is told. Before each request the daemon compares the workspace against a snapshot taken
+at the previous turn boundary and, when something moved, appends a `context` event
+listing the paths.
+
+It is on by default. To tune or disable it, add a `modules.watch` block:
+
+```json
+{
+  "modules": {
+    "watch": {
+      "enabled": true,
+      "max_files": 20000,
+      "max_reported": 20
+    }
+  }
+}
+```
+
+The agent's own `write` and `edit` calls are suppressed, so it is told about your edits
+and not its own. `.git`, `node_modules`, `build`, `target` and `vendor` are skipped, so
+a compile does not look like the repository being rewritten. A workspace holding more
+than `max_files` files is not scanned at all, and says so in the daemon log rather than
+paying for a walk on every request.
+
+It never interrupts a turn: changes that land mid-turn appear in the next request.
+
 ### Searching the web
 
 Off until you give it a key. Add a `modules.web` block:
