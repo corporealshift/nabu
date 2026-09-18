@@ -113,6 +113,52 @@ The list is names, not paths the model supplies: there is no spelling of a name 
 reaches a directory you did not list, and a path that climbs out of a named root with
 `../` is refused.
 
+### Working notes
+
+The agent keeps notes on what it worked out in a repository — dead ends, why one thing
+has to happen before another, how far through a refactor it got. They outlive the
+session, so a multi-session task picks up where it left off, and they expire on their
+own so they do not become a second memory.
+
+Notes are named by the agent, many per repository, so an effort gets its own:
+
+```
+notes.write("simplefin-sync-refactor", "...")
+```
+
+While the work continues the agent rewrites that note, which resets its clock; when the
+work stops nobody touches it and it ages out. Default is 14 days. Add a `modules.notes`
+block to change it:
+
+```json
+{
+  "modules": {
+    "notes": {
+      "enabled": true,
+      "expire_days": 14,
+      "max_bytes": 4096
+    }
+  }
+}
+```
+
+**Reading them yourself.** They are plain markdown at
+`~/.nabu/notes/ws/<workspace-key>/<name>.md`, so you can open, grep or diff them like
+anything else. Or:
+
+```
+nabu notes           # this repository's notes
+nabu notes --all     # every repository's
+```
+
+A note belongs to the repository, not the directory: the workspace key is the same
+across worktrees and subdirectories of one repo, so notes follow the project rather
+than wherever you happened to start the session.
+
+Not to be confused with memory, which is for facts you told the agent that the code
+does not record and which stay true indefinitely. A note is working state, and working
+state goes stale — the age beside each one is there so you can see when it has.
+
 ### Noticing changes you make yourself
 
 If you edit the workspace from another terminal while a session is running, the agent

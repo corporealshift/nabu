@@ -7,12 +7,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	tui "github.com/corporealshift/nabu/clients/go-tui"
 	"github.com/corporealshift/nabu/clients/goclient"
 	"github.com/corporealshift/nabu/daemon"
 	"github.com/corporealshift/nabu/daemon/config"
+	"github.com/corporealshift/nabu/daemon/modules/notes"
+	workspacepkg "github.com/corporealshift/nabu/daemon/workspace"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -568,4 +573,87 @@ func createSession(ctx context.Context, root, workspace string, stderr io.Writer
 		return "", err
 	}
 	return created.SessionID, nil
+}
+
+// cmdNotes prints the working notes the agent has kept. It reads the files
+// directly rather than asking the daemon: notes are plain markdown on disk, and
+// wanting to read them is not a reason to need a daemon running.
+func cmdNotes(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("notes", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	root := rootFlag(fs)
+	all := fs.Bool("all", false, "every workspace, not just this one")
+	workspace := fs.String("workspace", "", "the workspace to read (default: the current directory)")
+	if err := fs.Parse(args); err != nil {
+		return exitUsage
+	}
+	dir, err := resolveRoot(*root)
+	if err != nil {
+		fmt.Fprintf(stderr, "nabu: %v\n", err)
+		return exitError
+	}
+	notesRoot := filepath.Join(dir, "notes")
+
+	if *all {
+		byKey := notes.AllWorkspaces(notesRoot)
+		if len(byKey) == 0 {
+			fmt.Fprintln(stdout, "no notes")
+			return exitOK
+		}
+		keys := make([]string, 0, len(byKey))
+		for k := range byKey {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(stdout, "== %s\n", k)
+			printNotes(stdout, byKey[k])
+		}
+		return exitOK
+	}
+
+	path := *workspace
+	if path == "" {
+		if path, err = os.Getwd(); err != nil {
+			fmt.Fprintf(stderr, "nabu: %v\n", err)
+			return exitError
+		}
+	}
+	ws, err := workspacepkg.Resolve(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "nabu: %v\n", err)
+		return exitError
+	}
+	live := notes.ForWorkspace(notesRoot, ws.Key)
+	if len(live) == 0 {
+		fmt.Fprintf(stdout, "no notes for %s\n", ws.Key)
+		return exitOK
+	}
+	fmt.Fprintf(stdout, "== %s\n", ws.Key)
+	printNotes(stdout, live)
+	return exitOK
+}
+
+func printNotes(w io.Writer, live []notes.Note) {
+	now := time.Now()
+	for _, n := range live {
+		fmt.Fprintf(w, "\n-- %s  (written %s, %s)\n", n.Name,
+			n.Written.Local().Format("2006-01-02 15:04"), humanAge(now.Sub(n.Written)))
+		fmt.Fprintf(w, "%s\n", n.Body)
+	}
+}
+
+// humanAge matches the module's wording, so the CLI and the model describe the
+// same note the same way.
+func humanAge(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }
