@@ -87,3 +87,9 @@ repository's own build.
 
 `TestEveryFixtureStartsFailing` will tell you if the new fixture already passes,
 which would hand every harness a free point.
+
+A fixture whose failure depends on timing has to be built so the failure is not in
+doubt. `09-the-race` releases its goroutines from a barrier and gives each enough work
+that they genuinely overlap: with a short loop and staggered starts, a fast machine
+finishes one goroutine before the next is scheduled, the race never shows, and the
+fixture passes when it is supposed to fail.
