@@ -11,6 +11,7 @@ import (
 
 	"github.com/corporealshift/nabu/daemon/agent"
 	"github.com/corporealshift/nabu/daemon/session"
+	"github.com/corporealshift/nabu/daemon/workspace"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -30,6 +31,9 @@ type Handler struct {
 
 	subMu   sync.Mutex
 	fanouts map[string]*fanout
+
+	// browseRoots bound nabu.workspace.browse. Guarded by mu.
+	browseRoots []string
 
 	// RequestTimeout bounds a daemon-to-client request. 0 uses the spec
 	// default of ten minutes.
@@ -59,6 +63,7 @@ func NewHandler(m *agent.Manager, st *session.Store, log *slog.Logger) *Handler 
 		pending: make(map[string]*pendingRequest),
 	}
 	h.register("nabu.session.list", h.handleSessionList)
+	h.register("nabu.workspace.browse", h.handleWorkspaceBrowse)
 	h.register("nabu.session.create", h.handleSessionCreate)
 	h.register("nabu.session.events_after", h.handleSessionEventsAfter)
 	h.register("nabu.session.state", h.handleSessionState)
@@ -318,4 +323,43 @@ func (h *Handler) handleSessionState(_ context.Context, _ *connState, params jso
 		return nil, rpcErr
 	}
 	return s.State(), nil
+}
+
+// BrowseRoots bound what nabu.workspace.browse may list. Empty falls back to
+// the user's home directory rather than to everything.
+func (h *Handler) SetBrowseRoots(roots []string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.browseRoots = roots
+}
+
+func (h *Handler) roots() []string {
+	h.mu.RLock()
+	roots := h.browseRoots
+	h.mu.RUnlock()
+	if len(roots) > 0 {
+		return roots
+	}
+	return workspace.DefaultRoots()
+}
+
+// handleWorkspaceBrowse implements nabu.workspace.browse (spec 7.15).
+//
+// A client picking a directory on another machine cannot see its filesystem,
+// and typing an absolute Windows path on a phone is not a user interface. An
+// authenticated client can already create a session at any path, so this adds
+// no tier of access — but listing is not acting, so it is bounded by the
+// configured roots.
+func (h *Handler) handleWorkspaceBrowse(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
+	var p struct {
+		Path string `json:"path"`
+	}
+	if rpcErr := decodeParams(params, &p); rpcErr != nil {
+		return nil, rpcErr
+	}
+	listing, err := workspace.Browse(h.roots(), p.Path)
+	if err != nil {
+		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
+	}
+	return listing, nil
 }

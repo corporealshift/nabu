@@ -20,6 +20,11 @@ type DaemonConfig struct {
 	// "provider/model" or a bare model name, which goes to the default
 	// provider. Without it every request carries a placeholder name.
 	DefaultModel string `json:"default_model"`
+	// BrowseRoots bound what nabu.workspace.browse may list, so a client
+	// picking a directory cannot enumerate the whole machine. Empty means the
+	// user's home directory. Point them at where the projects actually are and
+	// the picker stops being a tapping exercise.
+	BrowseRoots []string `json:"browse_roots"`
 }
 
 func (c *DaemonConfig) withDefaults() {

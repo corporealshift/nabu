@@ -28,6 +28,7 @@ import com.nabu.client.ui.Connection
 import com.nabu.client.ui.NabuViewModel
 import com.nabu.client.ui.AskSheet
 import com.nabu.client.ui.PermissionSheet
+import com.nabu.client.ui.BrowseScreen
 import com.nabu.client.ui.SessionListScreen
 import com.nabu.client.ui.SettingsScreen
 import com.nabu.client.ui.TranscriptScreen
@@ -45,6 +46,7 @@ class MainActivity : ComponentActivity() {
 private sealed interface Screen {
     data object Sessions : Screen
     data object Settings : Screen
+    data object Browse : Screen
     data class Transcript(val id: String) : Screen
 }
 
@@ -98,12 +100,27 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
             onSave = { vm.save(it); screen = Screen.Sessions },
         )
 
+        is Screen.Browse -> {
+            val browse by vm.browse.collectAsState()
+            BrowseScreen(
+                state = browse,
+                onOpen = { vm.openDirectory(it) },
+                // Straight into the new session: starting one and then being
+                // returned to a list to find it is a step for nothing.
+                onStartHere = { path ->
+                    vm.createSession(path) { id -> screen = Screen.Transcript(id) }
+                },
+                onBack = { screen = Screen.Sessions },
+            )
+        }
+
         is Screen.Sessions -> SessionListScreen(
             sessions = sessions,
             connection = connection,
             error = error,
             onOpen = { screen = Screen.Transcript(it) },
             onSettings = { screen = Screen.Settings },
+            onNewSession = { vm.startBrowsing(); screen = Screen.Browse },
         )
 
         is Screen.Transcript -> {

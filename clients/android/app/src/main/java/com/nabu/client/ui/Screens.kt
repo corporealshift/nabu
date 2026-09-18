@@ -39,6 +39,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -146,8 +147,19 @@ fun SessionListScreen(
     error: String?,
     onOpen: (String) -> Unit,
     onSettings: () -> Unit,
+    onNewSession: () -> Unit,
 ) {
-    Scaffold(containerColor = NabuTheme.colors.background, topBar = {
+    Scaffold(containerColor = NabuTheme.colors.background, floatingActionButton = {
+        // Only when connected: starting a session needs the daemon, and a
+        // button that cannot work is worse than no button.
+        if (connection == Connection.Connected) {
+            ExtendedFloatingActionButton(
+                onClick = onNewSession,
+                containerColor = NabuTheme.colors.accent,
+                contentColor = NabuTheme.colors.onAccent,
+            ) { Text("New session") }
+        }
+    }, topBar = {
         TopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = NabuTheme.colors.background,
@@ -615,4 +627,129 @@ private fun connectionLabel(c: Connection) = when (c) {
     Connection.Connected -> "connected"
     Connection.Connecting -> "connecting"
     Connection.Offline -> "offline"
+}
+
+/**
+ * Picks a directory on the daemon's machine to start a session in.
+ *
+ * The phone cannot see that filesystem, so the daemon is asked one level at a
+ * time. Repositories are marked, because at a glance one directory looks like
+ * another and a repository is nearly always what is wanted.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BrowseScreen(
+    state: BrowseState,
+    onOpen: (String?) -> Unit,
+    onStartHere: (String) -> Unit,
+    onBack: () -> Unit,
+) {
+    val c = NabuTheme.colors
+    Scaffold(
+        containerColor = c.background,
+        topBar = {
+            TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = c.background,
+                    titleContentColor = c.ink,
+                ),
+                title = {
+                    Text(
+                        crumbs(state.at),
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                navigationIcon = { TextButton(onClick = onBack) { Text("Cancel") } },
+            )
+        },
+        bottomBar = {
+            if (state.canStartHere) {
+                Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
+                    Button(
+                        onClick = { onStartHere(state.at) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Start here") }
+                }
+            }
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            if (state.error != null) {
+                Text(
+                    state.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.danger,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+            if (state.loading) {
+                Text(
+                    "Reading…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.muted,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+            LazyColumn(Modifier.fillMaxSize()) {
+                // Up is a row rather than a toolbar button so the thumb reaches
+                // it, and it is absent at a root because there is nowhere above.
+                if (state.parent != null) {
+                    item(key = "..") {
+                        BrowseRow(label = "..", isRepo = false, onClick = { onOpen(state.parent) })
+                    }
+                }
+                items(state.entries, key = { it.path }) { entry ->
+                    BrowseRow(
+                        label = entryLabel(entry, state.atTop),
+                        isRepo = entry.isRepo,
+                        onClick = { onOpen(entry.path) },
+                    )
+                }
+                if (state.entries.isEmpty() && !state.loading && state.error == null) {
+                    item(key = "empty") {
+                        Text(
+                            "Nothing to open here.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = c.muted,
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrowseRow(label: String, isRepo: Boolean, onClick: () -> Unit) {
+    val c = NabuTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = c.ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (isRepo) {
+            Text(
+                "repo",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.onAccent,
+                modifier = Modifier
+                    .background(c.accent, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
+    }
 }

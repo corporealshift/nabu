@@ -459,7 +459,30 @@ Appends `options_change`. `key` ∈ `model | compaction_enabled | permission_mod
 
 Appends a `tasks` snapshot with `source: client`. Same shape as the tool's argument.
 
-### 7.15 Daemon → client requests
+### 7.15 `nabu.workspace.browse {path?}` → `{path, parent, entries}`
+
+Lists the directories a client may start a session in. `path` absent returns the
+configured roots; otherwise it returns the directories inside `path`.
+
+```jsonc
+{"path":"C:/Users/kyle/projects","parent":"C:/Users/kyle",
+ "entries":[{"name":"nabu","path":"C:/Users/kyle/projects/nabu","is_repo":true}]}
+```
+
+`entries` holds directories only, sorted case-insensitively by name. Dotted directories
+and build output (`node_modules`, `build`, `target`, `vendor`, `dist`, …) are omitted.
+`is_repo` reports a `.git` entry of either kind, so a worktree counts.
+
+`parent` is `null` at a root, so a client knows where climbing stops rather than
+learning it from a refusal one level later.
+
+A path outside the configured roots is `nabu_invalid_params`. The roots bound **listing**,
+not access: an authenticated client may already create a session at any path with §7.3.
+They exist so that a client cannot enumerate the machine for the asking.
+
+Roots come from `daemon.browse_roots`, defaulting to the user's home directory.
+
+### 7.16 Daemon → client requests
 
 Sent as JSON-RPC requests (with `id`) to every subscriber of the session. The first
 response wins; later responders receive `nabu_already_resolved`.

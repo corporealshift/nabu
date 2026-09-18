@@ -66,6 +66,7 @@ func (e *RPCError) Error() string {
 var Methods = []string{
 	"nabu.hello",
 	"nabu.session.list",
+	"nabu.workspace.browse",
 	"nabu.session.create",
 	"nabu.session.send_prompt",
 	"nabu.session.events_after",
