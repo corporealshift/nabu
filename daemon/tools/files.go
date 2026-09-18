@@ -22,21 +22,24 @@ var skipDir = map[string]bool{".git": true, "node_modules": true}
 
 func (b *Builtins) readTool() module.Tool {
 	type args struct {
-		Path   string `json:"path"`
-		Offset int    `json:"offset"`
-		Limit  int    `json:"limit"`
+		Path      string `json:"path"`
+		Offset    int    `json:"offset"`
+		Limit     int    `json:"limit"`
+		Workspace string `json:"workspace"`
 	}
 	return module.Tool{
-		Name:        "read",
-		Description: "Read a text file. Returns numbered lines. offset is the 1-based first line, limit the number of lines (default 2000).",
+		Name: "read",
+		Description: "Read a text file. Returns numbered lines. offset is the 1-based first line, limit the number of lines (default 2000)." +
+			rootsDescription(b.Roots),
 		Schema: schema(`{"type":"object","required":["path"],"properties":{
-			"path":{"type":"string"},"offset":{"type":"integer"},"limit":{"type":"integer"}}}`),
+			"path":{"type":"string"},"offset":{"type":"integer"},"limit":{"type":"integer"}` +
+			workspaceProperty(b.Roots) + `}}`),
 		Run: func(ctx context.Context, s module.Session, raw json.RawMessage) (string, error) {
 			a, err := decode[args](raw)
 			if err != nil {
 				return "", err
 			}
-			p, err := resolve(s, a.Path)
+			p, err := b.resolveMaybeElsewhere(s, a.Workspace, a.Path)
 			if err != nil {
 				return "", err
 			}
@@ -158,14 +161,17 @@ func (b *Builtins) editTool() module.Tool {
 
 func (b *Builtins) globTool() module.Tool {
 	type args struct {
-		Pattern string `json:"pattern"`
-		Path    string `json:"path"`
+		Pattern   string `json:"pattern"`
+		Path      string `json:"path"`
+		Workspace string `json:"workspace"`
 	}
 	return module.Tool{
-		Name:        "glob",
-		Description: "Find files by glob pattern (supports **). path is the directory to search, default the workspace.",
+		Name: "glob",
+		Description: "Find files by glob pattern (supports **). path is the directory to search, default the workspace." +
+			rootsDescription(b.Roots),
 		Schema: schema(`{"type":"object","required":["pattern"],"properties":{
-			"pattern":{"type":"string"},"path":{"type":"string"}}}`),
+			"pattern":{"type":"string"},"path":{"type":"string"}` +
+			workspaceProperty(b.Roots) + `}}`),
 		Run: func(ctx context.Context, s module.Session, raw json.RawMessage) (string, error) {
 			a, err := decode[args](raw)
 			if err != nil {
@@ -174,17 +180,15 @@ func (b *Builtins) globTool() module.Tool {
 			if a.Pattern == "" {
 				return "", module.Fail(protocol.ToolErrorInvalidArgs, "pattern is required")
 			}
-			root := s.Workspace().Path
-			if a.Path != "" {
-				if root, err = resolve(s, a.Path); err != nil {
-					return "", err
-				}
+			root, base, err := b.searchRoot(s, a.Workspace, a.Path)
+			if err != nil {
+				return "", err
 			}
 			re := globToRegexp(a.Pattern)
 			var hits []string
 			err = walk(ctx, root, func(abs string, d fs.DirEntry) error {
 				if re.MatchString(filepath.ToSlash(mustRel(root, abs))) {
-					hits = append(hits, rel(s, abs))
+					hits = append(hits, relTo(base, abs))
 				}
 				return nil
 			})
@@ -210,13 +214,16 @@ func (b *Builtins) grepTool() module.Tool {
 		Glob       string `json:"glob"`
 		IgnoreCase bool   `json:"ignore_case"`
 		Max        int    `json:"max"`
+		Workspace  string `json:"workspace"`
 	}
 	return module.Tool{
-		Name:        "grep",
-		Description: "Search file contents with a Go regular expression. Output is path:line: text. glob filters file names; max caps matching lines (default 200).",
+		Name: "grep",
+		Description: "Search file contents with a Go regular expression. Output is path:line: text. glob filters file names; max caps matching lines (default 200)." +
+			rootsDescription(b.Roots),
 		Schema: schema(`{"type":"object","required":["pattern"],"properties":{
 			"pattern":{"type":"string"},"path":{"type":"string"},"glob":{"type":"string"},
-			"ignore_case":{"type":"boolean"},"max":{"type":"integer"}}}`),
+			"ignore_case":{"type":"boolean"},"max":{"type":"integer"}` +
+			workspaceProperty(b.Roots) + `}}`),
 		Run: func(ctx context.Context, s module.Session, raw json.RawMessage) (string, error) {
 			a, err := decode[args](raw)
 			if err != nil {
@@ -240,11 +247,9 @@ func (b *Builtins) grepTool() module.Tool {
 			if a.Max < 1 {
 				a.Max = 200
 			}
-			root := s.Workspace().Path
-			if a.Path != "" {
-				if root, err = resolve(s, a.Path); err != nil {
-					return "", err
-				}
+			root, base, err := b.searchRoot(s, a.Workspace, a.Path)
+			if err != nil {
+				return "", err
 			}
 			var lines []string
 			err = walk(ctx, root, func(abs string, d fs.DirEntry) error {
@@ -260,7 +265,7 @@ func (b *Builtins) grepTool() module.Tool {
 				for _, line := range bytes.Split(data, []byte("\n")) {
 					n++
 					if re.Match(line) {
-						lines = append(lines, fmt.Sprintf("%s:%d: %s", rel(s, abs), n, strings.TrimRight(string(line), "\r")))
+						lines = append(lines, fmt.Sprintf("%s:%d: %s", relTo(base, abs), n, strings.TrimRight(string(line), "\r")))
 						if len(lines) >= a.Max {
 							return fs.SkipAll
 						}
