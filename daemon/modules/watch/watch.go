@@ -176,7 +176,7 @@ func (m *Module) BeforeRequest(_ context.Context, s module.Session) ([]module.Co
 	if len(changes) == 0 {
 		return nil, nil
 	}
-	return []module.ContextBlock{{Slot: "suffix", Content: render(changes, m.maxReported)}}, nil
+	return []module.ContextBlock{{Slot: "suffix", Content: render(s.Workspace().Path, changes, m.maxReported)}}, nil
 }
 
 // ToolResult records what the agent itself wrote, so its own edits are not
@@ -314,7 +314,12 @@ func diff(before, after snapshot, mine map[string]bool) []Change {
 // Paths and kinds only, never contents: the model re-reads what it cares about,
 // and inlining the files would put the whole change set in every request for
 // the sake of the one line it might need.
-func render(changes []Change, max int) string {
+//
+// Paths are named relative to the workspace, the way every tool names them. An
+// absolute path here would repeat the workspace prefix on every changed file in
+// every request, and would not match what the model would have to type to read
+// one back.
+func render(root string, changes []Change, max int) string {
 	var b strings.Builder
 	b.WriteString("## Workspace changes\n")
 	b.WriteString("These files changed on disk since your last turn, and not because of your own edits:\n")
@@ -324,13 +329,27 @@ func render(changes []Change, max int) string {
 		shown = shown[:max]
 	}
 	for _, c := range shown {
-		fmt.Fprintf(&b, "- %s: %s\n", c.Kind, filepath.ToSlash(c.Path))
+		fmt.Fprintf(&b, "- %s: %s\n", c.Kind, relTo(root, c.Path))
 	}
 	if len(changes) > len(shown) {
 		fmt.Fprintf(&b, "- … and %d more\n", len(changes)-len(shown))
 	}
 	b.WriteString("Anything you read earlier and are still relying on may be stale. Re-read it before acting on it.\n")
 	return b.String()
+}
+
+// relTo names a path the way the file tools do: relative to the workspace, with
+// forward slashes. A path that somehow lies outside the workspace keeps its
+// absolute form rather than being reported as a string of "..".
+func relTo(root, abs string) string {
+	if root == "" {
+		return filepath.ToSlash(abs)
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(filepath.ToSlash(rel), "../") {
+		return filepath.ToSlash(abs)
+	}
+	return filepath.ToSlash(rel)
 }
 
 // pathArg pulls the path out of a write or edit call without caring about the

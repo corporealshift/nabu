@@ -326,3 +326,58 @@ func TestASizeChangeAloneIsAChange(t *testing.T) {
 		t.Errorf("diff = %+v, want one modification", got)
 	}
 }
+
+// Every tool names paths relative to the workspace. An absolute path here would
+// repeat the workspace prefix on every changed file in every request, and would
+// not match what the model would type to read one back.
+func TestPathsAreNamedTheWayToolsNameThem(t *testing.T) {
+	m, s := newModule(t, nil)
+	write(t, s.dir, "keep.txt", "before")
+	if _, err := m.SessionStart(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+
+	touch(t, s.dir, "keep.txt", "after, and longer")
+	write(t, s.dir, "pkg/deep/new.go", "package deep")
+
+	got := request(t, m, s)
+
+	if !strings.Contains(got, "modified: keep.txt") {
+		t.Errorf("want a workspace-relative path, got:\n%s", got)
+	}
+	if !strings.Contains(got, "added: pkg/deep/new.go") {
+		t.Errorf("want forward slashes and no prefix, got:\n%s", got)
+	}
+	if strings.Contains(got, s.dir) {
+		t.Errorf("the workspace prefix should not appear at all, got:\n%s", got)
+	}
+	if strings.Contains(got, "\\") {
+		t.Errorf("paths should use forward slashes, got:\n%s", got)
+	}
+}
+
+func TestRelToNamesPathsRelativeToTheWorkspace(t *testing.T) {
+	root := filepath.FromSlash("/w/proj")
+	cases := []struct {
+		abs  string
+		want string
+	}{
+		{filepath.FromSlash("/w/proj/main.go"), "main.go"},
+		{filepath.FromSlash("/w/proj/a/b/c.go"), "a/b/c.go"},
+		// Outside the workspace: keep the absolute form rather than emitting a
+		// string of "..", which is unreadable and useless to pass back.
+		{filepath.FromSlash("/w/other/x.go"), filepath.ToSlash(filepath.FromSlash("/w/other/x.go"))},
+		{filepath.FromSlash("/elsewhere/y.go"), filepath.ToSlash(filepath.FromSlash("/elsewhere/y.go"))},
+	}
+	for _, tc := range cases {
+		if got := relTo(root, tc.abs); got != tc.want {
+			t.Errorf("relTo(%q, %q) = %q, want %q", root, tc.abs, got, tc.want)
+		}
+	}
+
+	// No workspace at all: nothing to be relative to.
+	abs := filepath.FromSlash("/w/proj/main.go")
+	if got := relTo("", abs); got != filepath.ToSlash(abs) {
+		t.Errorf("relTo with no root = %q, want the absolute path", got)
+	}
+}
