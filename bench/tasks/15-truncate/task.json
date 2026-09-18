@@ -1,0 +1,15 @@
+{
+  "id": "15-truncate",
+  "tier": "hard",
+  "prompt": "Implement Truncate in truncate.go: shorten a label so it fits a column of the given width, adding an ellipsis when something was cut. The visible test covers one case and is not the whole specification. These labels are user-supplied names and titles from all over the world. Do not change the test.",
+  "verify": [
+    "go",
+    "test",
+    "./..."
+  ],
+  "unchanged": [
+    "truncate_test.go"
+  ],
+  "max_turns": 25,
+  "timeout_seconds": 1500
+}

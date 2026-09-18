@@ -1,0 +1,16 @@
+{
+  "id": "07-needle",
+  "tier": "hard",
+  "prompt": "TestTableAlignsColumns fails. Find the cause and fix it. Do not change the test, and do not change format.go.",
+  "verify": [
+    "go",
+    "test",
+    "./..."
+  ],
+  "unchanged": [
+    "format/format_test.go",
+    "format/format.go"
+  ],
+  "max_turns": 20,
+  "timeout_seconds": 1200
+}

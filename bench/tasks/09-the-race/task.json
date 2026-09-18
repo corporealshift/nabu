@@ -1,0 +1,15 @@
+{
+  "id": "09-the-race",
+  "tier": "hard",
+  "prompt": "go test ./... fails with a concurrent map write. Fix the data race in counter.go. Keep the same API: Counter must still have Add and Total. Do not change the test.",
+  "verify": [
+    "go",
+    "test",
+    "./..."
+  ],
+  "unchanged": [
+    "counter_test.go"
+  ],
+  "max_turns": 20,
+  "timeout_seconds": 1200
+}

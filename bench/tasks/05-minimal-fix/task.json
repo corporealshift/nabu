@@ -1,0 +1,13 @@
+{
+  "id": "05-minimal-fix",
+  "prompt": "go vet reports a problem in report.go. Fix only what vet complains about. Leave everything else exactly as it is.",
+  "verify": [
+    "go",
+    "vet",
+    "./..."
+  ],
+  "unchanged": [],
+  "max_turns": 14,
+  "timeout_seconds": 900,
+  "tier": "basic"
+}

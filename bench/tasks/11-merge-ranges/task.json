@@ -1,0 +1,15 @@
+{
+  "id": "11-merge-ranges",
+  "tier": "hard",
+  "prompt": "Implement Merge in ranges.go. It takes booking ranges and returns the same bookings with overlaps merged into single ranges. A range is [Start, End). There is one test in ranges_test.go; it is not the whole specification, so think about what callers of a booking system would expect and handle it. Do not change the test.",
+  "verify": [
+    "go",
+    "test",
+    "./..."
+  ],
+  "unchanged": [
+    "ranges_test.go"
+  ],
+  "max_turns": 25,
+  "timeout_seconds": 1500
+}

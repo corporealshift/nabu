@@ -1,0 +1,15 @@
+{
+  "id": "14-version-order",
+  "tier": "basic",
+  "prompt": "Implement Less in version.go so versions sort the way people releasing software expect. The visible test covers one case and is not the whole specification. Versions look like 1.2.3 and may carry a -suffix. Do not change the test.",
+  "verify": [
+    "go",
+    "test",
+    "./..."
+  ],
+  "unchanged": [
+    "version_test.go"
+  ],
+  "max_turns": 25,
+  "timeout_seconds": 1500
+}

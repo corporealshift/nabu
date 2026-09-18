@@ -1,0 +1,15 @@
+{
+  "id": "13-retry-semantics",
+  "tier": "hard",
+  "prompt": "Implement Do in retry.go: run the operation, and retry it when it fails. ErrPermanent means there is no point trying again. The visible test covers one case and is not the whole specification; think about what a caller would be entitled to assume about attempts, cancellation, and which error comes back. Do not change the test.",
+  "verify": [
+    "go",
+    "test",
+    "./..."
+  ],
+  "unchanged": [
+    "retry_test.go"
+  ],
+  "max_turns": 25,
+  "timeout_seconds": 1500
+}
