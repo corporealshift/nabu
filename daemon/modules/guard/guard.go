@@ -192,7 +192,9 @@ type callInfo struct {
 	command    string
 	path       string
 	replaceAll bool
-	tier       Tier
+	// op is the verb of a tool that takes one, empty for tools that do not.
+	op   string
+	tier Tier
 	// workspace is the session's workspace, so a bash command's arguments can
 	// be judged against it.
 	workspace string
@@ -226,6 +228,10 @@ type toolArgs struct {
 	Command    string `json:"command"`
 	Path       string `json:"path"`
 	ReplaceAll bool   `json:"replace_all"`
+	// Op is the verb of a tool that takes one, such as git and gh. A tool
+	// whose risk depends on which verb was asked for cannot be rated by its
+	// name alone.
+	Op string `json:"op"`
 }
 
 // inspect extracts what the rules match on. Malformed or absent arguments are
@@ -243,6 +249,7 @@ func inspect(s module.Session, call protocol.ToolCallData) callInfo {
 	info.command = args.Command
 	info.path = args.Path
 	info.replaceAll = args.ReplaceAll
+	info.op = args.Op
 
 	if info.path != "" && s != nil {
 		info.inWorkspace = withinWorkspace(info.workspace, info.path)
@@ -333,6 +340,9 @@ func words(s string) map[string]bool {
 var toolTiers = map[string]Tier{
 	"read": TierLow, "glob": TierLow, "grep": TierLow, "task.update": TierLow,
 	"web.search": TierLow,
+	// git and gh are rated by their op below; these are the floor for a call
+	// that names no op, which cannot do anything.
+	"git": TierLow, "gh": TierLow,
 	// Asking changes nothing, and gating it would prompt twice for one
 	// question.
 	"ask":   TierLow,
@@ -340,6 +350,13 @@ var toolTiers = map[string]Tier{
 	// Fetching is medium because the page decides what comes back: a
 	// result the model was told to read is somebody else's writing.
 	"web.fetch": TierMedium,
+}
+
+// writingOps are the vcs ops that change something observable. Everything else
+// those tools offer only reads, which is why the pair is rated by op rather
+// than by tool name.
+var writingOps = map[string]bool{
+	"git.commit": true,
 }
 
 // classify assigns a risk tier. A path outside the workspace is high risk
@@ -354,6 +371,14 @@ func classify(info callInfo) Tier {
 	// A sweeping edit is riskier than a targeted one.
 	if info.tool == "edit" && info.replaceAll {
 		return TierHigh
+	}
+	// git and gh read by default and write only for named ops, so the verb
+	// decides: "git status" is not "git commit".
+	if info.tool == "git" || info.tool == "gh" {
+		if writingOps[info.tool+"."+info.op] {
+			return TierMedium
+		}
+		return TierLow
 	}
 	if t, ok := toolTiers[info.tool]; ok {
 		return t
