@@ -42,7 +42,7 @@ daemon/
   provider/               OpenAI-compatible streaming client, limits, usage
   tools/                  built-ins incl. task.update
   module/                 Module + hook interfaces, Host, registry, dispatch, boundary test
-  modules/                all.go (registration list) + skills/ guard/ verify/ report/ memory/ web/ ask/
+  modules/                all.go (registration list) + skills/ guard/ verify/ report/ memory/ web/ ask/ vcs/
   api/                    WebSocket JSON-RPC surface, fan-out, deltas, client requests
   notify/                 FCM
   workspace/              workspace key, trust, permission plumbing
