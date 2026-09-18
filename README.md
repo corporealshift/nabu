@@ -183,6 +183,75 @@ run on all three in CI. And a session is not tied to whatever is looking at it: 
 daemon owns the sessions and clients attach to it, so the terminal is not the only way
 in.
 
+## How a request travels
+
+Everything is an append-only log of events. The daemon owns it, clients read it, and
+nothing else is the truth: a client that reconnects replays from the log rather than
+being told what it missed.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor You
+    participant Client as TUI or phone
+    participant Daemon
+    participant Log as session log
+    participant Model
+    participant Judge as judge · fresh context
+
+    You->>Client: a prompt
+    Client->>Daemon: nabu.session.send_prompt
+    Daemon->>Log: append message
+    Log-->>Client: event
+
+    loop until every stop gate agrees
+        Daemon->>Log: read it back
+        Note over Daemon: assemble the request from<br/>the log alone
+        Daemon->>Model: system prompt, log, tools
+        Model-->>Daemon: reasoning, text, tool calls
+        Daemon->>Log: append thinking, then message
+        Log-->>Client: events
+
+        opt the model asked for a tool
+            Note over Daemon: modules may refuse,<br/>or ask you first
+            Daemon-->>Client: permission request
+            Client-->>Daemon: approve or deny
+            Daemon->>Log: append tool_call, tool_result
+            Log-->>Client: events
+        end
+
+        opt the model says it is done
+            Note over Daemon: the cheap checks first:<br/>open tasks, failed checks,<br/>the project gate, a clean tree
+            opt a run goal is set
+                Daemon->>Judge: the goal, the tasks,<br/>a window of transcript
+                Judge-->>Daemon: met, unmet or impossible
+            end
+            alt any gate objects
+                Daemon->>Log: append stop_veto
+                Log-->>Client: event
+                Note over Daemon: round again
+            end
+        end
+    end
+
+    Daemon->>Log: append report
+    Log-->>Client: event
+```
+
+The loop is the part worth understanding. The model does not decide when it has
+finished: it says so, and the stop gates are asked whether that is true. Any objection
+appends a veto and sends it back round. That is why the same session can keep working
+after you close the terminal, and why two clients can watch it at once — neither is
+driving it.
+
+The last of those gates is another model. When a run has a goal, the judge is given the
+condition, the tasks and a window of transcript — never the loop's own history, so it is
+not being asked to agree with itself — and answers met, unmet or impossible. It is a
+second model call on every stop attempt, which is why the mechanical checks are asked
+first: a stop that is obviously wrong should never cost one. A judge call that fails or
+answers in the wrong shape counts as unmet, because a judge that fails open would make
+the whole mechanism theatre.
+
 ## What it actually does
 
 **It refuses to claim it is done when it isn't.** When the agent thinks it has
