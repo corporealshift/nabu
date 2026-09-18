@@ -18,6 +18,9 @@ const tickInterval = 450 * time.Millisecond
 type (
 	// eventMsg is one logged session event.
 	eventMsg struct{ ev protocol.Event }
+	// askMsg is a question from the agent, waiting on an answer.
+	askMsg struct{ q question }
+
 	// deltaMsg is streaming assistant text. Ephemeral: never logged.
 	deltaMsg struct{ d goclient.SessionDelta }
 
@@ -82,6 +85,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.enqueue(msg.p)
 		return m, nil
 
+	case askMsg:
+		q := msg.q
+		m.asking = &q
+		return m, nil
+
 	case resolvedMsg:
 		if m.dropPrompt(msg.requestID) {
 			m.note("that request was already answered")
@@ -115,6 +123,8 @@ func (m model) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case m.pending != nil:
 		return m.onPromptKey(msg)
+	case m.asking != nil:
+		return m.answerQuestion(msg)
 	case m.picking:
 		return m.onPickerKey(msg)
 	case m.composing:
@@ -269,6 +279,28 @@ func (m model) onTranscriptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
+}
+
+// answerQuestion edits the answer, and sends it when it is finished. Every
+// printable key belongs to the answer, so the agent is never left waiting
+// because a keystroke was read as a command.
+func (m model) answerQuestion(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Ctrl-C still quits: being asked a question must not trap anyone in the
+	// client.
+	if msg.Type == tea.KeyCtrlC {
+		m.quitting = true
+		return m, tea.Quit
+	}
+
+	next, answer, done := m.onAskKey(msg.String(), msg.Runes)
+	if !done {
+		return next, nil
+	}
+
+	id := next.asking.id
+	next.asking = nil
+	next.note("answered: " + answer)
+	return next, next.emit(action{kind: actAnswerAsk, id: id, text: answer})
 }
 
 // answerPending replies to the prompt on screen and shows the next one.

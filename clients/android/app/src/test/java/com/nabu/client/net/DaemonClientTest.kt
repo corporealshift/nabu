@@ -196,6 +196,55 @@ class DaemonClientTest {
         c.done()
     }
 
+    /** Issue 36: a question is a request too, and the phone is often the only client. */
+    @Test
+    fun `a question is classified and can be answered`() = runBlocking {
+        val c = client()
+        withTimeout(10_000) { c.connect() }
+
+        val got = async {
+            withTimeout(10_000) { c.incoming.first { it is Incoming.Ask } as Incoming.Ask }
+        }
+        delay(200)
+        daemon.push("""{"jsonrpc":"2.0","id":"q1","method":"nabu.rpc.ui.ask",
+            "params":{"request_id":"q1","session_id":"S1","question":"which design?",
+            "choices":["the simple one","the fast one"]}}""")
+
+        val req = got.await()
+        assertEquals("which design?", req.value.question)
+        assertEquals(listOf("the simple one", "the fast one"), req.value.choices)
+
+        c.respond(req.value.id, buildJsonObject { put("answer", "the fast one") })
+
+        var answer: String? = null
+        repeat(100) {
+            answer = daemon.received.firstOrNull { m -> m.contains("the fast one") }
+            if (answer != null) return@repeat
+            Thread.sleep(50)
+        }
+        assertNotNull("the answer never reached the daemon", answer)
+        c.done()
+    }
+
+    /** A question with no choices is still answerable, in free text. */
+    @Test
+    fun `a question without choices parses`() = runBlocking {
+        val c = client()
+        withTimeout(10_000) { c.connect() }
+
+        val got = async {
+            withTimeout(10_000) { c.incoming.first { it is Incoming.Ask } as Incoming.Ask }
+        }
+        delay(200)
+        daemon.push("""{"jsonrpc":"2.0","id":"q2","method":"nabu.rpc.ui.ask",
+            "params":{"request_id":"q2","session_id":"S1","question":"what should it be called?"}}""")
+
+        val req = got.await()
+        assertEquals("what should it be called?", req.value.question)
+        assertTrue(req.value.choices.isEmpty())
+        c.done()
+    }
+
     /** A frame this client cannot parse costs that frame, not the connection. */
     @Test
     fun `an unreadable frame does not kill the connection`() = runBlocking {

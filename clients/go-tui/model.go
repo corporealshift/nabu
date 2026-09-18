@@ -59,6 +59,11 @@ type model struct {
 	pending *prompt
 	queued  []prompt
 
+	// asking is the question the agent put to the human, if any. One at a
+	// time: the agent is blocked until it is answered, so it cannot ask a
+	// second thing while waiting.
+	asking *question
+
 	conn      connState
 	connNote  string
 	state     protocol.SessionState
@@ -230,6 +235,7 @@ func (m *model) reset(sessionID string) {
 	m.lastInput = 0
 	m.pending = nil
 	m.queued = nil
+	m.asking = nil
 	m.state = protocol.StateIdle
 	m.runningSince = time.Time{}
 	m.refresh()

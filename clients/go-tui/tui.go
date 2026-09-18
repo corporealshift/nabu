@@ -177,6 +177,10 @@ func attach(ctx context.Context, p *tea.Program, addr, token, sessionID string, 
 			if d, ok := goclient.ParseThinking(msg); ok {
 				p.Send(thinkingMsg{d: d})
 			}
+		case "nabu.rpc.ui.ask":
+			if req, ok := goclient.ParseAsk(msg); ok {
+				p.Send(askMsg{q: question{id: msg.ID, req: req}})
+			}
 		case "nabu.rpc.permission.request":
 			if req, ok := goclient.ParsePermission(msg); ok {
 				p.Send(promptMsg{p: prompt{id: msg.ID, req: req}})
@@ -208,6 +212,8 @@ func perform(ctx context.Context, c *goclient.Client, p *tea.Program, a action) 
 	switch a.kind {
 	case actAnswer:
 		err = c.AnswerPermission(ctx, a.id, a.approve, a.reason)
+	case actAnswerAsk:
+		err = c.AnswerAsk(ctx, a.id, a.text)
 	case actPrompt:
 		_, err = c.Call(ctx, "nabu.session.send_prompt",
 			map[string]any{"session_id": a.sessionID, "content": a.text})
