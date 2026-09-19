@@ -153,6 +153,12 @@ interface OutboxDao {
     @Query("SELECT * FROM outbox WHERE event_id IS NULL AND blocked = 1 ORDER BY created_at ASC")
     fun watchBlocked(): Flow<List<OutboxRow>>
 
+    /** The same rows, asked once. Pairs with watchBlocked as pending does with
+     * watchPending: a caller that wants an answer rather than a subscription
+     * should not have to collect a stream to get one. */
+    @Query("SELECT * FROM outbox WHERE event_id IS NULL AND blocked = 1 ORDER BY created_at ASC")
+    suspend fun blocked(): List<OutboxRow>
+
     @Query("SELECT * FROM outbox WHERE client_id = :clientId")
     suspend fun byClientId(clientId: String): OutboxRow?
 

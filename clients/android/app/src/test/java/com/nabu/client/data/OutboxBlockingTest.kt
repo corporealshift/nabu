@@ -8,7 +8,6 @@ import com.nabu.client.net.DaemonException
 import com.nabu.client.net.FakeDaemon
 import com.nabu.client.protocol.RpcCodes
 import com.nabu.client.settings.Settings
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -74,7 +73,7 @@ class OutboxBlockingTest {
         repo.flushOutbox(connect())
 
         assertEquals("the live prompts must all have gone", 0, repo.pendingCount())
-        val blocked = repo.watchBlocked().first()
+        val blocked = repo.blockedPrompts()
         assertEquals("the refused one is kept, not dropped", 1, blocked.size)
         assertEquals("c1", blocked.single().clientId)
         assertNotNull("and it says why", blocked.single().lastError)
@@ -86,13 +85,13 @@ class OutboxBlockingTest {
         daemon.refuseSession["ENDED"] = RpcCodes.INVALID_TRANSITION
         queue("ENDED", "c1")
         repo.flushOutbox(connect())
-        assertEquals(1, repo.watchBlocked().first().size)
+        assertEquals(1, repo.blockedPrompts().size)
 
         // Whatever made the daemon refuse is fixed, so it goes back in line.
         daemon.refuseSession.clear()
         repo.retryBlocked("c1")
         assertEquals("back in the queue", 1, repo.pendingCount())
-        assertTrue("and no longer listed as blocked", repo.watchBlocked().first().isEmpty())
+        assertTrue("and no longer listed as blocked", repo.blockedPrompts().isEmpty())
 
         repo.flushOutbox(connect())
         assertEquals("and it sends", 0, repo.pendingCount())
@@ -106,7 +105,7 @@ class OutboxBlockingTest {
 
         repo.discardBlocked("c1")
 
-        assertTrue(repo.watchBlocked().first().isEmpty())
+        assertTrue(repo.blockedPrompts().isEmpty())
         assertEquals(0, repo.pendingCount())
     }
 
@@ -123,7 +122,7 @@ class OutboxBlockingTest {
         repo.flushOutbox(connect())
 
         assertEquals("nothing is given up on", 2, repo.pendingCount())
-        assertTrue("and nothing is blocked", repo.watchBlocked().first().isEmpty())
+        assertTrue("and nothing is blocked", repo.blockedPrompts().isEmpty())
     }
 
     /** A queue that is stuck has to be able to say why. */

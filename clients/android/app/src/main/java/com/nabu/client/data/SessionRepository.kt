@@ -167,6 +167,9 @@ class SessionRepository(
     /** Prompts the daemon refused for good, app-wide. */
     fun watchBlocked(): Flow<List<OutboxRow>> = db.outbox().watchBlocked()
 
+    /** Blocked prompts, asked once rather than watched. */
+    suspend fun blockedPrompts(): List<OutboxRow> = db.outbox().blocked()
+
     /**
      * Records why the queue is not moving, when the cause is the connection
      * rather than any one prompt. Without this a stuck queue shows a count

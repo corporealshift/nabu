@@ -2,8 +2,10 @@ package com.nabu.client.net
 
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
@@ -35,7 +37,7 @@ class FakeDaemon {
     @Volatile var holdCall: CountDownLatch? = null
 
     fun start() {
-        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+        val listener = object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
                 socket = ws
                 opened.countDown()
@@ -71,7 +73,17 @@ class FakeDaemon {
                 }
                 ws.send(resultFor(id, msg.method ?: ""))
             }
-        }))
+        }
+
+        // A dispatcher rather than one enqueued response, so every connection is
+        // upgraded and not just the first. Reconnecting is what the outbox does
+        // after a failure, and with a single enqueued upgrade the second connect
+        // waits forever for a handshake nothing will answer — which is a hung
+        // test suite, not a failing one.
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                MockResponse().withWebSocketUpgrade(listener)
+        }
         server.start()
     }
 
