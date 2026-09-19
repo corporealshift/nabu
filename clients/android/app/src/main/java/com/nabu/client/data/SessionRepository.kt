@@ -1,5 +1,7 @@
 package com.nabu.client.data
 
+import com.nabu.client.net.BrowseResult
+import com.nabu.client.net.CreateSessionResult
 import com.nabu.client.net.DaemonClient
 import com.nabu.client.net.Incoming
 import com.nabu.client.net.SessionSummary
@@ -185,6 +187,64 @@ class SessionRepository(
                 return
             }
         }
+    }
+    /**
+     * Lists directories the daemon will start a session in.
+     *
+     * A null [path] asks for the configured roots, which is where a picker has
+     * to start: the phone cannot see the daemon's filesystem and has no way to
+     * guess a path worth typing.
+     */
+    suspend fun browse(client: DaemonClient, path: String?): BrowseResult {
+        val result = client.callOrThrow("nabu.workspace.browse", buildJsonObject {
+            if (!path.isNullOrEmpty()) put("path", path)
+        })
+        return NabuJson.decodeFromJsonElement(BrowseResult.serializer(), result)
+    }
+
+    /**
+     * Creates one directory inside [parent] and returns the new directory's
+     * listing, so the caller can move into what it just made.
+     *
+     * [name] is one directory name, never a path. The daemon enforces that; the
+     * client does not pre-validate, because two copies of the same rule drift
+     * and only one of them is the one that matters.
+     */
+    suspend fun createDirectory(client: DaemonClient, parent: String, name: String): BrowseResult {
+        val result = client.callOrThrow("nabu.workspace.create_directory", buildJsonObject {
+            put("parent", parent)
+            put("name", name)
+        })
+        return NabuJson.decodeFromJsonElement(BrowseResult.serializer(), result)
+    }
+
+    /**
+     * Starts a session in [workspace] and returns its id.
+     *
+     * The path handed in is one the daemon itself produced, so nothing here
+     * rewrites it: a client massaging a path would be guessing about a
+     * filesystem it cannot see.
+     */
+    suspend fun createSession(client: DaemonClient, workspace: String): String {
+        val result = client.callOrThrow("nabu.session.create", buildJsonObject {
+            put("workspace", workspace)
+        })
+        val created = NabuJson.decodeFromJsonElement(CreateSessionResult.serializer(), result)
+        // Record it straight away, so the list shows what the reader just made
+        // rather than waiting for the next refresh. The real summary replaces
+        // this row the next time the daemon is asked.
+        if (created.sessionId.isNotEmpty()) {
+            recordSessions(
+                listOf(
+                    SessionSummary(
+                        sessionId = created.sessionId,
+                        workspace = workspace,
+                        state = "idle",
+                    )
+                )
+            )
+        }
+        return created.sessionId
     }
 }
 

@@ -225,6 +225,96 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Queues a prompt, written locally first so losing signal cannot lose it. */
+    // ------------------------------------------------------------- browsing
+
+    private val _browse = MutableStateFlow(BrowseState())
+    val browse: StateFlow<BrowseState> = _browse.asStateFlow()
+
+    /**
+     * Opens one level of the daemon's directory tree.
+     *
+     * A null path asks for the configured roots, which is how the picker
+     * starts. A failure is shown in place rather than closing the screen: the
+     * reader is one tap from somewhere that works.
+     */
+    fun openDirectory(path: String?) {
+        val c = client
+        if (c == null) {
+            _browse.value = _browse.value.copy(error = "not connected", loading = false)
+            return
+        }
+        _browse.value = _browse.value.copy(loading = true, error = null)
+        viewModelScope.launch {
+            try {
+                _browse.value = _browse.value.applied(repo.browse(c, path))
+            } catch (e: Exception) {
+                _browse.value = _browse.value.copy(
+                    loading = false,
+                    error = e.message ?: "could not read that directory",
+                )
+            }
+        }
+    }
+
+    /** Resets the picker to the roots, so reopening it does not resume mid-tree. */
+    fun startBrowsing() {
+        _browse.value = BrowseState()
+        openDirectory(null)
+    }
+
+    /**
+     * Creates a directory where the picker currently is, and moves into it.
+     *
+     * Moving in is the point: a directory made and then left behind is a step
+     * for nothing, and "Start here" is the next tap.
+     */
+    fun createDirectory(name: String) {
+        val c = client
+        val at = _browse.value.at
+        if (c == null || at.isEmpty()) {
+            _browse.value = _browse.value.copy(error = "not connected")
+            return
+        }
+        _browse.value = _browse.value.copy(loading = true, error = null)
+        viewModelScope.launch {
+            try {
+                _browse.value = _browse.value.applied(repo.createDirectory(c, at, name))
+            } catch (e: Exception) {
+                _browse.value = _browse.value.copy(
+                    loading = false,
+                    error = e.message ?: "could not create that directory",
+                )
+            }
+        }
+    }
+
+    /**
+     * Starts a session in [workspace] and hands its id to [onCreated].
+     *
+     * The caller navigates rather than this doing it, so the view model does
+     * not have to know what a screen is.
+     */
+    fun createSession(workspace: String, onCreated: (String) -> Unit) {
+        val c = client
+        if (c == null) {
+            _browse.value = _browse.value.copy(error = "not connected")
+            return
+        }
+        _browse.value = _browse.value.copy(loading = true, error = null)
+        viewModelScope.launch {
+            try {
+                val id = repo.createSession(c, workspace)
+                _browse.value = _browse.value.copy(loading = false)
+                if (id.isNotEmpty()) onCreated(id)
+            } catch (e: Exception) {
+                _browse.value = _browse.value.copy(
+                    loading = false,
+                    error = e.message ?: "could not start a session there",
+                )
+            }
+        }
+    }
+
     fun sendPrompt(sessionId: String, text: String) {
         viewModelScope.launch {
             repo.queuePrompt(sessionId, text, newClientId())

@@ -181,6 +181,7 @@ func New(opts Options) (*Daemon, error) {
 	// The handler is built first because it is the manager's Asker and delta
 	// sink; the manager is bound into it once it exists.
 	handler := api.NewHandler(nil, store, log)
+	handler.SetBrowseRoots(cfg.Daemon.BrowseRoots)
 
 	mgr, err := agent.New(agent.Deps{
 		Store: store, Providers: providers, Modules: registry,

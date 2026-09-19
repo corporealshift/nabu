@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/corporealshift/nabu/daemon/provider"
 	"github.com/corporealshift/nabu/daemon/session"
 	"github.com/corporealshift/nabu/daemon/tools"
+	"github.com/corporealshift/nabu/daemon/workspace"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -375,3 +378,148 @@ func (c *scriptedConn) WriteJSON(_ context.Context, v any) error {
 
 func (c *scriptedConn) Close(websocket.StatusCode, string) {}
 func (c *scriptedConn) CloseNow()                          {}
+
+// The picker on a phone cannot see the daemon's filesystem, so browsing is how
+// it finds a directory at all.
+func TestWorkspaceBrowseOverRPC(t *testing.T) {
+	hn := newHarness(t)
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "proj", ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "node_modules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hn.h.SetBrowseRoots([]string{root})
+
+	t.Run("no path lists the roots", func(t *testing.T) {
+		var out workspace.Listing
+		result(t, hn.call(t, 1, "nabu.workspace.browse", map[string]any{}), &out)
+		if len(out.Entries) != 1 || out.Entries[0].Path != filepath.ToSlash(root) {
+			t.Fatalf("entries = %+v, want the one root", out.Entries)
+		}
+		if out.Parent != nil {
+			t.Error("the top level has no parent")
+		}
+	})
+
+	t.Run("a path lists its directories and marks repos", func(t *testing.T) {
+		var out workspace.Listing
+		result(t, hn.call(t, 2, "nabu.workspace.browse", map[string]any{"path": root}), &out)
+		if len(out.Entries) != 1 {
+			t.Fatalf("entries = %+v, want just proj (node_modules is noise)", out.Entries)
+		}
+		if out.Entries[0].Name != "proj" || !out.Entries[0].IsRepo {
+			t.Errorf("entry = %+v, want proj marked as a repo", out.Entries[0])
+		}
+	})
+
+	t.Run("outside the roots is invalid params", func(t *testing.T) {
+		resp := hn.call(t, 3, "nabu.workspace.browse", map[string]any{"path": t.TempDir()})
+		if resp == nil || resp.Error == nil {
+			t.Fatalf("browsing outside the roots should fail, got %+v", resp)
+		}
+		if resp.Error.Code != protocol.CodeInvalidParams {
+			t.Errorf("code = %d, want invalid params", resp.Error.Code)
+		}
+	})
+}
+
+// Browsing to a directory and then creating a session there is the whole point,
+// so the two halves have to fit together.
+func TestBrowseThenCreateSessionThere(t *testing.T) {
+	hn := newHarness(t)
+	root := t.TempDir()
+	target := filepath.Join(root, "proj")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hn.h.SetBrowseRoots([]string{root})
+
+	var listing workspace.Listing
+	result(t, hn.call(t, 1, "nabu.workspace.browse", map[string]any{"path": root}), &listing)
+	if len(listing.Entries) != 1 {
+		t.Fatalf("entries = %+v", listing.Entries)
+	}
+
+	// The path the listing gave is handed straight back to create, with no
+	// massaging: a client should not have to rewrite it.
+	resp := hn.call(t, 2, "nabu.session.create", map[string]any{"workspace": listing.Entries[0].Path})
+	if resp == nil || resp.Error != nil {
+		t.Fatalf("create with a browsed path failed: %+v", resp)
+	}
+}
+
+// Creating a directory is the one thing a client makes the daemon write, so the
+// checks on both halves matter more than the happy path.
+func TestWorkspaceCreateDirectoryOverRPC(t *testing.T) {
+	hn := newHarness(t)
+	root := t.TempDir()
+	parent := filepath.Join(root, "projects")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hn.h.SetBrowseRoots([]string{root})
+
+	t.Run("creates and returns the new directory", func(t *testing.T) {
+		var out workspace.Listing
+		result(t, hn.call(t, 1, "nabu.workspace.create_directory",
+			map[string]any{"parent": parent, "name": "fresh"}), &out)
+
+		want := filepath.ToSlash(filepath.Join(parent, "fresh"))
+		if out.Path != want {
+			t.Fatalf("path = %q, want %q", out.Path, want)
+		}
+		if info, err := os.Stat(filepath.Join(parent, "fresh")); err != nil || !info.IsDir() {
+			t.Fatalf("not created: %v", err)
+		}
+	})
+
+	// And the path it returns is one session.create accepts unchanged, which is
+	// the whole flow: make a directory, start work in it.
+	t.Run("a session starts in what was just created", func(t *testing.T) {
+		var out workspace.Listing
+		result(t, hn.call(t, 2, "nabu.workspace.create_directory",
+			map[string]any{"parent": parent, "name": "brand-new"}), &out)
+
+		resp := hn.call(t, 3, "nabu.session.create", map[string]any{"workspace": out.Path})
+		if resp == nil || resp.Error != nil {
+			t.Fatalf("create in the new directory failed: %+v", resp)
+		}
+	})
+
+	t.Run("a name that is a path is refused", func(t *testing.T) {
+		for _, name := range []string{"a/b", "../escape", "..", ".hidden", ""} {
+			resp := hn.call(t, 4, "nabu.workspace.create_directory",
+				map[string]any{"parent": parent, "name": name})
+			if resp == nil || resp.Error == nil {
+				t.Fatalf("name %q should have been refused", name)
+			}
+			if resp.Error.Code != protocol.CodeInvalidParams {
+				t.Errorf("name %q: code = %d, want invalid params", name, resp.Error.Code)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(filepath.Dir(root), "escape")); err == nil {
+			t.Error("a refused name still wrote outside the root")
+		}
+	})
+
+	t.Run("a parent outside the roots is refused", func(t *testing.T) {
+		outside := t.TempDir()
+		resp := hn.call(t, 5, "nabu.workspace.create_directory",
+			map[string]any{"parent": outside, "name": "nope"})
+		if resp == nil || resp.Error == nil {
+			t.Fatal("a parent outside the roots should be refused")
+		}
+		if _, err := os.Stat(filepath.Join(outside, "nope")); err == nil {
+			t.Error("it was created anyway")
+		}
+	})
+
+	t.Run("a missing parent is refused", func(t *testing.T) {
+		resp := hn.call(t, 6, "nabu.workspace.create_directory", map[string]any{"name": "x"})
+		if resp == nil || resp.Error == nil {
+			t.Fatal("no parent should be refused")
+		}
+	})
+}

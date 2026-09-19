@@ -306,3 +306,30 @@ data class SessionSummary(
     val state: String = "",
     @SerialName("updated_at") val updatedAt: String = "",
 )
+
+/** One directory a session could be started in (spec 7.15). */
+@Serializable
+data class BrowseEntry(
+    val name: String = "",
+    val path: String = "",
+    @SerialName("is_repo") val isRepo: Boolean = false,
+)
+
+/**
+ * One level of the daemon's directory tree.
+ *
+ * [parent] is null at a configured root, which is how the picker knows where
+ * climbing stops without having to be refused to find out.
+ */
+@Serializable
+data class BrowseResult(
+    val path: String = "",
+    val parent: String? = null,
+    val entries: List<BrowseEntry> = emptyList(),
+)
+
+/** What nabu.session.create returns; only the id is used here. */
+@Serializable
+data class CreateSessionResult(
+    @SerialName("session_id") val sessionId: String = "",
+)
