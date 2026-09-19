@@ -381,3 +381,26 @@ func TestRelToNamesPathsRelativeToTheWorkspace(t *testing.T) {
 		t.Errorf("relTo with no root = %q, want the absolute path", got)
 	}
 }
+
+// The bug this fixes: Gradle writes .kotlin/sessions/*.salive while a build
+// runs, and every turn in a repository being built reported it as a change.
+func TestBuildScratchIsNotAChange(t *testing.T) {
+	m, s := newModule(t, nil)
+	write(t, s.dir, "src.go", "package x")
+	if _, err := m.SessionStart(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+
+	// Dotted scratch directories, which the file tools do walk but this must not.
+	write(t, s.dir, ".kotlin/sessions/kotlin-compiler-123.salive", "x")
+	write(t, s.dir, ".gradle/8.5/checksums/checksums.lock", "x")
+	write(t, s.dir, ".venv/lib/site-packages/thing.py", "x")
+	// And the generated ones, shared with the file tools.
+	write(t, s.dir, "dist/out.js", "x")
+	write(t, s.dir, "__pycache__/mod.pyc", "x")
+	write(t, s.dir, "vendor/dep/dep.go", "package dep")
+
+	if got := request(t, m, s); got != "" {
+		t.Errorf("build scratch should not be reported as a change, got:\n%s", got)
+	}
+}

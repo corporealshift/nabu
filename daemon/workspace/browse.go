@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/corporealshift/nabu/daemon/module"
 )
 
 // Entry is one directory a client may descend into or start a session in.
@@ -26,14 +28,6 @@ type Listing struct {
 	// where climbing stops, and finding out by being refused is a worse way.
 	Parent  *string `json:"parent"`
 	Entries []Entry `json:"entries"`
-}
-
-// noise are directories never listed. They are where a picker's taps go to
-// die, and none of them is somewhere a session starts.
-var noise = map[string]bool{
-	"node_modules": true, ".git": true, "build": true, "target": true,
-	"vendor": true, ".gradle": true, ".idea": true, "__pycache__": true,
-	"dist": true, ".venv": true,
 }
 
 // Browse lists the directories under path, or the roots themselves when path
@@ -129,9 +123,10 @@ func rootListing(roots []string) Listing {
 	return out
 }
 
-// skip hides dotted directories and the noisy ones.
+// skip hides dotted directories and the generated ones. Both are places a
+// picker's taps go to die, and neither is somewhere a session starts.
 func skip(name string) bool {
-	return strings.HasPrefix(name, ".") || noise[strings.ToLower(name)]
+	return strings.HasPrefix(name, ".") || module.NoiseDir(name)
 }
 
 // isRepo reports whether dir holds a .git entry. A worktree's .git is a file

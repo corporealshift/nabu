@@ -53,11 +53,19 @@ const (
 	defaultMaxReported = 20
 )
 
-// skipDir names directories never walked, matching the file tools so the two
-// agree about what the workspace contains.
-var skipDir = map[string]bool{
-	".git": true, "node_modules": true, ".idea": true, ".gradle": true,
-	"build": true, "target": true, "vendor": true,
+// skipDir reports a directory this module never walks.
+//
+// The generated and vendored ones come from module.NoiseDir, so the file tools
+// and this module agree about what the workspace contains — a claim the two
+// separate lists here used to make and not keep.
+//
+// Dotted directories go too, which the file tools do not do. They are where
+// build scratch lives (.gradle, .kotlin, .venv, .pytest_cache) and it changes
+// constantly, so reporting it would mean a change list on every turn in any
+// repository being built. The cost is that a change to .github goes unmentioned;
+// that is rare, and not something the model needs to know mid-turn.
+func skipDir(name string) bool {
+	return strings.HasPrefix(name, ".") || module.NoiseDir(name)
 }
 
 // stamp is what identifies a file version without reading it.
@@ -251,7 +259,7 @@ func (m *Module) scan(root string) (snapshot, bool) {
 			return nil // an unreadable entry is skipped, not fatal
 		}
 		if d.IsDir() {
-			if p != root && skipDir[d.Name()] {
+			if p != root && skipDir(d.Name()) {
 				return fs.SkipDir
 			}
 			return nil

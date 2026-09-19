@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/corporealshift/nabu/daemon/module"
 )
@@ -42,6 +43,9 @@ type Module struct {
 	// Paths overrides the default search paths. Set from config.
 	Paths []string
 
+	// mu guards skills, which is re-read at every session start and read by
+	// every session's index and skill.load.
+	mu     sync.RWMutex
 	skills []Skill
 	log    logger
 }
@@ -59,9 +63,10 @@ func (discardLog) Warn(string, ...any) {}
 // Name implements module.Module.
 func (m *Module) Name() string { return "skills" }
 
-// Init implements module.Module. Discovery runs once, here: the search paths
-// are global, so every session gets the same index and it can be computed a
-// single time. A daemon therefore outlives edits to the skill directories.
+// Init implements module.Module. It resolves the search paths and takes a first
+// reading, so a daemon that never opens a session still has an index.
+//
+// Discovery is repeated at every session start; see SessionStart for why.
 func (m *Module) Init(h module.Host, cfg module.Config) error {
 	m.log = discardLog{}
 	if h != nil && h.Log() != nil {
@@ -77,8 +82,26 @@ func (m *Module) Init(h module.Host, cfg module.Config) error {
 	}
 	m.Paths = paths
 
-	m.skills = discover(paths, m.log)
+	m.rescan()
 	return nil
+}
+
+// rescan re-reads every search path.
+//
+// Cheap enough to do per session: a handful of directories, and only the
+// frontmatter of each SKILL.md is parsed.
+func (m *Module) rescan() {
+	found := discover(m.Paths, m.log)
+	m.mu.Lock()
+	m.skills = found
+	m.mu.Unlock()
+}
+
+// current is a snapshot of the index for a reader that must not hold the lock.
+func (m *Module) current() []Skill {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.skills
 }
 
 // defaultPaths are the global skill directories: Claude Code's, so an existing
@@ -133,7 +156,7 @@ func expandHome(p string) string {
 
 // Skills returns what was discovered, for tests and for callers that want the
 // list rather than the rendered index.
-func (m *Module) Skills() []Skill { return m.skills }
+func (m *Module) Skills() []Skill { return m.current() }
 
 // discover walks each directory for skills. A directory is a skill when it
 // holds a SKILL.md; its subdirectories are then not searched, so a skill's own
@@ -279,7 +302,17 @@ func frontmatter(content string) (map[string]string, bool) {
 
 // SessionStart implements module.SessionStarter: the index goes in front of
 // the model as a prefix block.
+//
+// The skill directories are re-read first. Skills are edited far more often
+// than the daemon is restarted — a repository of them is meant to be worked on
+// — and a daemon that outlived those edits meant every change needed a restart
+// before it took, which is a trap nobody remembers twice.
+//
+// Per session rather than per request: the index is a prefix block, and a
+// prefix that changed under a running session would be a different request for
+// the same log.
 func (m *Module) SessionStart(context.Context, module.Session) ([]module.ContextBlock, error) {
+	m.rescan()
 	return m.indexBlocks(), nil
 }
 
@@ -299,10 +332,11 @@ func (m *Module) BeforeCompaction(context.Context, module.Session, module.Range)
 // indexBlocks is the index, or nothing at all when no skills were found. A
 // block announcing that there are no skills is context spent to say nothing.
 func (m *Module) indexBlocks() []module.ContextBlock {
-	if len(m.skills) == 0 {
+	skills := m.current()
+	if len(skills) == 0 {
 		return nil
 	}
-	return []module.ContextBlock{{Slot: "prefix", Content: FormatIndex(m.skills)}}
+	return []module.ContextBlock{{Slot: "prefix", Content: FormatIndex(skills)}}
 }
 
 // FormatIndex renders the skill index. Descriptions are shortened before any
@@ -394,7 +428,7 @@ func (m *Module) runLoad(_ context.Context, _ module.Session, args json.RawMessa
 		return "", fmt.Errorf("skill.load: name is required")
 	}
 
-	for _, s := range m.skills {
+	for _, s := range m.current() {
 		if !strings.EqualFold(s.Name, name) {
 			continue
 		}

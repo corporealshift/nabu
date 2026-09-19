@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/corporealshift/nabu/daemon/module"
@@ -494,4 +495,83 @@ func TestImplementsItsHooks(t *testing.T) {
 	if _, ok := m.(module.CompactionHook); !ok {
 		t.Error("not a CompactionHook")
 	}
+}
+
+// Skills are edited far more often than the daemon is restarted, so a session
+// reads the directories again when it opens. Before this, a daemon outlived
+// every edit and the change only took after a restart nobody remembered.
+func TestSessionStartSeesSkillsAddedSinceInit(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "brainstorming", "Use before creative work.", "body")
+	m := loaded(t, root)
+
+	if got := len(m.Skills()); got != 1 {
+		t.Fatalf("at init: got %d skills, want 1", got)
+	}
+
+	// The daemon keeps running; the repository gains a skill.
+	writeSkill(t, root, "grill-me", "Use to attack a plan.", "body")
+
+	if _, err := m.SessionStart(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(m.Skills()); got != 2 {
+		t.Fatalf("after a session opened: got %d skills, want 2", got)
+	}
+
+	// And the new one is loadable, not merely listed.
+	out, err := m.runLoad(context.Background(), nil, []byte(`{"name":"grill-me"}`))
+	if err != nil {
+		t.Fatalf("skill.load on a newly added skill: %v", err)
+	}
+	if !strings.Contains(out, "body") {
+		t.Errorf("loaded text was %q", out)
+	}
+}
+
+// A skill deleted from the repository should stop being offered, or the model
+// is told about something skill.load will then refuse.
+func TestSessionStartDropsSkillsThatWentAway(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "keeper", "Stays.", "body")
+	writeSkill(t, root, "goner", "Removed.", "body")
+	m := loaded(t, root)
+
+	if got := len(m.Skills()); got != 2 {
+		t.Fatalf("at init: got %d, want 2", got)
+	}
+	if err := os.RemoveAll(filepath.Join(root, "goner")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := m.SessionStart(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	names := []string{}
+	for _, s := range m.Skills() {
+		names = append(names, s.Name)
+	}
+	if len(names) != 1 || names[0] != "keeper" {
+		t.Errorf("skills = %v, want just [keeper]", names)
+	}
+}
+
+// Sessions open concurrently, and each rescans. Run with -race.
+func TestConcurrentSessionStartsAreSafe(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "brainstorming", "Use before creative work.", "body")
+	m := loaded(t, root)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := m.SessionStart(context.Background(), nil); err != nil {
+				t.Error(err)
+			}
+			_ = m.Skills()
+		}()
+	}
+	wg.Wait()
 }
