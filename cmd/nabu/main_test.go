@@ -16,6 +16,7 @@ import (
 	"github.com/corporealshift/nabu/daemon"
 	"github.com/corporealshift/nabu/daemon/module"
 	"github.com/corporealshift/nabu/daemon/provider"
+	workspacepkg "github.com/corporealshift/nabu/daemon/workspace"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -523,5 +524,48 @@ func TestHelpStillPrintsUsage(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "usage: nabu") {
 		t.Error("--help should print usage, not open the TUI")
+	}
+}
+
+// Reading notes must not need a daemon: they are markdown on disk, and wanting
+// to read them is not a reason to start a process.
+func TestNotesCommandReadsFilesWithoutADaemon(t *testing.T) {
+	root := t.TempDir()
+	ws := t.TempDir()
+
+	resolved, err := workspacepkg.Resolve(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "notes", "ws", resolved.Key)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nname: the refactor\nwritten: 2026-09-18T10:00:00Z\n---\n\nY before X.\n"
+	if err := os.WriteFile(filepath.Join(dir, "the-refactor.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	code := run([]string{"notes", "--root", root, "--workspace", ws}, &out, &errOut)
+	if code != exitOK {
+		t.Fatalf("exit = %d, stderr = %s", code, errOut.String())
+	}
+	got := out.String()
+	for _, want := range []string{resolved.Key, "the refactor", "Y before X."} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output is missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestNotesCommandSaysSoWhenThereAreNone(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := run([]string{"notes", "--root", t.TempDir(), "--workspace", t.TempDir()}, &out, &errOut)
+	if code != exitOK {
+		t.Fatalf("exit = %d, stderr = %s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "no notes") {
+		t.Errorf("want a plain answer, got %q", out.String())
 	}
 }

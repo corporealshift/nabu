@@ -36,6 +36,7 @@ usage: nabu [flags]              open the interactive UI on a new session
   attach <id>       stream a session's events
   stop <id>         stop a session
   resume <id>       resume a paused session
+  notes             print the working notes kept for this workspace
 
 A daemon is started automatically if none is listening.
 
@@ -87,6 +88,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdStop(args[1:], stdout, stderr)
 	case "resume":
 		return cmdResume(args[1:], stdout, stderr)
+	case "notes":
+		return cmdNotes(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "nabu: unknown command %q\n\n%s", args[0], usage)
 		return exitUsage

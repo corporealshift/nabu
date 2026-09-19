@@ -5,6 +5,7 @@ import (
 	"github.com/corporealshift/nabu/daemon/modules/ask"
 	"github.com/corporealshift/nabu/daemon/modules/guard"
 	"github.com/corporealshift/nabu/daemon/modules/memory"
+	"github.com/corporealshift/nabu/daemon/modules/notes"
 	"github.com/corporealshift/nabu/daemon/modules/report"
 	"github.com/corporealshift/nabu/daemon/modules/skills"
 	"github.com/corporealshift/nabu/daemon/modules/vcs"
@@ -22,6 +23,7 @@ var All = []module.Module{
 	&skills.Module{},
 	&ask.Module{},
 	&memory.Module{},
+	&notes.Module{},
 	&watch.Module{},
 	&web.Module{},
 	&vcs.Module{},
