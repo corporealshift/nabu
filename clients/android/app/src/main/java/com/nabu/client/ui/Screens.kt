@@ -263,9 +263,13 @@ fun TranscriptScreen(
     synced: Boolean,
     state: String,
     pending: List<OutboxRow>,
+    blocked: List<OutboxRow>,
     tasks: List<Task>,
     onSend: (String) -> Unit,
     onTaskDone: (String) -> Unit,
+    onResume: () -> Unit,
+    onRetryBlocked: (String) -> Unit,
+    onDiscardBlocked: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     val lines = remember(events, synced) { transcript(events, synced) }
@@ -288,7 +292,12 @@ fun TranscriptScreen(
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
             )
         },
-        bottomBar = { Composer(state, pending, tasks, onSend, onTaskDone) },
+        bottomBar = {
+            Composer(
+                state, pending, blocked, tasks,
+                onSend, onTaskDone, onResume, onRetryBlocked, onDiscardBlocked,
+            )
+        },
     ) { padding ->
         LazyColumn(
             state = listState,
@@ -311,9 +320,13 @@ fun TranscriptScreen(
 private fun Composer(
     state: String,
     pending: List<OutboxRow>,
+    blocked: List<OutboxRow>,
     tasks: List<Task>,
     onSend: (String) -> Unit,
     onTaskDone: (String) -> Unit,
+    onResume: () -> Unit,
+    onRetryBlocked: (String) -> Unit,
+    onDiscardBlocked: (String) -> Unit,
 ) {
     var text by remember { mutableStateOf("") }
     val c = NabuTheme.colors
@@ -330,6 +343,8 @@ private fun Composer(
     ) {
         WorkingIndicator(state)
         TaskCard(tasks, onTaskDone)
+        if (state == "paused") ResumeBar(onResume)
+        BlockedPrompts(blocked, onRetryBlocked, onDiscardBlocked)
         if (pending.isNotEmpty()) {
             // A prompt the user believes was sent and was not is the failure
             // the outbox exists to prevent, so pending items are visible.
@@ -371,6 +386,70 @@ private fun Composer(
                     shadow = if (ready) c.onAccent.copy(alpha = 0.55f) else c.line,
                     modifier = Modifier.size(24.dp),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Offered when a session is paused, which is the one ended state the daemon
+ * will take back (spec 7.9). Completed and errored sessions are terminal and
+ * get no button, because resume would refuse them.
+ */
+@Composable
+private fun ResumeBar(onResume: () -> Unit) {
+    val c = NabuTheme.colors
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Paused",
+            style = MaterialTheme.typography.labelMedium,
+            color = c.muted,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onResume) { Text("Resume") }
+    }
+}
+
+/**
+ * Prompts the daemon refused for good. Shown on every session rather than
+ * only the one they belong to: a blocked prompt used to sit in another
+ * session's queue jamming this one, with nothing on screen to say so.
+ */
+@Composable
+private fun BlockedPrompts(
+    blocked: List<OutboxRow>,
+    onRetry: (String) -> Unit,
+    onDiscard: (String) -> Unit,
+) {
+    if (blocked.isEmpty()) return
+    val c = NabuTheme.colors
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (row in blocked) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(c.surface)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    row.content.trim().take(80),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.ink,
+                )
+                Text(
+                    row.lastError ?: "the daemon refused it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.danger,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { onRetry(row.clientId) }) { Text("Retry") }
+                    TextButton(onClick = { onDiscard(row.clientId) }) { Text("Discard") }
+                }
             }
         }
     }

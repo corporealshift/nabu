@@ -318,10 +318,57 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     fun sendPrompt(sessionId: String, text: String) {
         viewModelScope.launch {
             repo.queuePrompt(sessionId, text, newClientId())
-            client?.let { runCatching { repo.flushOutbox(it) } }
+            val c = client
+            if (c == null) {
+                repo.noteOutboxError("not connected")
+            } else {
+                runCatching { repo.flushOutbox(c) }
+                    .onFailure { repo.noteOutboxError(it.message ?: "send failed") }
+            }
             // Whatever happened just now, the queue is drained again when
             // there is a network, with or without this app in the foreground.
             if (repo.pendingCount() > 0) OutboxWorker.schedule(getApplication())
+        }
+    }
+
+    /** Prompts the daemon refused for good, app-wide. */
+    fun watchBlocked() = repo.watchBlocked()
+
+    /**
+     * Puts a blocked prompt back in the queue and tries it straight away.
+     * Worth doing after resuming the session it was meant for.
+     */
+    fun retryBlocked(clientId: String) {
+        viewModelScope.launch {
+            repo.retryBlocked(clientId)
+            client?.let { runCatching { repo.flushOutbox(it) } }
+            if (repo.pendingCount() > 0) OutboxWorker.schedule(getApplication())
+        }
+    }
+
+    fun discardBlocked(clientId: String) {
+        viewModelScope.launch { repo.discardBlocked(clientId) }
+    }
+
+    /**
+     * Resumes a paused session. Spec 7.9 takes only `paused`; a completed or
+     * errored session is terminal and the caller is offered a new session
+     * instead, so a refusal here is worth surfacing rather than swallowing.
+     */
+    fun resumeSession(sessionId: String) {
+        viewModelScope.launch {
+            val c = client
+            if (c == null) {
+                _error.value = "not connected"
+                return@launch
+            }
+            runCatching { repo.resumeSession(c, sessionId) }
+                .onSuccess {
+                    _error.value = null
+                    // Anything queued for it was blocked on it being paused.
+                    runCatching { repo.flushOutbox(c) }
+                }
+                .onFailure { _error.value = it.message ?: "could not resume the session" }
         }
     }
 

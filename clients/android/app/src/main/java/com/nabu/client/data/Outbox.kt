@@ -28,7 +28,11 @@ suspend fun drainOutbox(
         client = c
         repo.flushOutbox(c)
         if (repo.pendingCount() == 0) Drain.Sent else Drain.Failed
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        // Usually connect() failing. Swallowing it left the queue showing a
+        // count and no reason, which is the state hardest to diagnose from
+        // the outside, so it goes on the rows.
+        repo.noteOutboxError(e.message ?: "could not reach the daemon")
         Drain.Failed
     } finally {
         client?.close()

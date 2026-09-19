@@ -263,10 +263,16 @@ func (m *Manager) PromptWithID(ctx context.Context, id, content, clientID string
 			return e, nil
 		}
 	}
+	// Resume (7.9) takes only a paused session, so naming it as the remedy for
+	// a session that has ended points the client at a method that will refuse
+	// it too. A client retrying on that advice never clears the prompt.
 	switch st := h.State().State; st {
-	case protocol.StateCompleted, protocol.StateError, protocol.StatePaused:
+	case protocol.StatePaused:
 		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidTransition,
-			fmt.Sprintf("session is %s; resume it first", st))
+			"session is paused; resume it first")
+	case protocol.StateCompleted, protocol.StateError:
+		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidTransition,
+			fmt.Sprintf("session has ended (%s); start a new session instead", st))
 	}
 	e, err := h.s.Append(protocol.EventMessage, protocol.MessageData{
 		Role: "user", Content: content, ClientID: clientID})

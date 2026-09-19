@@ -3,6 +3,7 @@ package com.nabu.client.data
 import com.nabu.client.net.BrowseResult
 import com.nabu.client.net.CreateSessionResult
 import com.nabu.client.net.DaemonClient
+import com.nabu.client.net.DaemonException
 import com.nabu.client.net.Incoming
 import com.nabu.client.net.SessionSummary
 import com.nabu.client.protocol.Event
@@ -163,6 +164,35 @@ class SessionRepository(
     /** How many prompts are still waiting to be sent. */
     suspend fun pendingCount(): Int = db.outbox().pending().size
 
+    /** Prompts the daemon refused for good, app-wide. */
+    fun watchBlocked(): Flow<List<OutboxRow>> = db.outbox().watchBlocked()
+
+    /** Blocked prompts, asked once rather than watched. */
+    suspend fun blockedPrompts(): List<OutboxRow> = db.outbox().blocked()
+
+    /**
+     * Records why the queue is not moving, when the cause is the connection
+     * rather than any one prompt. Without this a stuck queue shows a count
+     * and no reason, which is the hardest possible thing to diagnose.
+     */
+    suspend fun noteOutboxError(reason: String) = db.outbox().noteErrorOnPending(reason)
+
+    /** Puts a blocked prompt back in the queue. */
+    suspend fun retryBlocked(clientId: String) = db.outbox().unblock(clientId)
+
+    /** Throws a blocked prompt away. */
+    suspend fun discardBlocked(clientId: String) = db.outbox().discard(clientId)
+
+    /**
+     * Resumes a paused session (spec 7.9). Only `paused` is accepted; a
+     * session that has ended is terminal and needs a new one.
+     */
+    suspend fun resumeSession(client: DaemonClient, sessionId: String) {
+        client.callOrThrow("nabu.session.resume", buildJsonObject {
+            put("session_id", sessionId)
+        })
+    }
+
     /**
      * Sends everything pending, oldest first. The client id makes a retry safe;
      * an item clears only once the daemon returns an event id for it.
@@ -181,8 +211,18 @@ class SessionRepository(
                 } else {
                     db.outbox().markSent(item.clientId, eventId)
                 }
+            } catch (e: DaemonException) {
+                // A refusal the daemon will repeat is not worth retrying, and
+                // leaving it at the head of the queue stops every later prompt
+                // with it. Park it for the user to resolve and carry on.
+                if (e.isPermanent) {
+                    db.outbox().markBlocked(item.clientId, e.message ?: "the daemon refused it")
+                    continue
+                }
+                db.outbox().markFailed(item.clientId, e.message ?: "send failed")
+                return
             } catch (e: Exception) {
-                // Stop at the first failure rather than reorder the rest.
+                // Transport, not judgement: stop rather than reorder the rest.
                 db.outbox().markFailed(item.clientId, e.message ?: "send failed")
                 return
             }
