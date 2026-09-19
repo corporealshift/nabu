@@ -1,5 +1,7 @@
 package com.nabu.client.net
 
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.Response
@@ -22,6 +24,13 @@ class FakeDaemon {
     /** Prompts accepted, so a returned event id is unique per send. */
     val sent = java.util.concurrent.atomic.AtomicInteger(0)
 
+    /**
+     * Sessions whose prompts are refused, and the code to refuse with. This
+     * is how a real daemon answers a prompt aimed at a session that has
+     * ended: an error the same request will always get.
+     */
+    val refuseSession = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
     /** Held open to prove a notification arrives while a call is in flight. */
     @Volatile var holdCall: CountDownLatch? = null
 
@@ -40,6 +49,17 @@ class FakeDaemon {
                 if (msg.method == "nabu.hello" && refuseHandshake) {
                     ws.send(errorFor(id, "protocol version mismatch"))
                     return
+                }
+                if (msg.method == "nabu.session.send_prompt") {
+                    val session = msg.params?.let {
+                        runCatching {
+                            it.jsonObject["session_id"]?.jsonPrimitive?.content
+                        }.getOrNull()
+                    }
+                    refuseSession[session]?.let { code ->
+                        ws.send(errorFor(id, "session is completed; refused", code))
+                        return
+                    }
                 }
                 holdCall?.let {
                     // Answer only when the test says so.
@@ -73,6 +93,9 @@ class FakeDaemon {
         else
             """{"jsonrpc":"2.0","id":${id},"result":{"ok":true,"method":"$method"}}"""
 
-    private fun errorFor(id: kotlinx.serialization.json.JsonElement, message: String) =
-        """{"jsonrpc":"2.0","id":${id},"error":{"code":-32000,"message":"$message"}}"""
+    private fun errorFor(
+        id: kotlinx.serialization.json.JsonElement,
+        message: String,
+        code: Int = -32000,
+    ) = """{"jsonrpc":"2.0","id":${id},"error":{"code":$code,"message":"$message"}}"""
 }

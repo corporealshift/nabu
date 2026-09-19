@@ -3,6 +3,7 @@ package com.nabu.client.net
 import com.nabu.client.protocol.Event
 import com.nabu.client.protocol.NabuJson
 import com.nabu.client.protocol.PROTOCOL_VERSION
+import com.nabu.client.protocol.RpcCodes
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -74,7 +75,19 @@ sealed interface Incoming {
     data class Other(val value: Rpc) : Incoming
 }
 
-class DaemonException(message: String) : Exception(message)
+/**
+ * A failed call. [code] is the daemon's JSON-RPC code when it answered and
+ * refused, and null when the call never got an answer at all — a dropped
+ * socket, a timeout, no connection. Callers that queue work need the
+ * difference: only a refusal is worth giving up on.
+ */
+class DaemonException(
+    message: String,
+    val code: Int? = null,
+) : Exception(message) {
+    /** True when retrying this exact call can only fail the same way. */
+    val isPermanent: Boolean get() = code != null && code in RpcCodes.PERMANENT
+}
 
 /**
  * One connection to the daemon. OkHttp reads on a single thread and writes are
@@ -155,7 +168,7 @@ class DaemonClient(
     /** Calls and throws on an error response, for callers that only want the result. */
     suspend fun callOrThrow(method: String, params: JsonElement? = null): JsonElement {
         val r = call(method, params)
-        r.error?.let { throw DaemonException("$method: ${it.message}") }
+        r.error?.let { throw DaemonException("$method: ${it.message}", it.code) }
         return r.result ?: JsonObject(emptyMap())
     }
 

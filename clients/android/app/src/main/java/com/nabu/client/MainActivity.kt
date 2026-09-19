@@ -128,6 +128,7 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
             val row by vm.watchSession(s.id).collectAsState(initial = null)
             val events by vm.watchEvents(s.id).collectAsState(initial = emptyList<EventRow>())
             val pending by vm.watchPending(s.id).collectAsState(initial = emptyList<OutboxRow>())
+            val blocked by vm.watchBlocked().collectAsState(initial = emptyList<OutboxRow>())
             val tapped by vm.tapped.collectAsState()
             val tasks = remember(events, tapped) {
                 overlay(tasksOf(events), tapped[s.id].orEmpty())
@@ -138,9 +139,13 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
                 synced = row?.synced ?: false,
                 state = row?.state ?: "idle",
                 pending = pending,
+                blocked = blocked,
                 tasks = tasks,
                 onSend = { vm.sendPrompt(s.id, it) },
                 onTaskDone = { vm.completeTask(s.id, tasks, it) },
+                onResume = { vm.resumeSession(s.id) },
+                onRetryBlocked = { vm.retryBlocked(it) },
+                onDiscardBlocked = { vm.discardBlocked(it) },
                 onBack = { screen = Screen.Sessions },
             )
         }

@@ -43,8 +43,14 @@ class OutboxWorker(
         private const val NAME = "nabu-outbox"
 
         /**
-         * Asks for a drain once there is a network. KEEP, because one pending
-         * queue needs one worker however many prompts were composed into it.
+         * Asks for a drain once there is a network. One pending queue needs
+         * one worker however many prompts were composed into it, so the work
+         * is unique.
+         *
+         * REPLACE rather than KEEP: the backoff on a repeatedly failing job
+         * grows to hours, and KEEP dropped every new request onto that stale
+         * schedule. Composing a prompt is the clearest possible signal that
+         * the user wants it sent now, so it starts the wait over.
          */
         fun schedule(context: Context) {
             val request = OneTimeWorkRequestBuilder<OutboxWorker>()
@@ -57,7 +63,7 @@ class OutboxWorker(
                 .build()
 
             WorkManager.getInstance(context)
-                .enqueueUniqueWork(NAME, ExistingWorkPolicy.KEEP, request)
+                .enqueueUniqueWork(NAME, ExistingWorkPolicy.REPLACE, request)
         }
     }
 }

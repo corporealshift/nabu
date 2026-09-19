@@ -13,6 +13,8 @@ import androidx.room.Query
 import androidx.room.Upsert
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -63,6 +65,13 @@ data class OutboxRow(
     /** The event the daemon assigned. Non-null means delivered. */
     @ColumnInfo(name = "event_id") val eventId: String? = null,
     @ColumnInfo(name = "last_error") val lastError: String? = null,
+    /**
+     * Set when the daemon refused in a way retrying cannot fix. A blocked row
+     * is kept, because it holds something the user wrote, but it is taken out
+     * of the send queue: left in, it would be retried ahead of every later
+     * prompt forever and nothing would ever go.
+     */
+    @ColumnInfo(name = "blocked", defaultValue = "0") val blocked: Boolean = false,
 )
 
 @Dao
@@ -123,14 +132,29 @@ interface EventDao {
 
 @Dao
 interface OutboxDao {
-    @Query("SELECT * FROM outbox WHERE event_id IS NULL ORDER BY created_at ASC")
+    @Query("SELECT * FROM outbox WHERE event_id IS NULL AND blocked = 0 ORDER BY created_at ASC")
     fun watchPending(): Flow<List<OutboxRow>>
 
-    @Query("SELECT * FROM outbox WHERE session_id = :sessionId AND event_id IS NULL ORDER BY created_at ASC")
+    @Query(
+        "SELECT * FROM outbox WHERE session_id = :sessionId AND event_id IS NULL " +
+            "AND blocked = 0 ORDER BY created_at ASC"
+    )
     fun watchPendingFor(sessionId: String): Flow<List<OutboxRow>>
 
-    @Query("SELECT * FROM outbox WHERE event_id IS NULL ORDER BY created_at ASC")
+    @Query("SELECT * FROM outbox WHERE event_id IS NULL AND blocked = 0 ORDER BY created_at ASC")
     suspend fun pending(): List<OutboxRow>
+
+    /**
+     * Prompts the daemon refused for good. Watched app-wide rather than per
+     * session: the row that jams the queue usually belongs to some other
+     * session than the one being looked at, and a stuck queue that explains
+     * itself nowhere is indistinguishable from a broken app.
+     */
+    @Query("SELECT * FROM outbox WHERE event_id IS NULL AND blocked = 1 ORDER BY created_at ASC")
+    fun watchBlocked(): Flow<List<OutboxRow>>
+
+    @Query("SELECT * FROM outbox WHERE client_id = :clientId")
+    suspend fun byClientId(clientId: String): OutboxRow?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(row: OutboxRow)
@@ -140,11 +164,41 @@ interface OutboxDao {
 
     @Query("UPDATE outbox SET last_error = :error WHERE client_id = :clientId")
     suspend fun markFailed(clientId: String, error: String)
+
+    @Query("UPDATE outbox SET blocked = 1, last_error = :error WHERE client_id = :clientId")
+    suspend fun markBlocked(clientId: String, error: String)
+
+    /** Puts a blocked prompt back in the queue, after the user fixed the cause. */
+    @Query("UPDATE outbox SET blocked = 0, last_error = NULL WHERE client_id = :clientId")
+    suspend fun unblock(clientId: String)
+
+    @Query("DELETE FROM outbox WHERE client_id = :clientId")
+    suspend fun discard(clientId: String)
+
+    /**
+     * Records why nothing is moving on every queued prompt, so each session's
+     * banner can say it. Used when the failure is the connection rather than
+     * any one prompt.
+     */
+    @Query("UPDATE outbox SET last_error = :error WHERE event_id IS NULL AND blocked = 0")
+    suspend fun noteErrorOnPending(error: String)
+}
+
+/**
+ * Adds `outbox.blocked`. Written out rather than left to the destructive
+ * fallback because the outbox holds prompts the user typed and nothing else
+ * has: the events and sessions would come back from the daemon on the next
+ * sync, and an unsent prompt would not.
+ */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE outbox ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0")
+    }
 }
 
 @Database(
     entities = [SessionRow::class, EventRow::class, OutboxRow::class],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class MirrorDb : RoomDatabase() {
@@ -184,6 +238,9 @@ abstract class MirrorDb : RoomDatabase() {
                         MirrorDb::class.java,
                         "nabu-mirror",
                     )
+                    .addMigrations(MIGRATION_1_2)
+                    // Still the last resort for a version this build has no
+                    // path from; the mirror is rebuildable from the daemon.
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }
