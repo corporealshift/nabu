@@ -483,3 +483,56 @@ func TestASuccessfulResultCarriesNoKind(t *testing.T) {
 		t.Fatalf("log does not validate: %v", err)
 	}
 }
+
+// Spec 7.4 rejects a prompt in completed, error and paused; spec 7.9 allows
+// resume only from paused. "Resume it first" is therefore impossible advice
+// for a session that has ended, and a client that believes it will retry a
+// prompt forever against an error that can never clear.
+func TestPromptRejectionNamesTheRightRemedy(t *testing.T) {
+	t.Run("paused offers resume", func(t *testing.T) {
+		h := newHarness(t, nil, []provider.Response{
+			{ToolCalls: []provider.ToolCall{{ID: "c1", Name: "glob", Arguments: json.RawMessage(`{"pattern":"*.none"}`)}}},
+			{Content: "unreached"},
+		})
+		s := h.create(t)
+		if _, err := h.m.SetBudget(context.Background(), s.ID(),
+			protocol.BudgetData{MaxTurns: 1, Source: "client"}); err != nil {
+			t.Fatal(err)
+		}
+		h.m.Prompt(context.Background(), s.ID(), "go")
+		h.m.WaitIdle(s.ID())
+		if st := s.State().State; st != protocol.StatePaused {
+			t.Fatalf("state: %s", st)
+		}
+		_, err := h.m.Prompt(context.Background(), s.ID(), "again")
+		if err == nil {
+			t.Fatal("a paused session must reject a prompt")
+		}
+		if !strings.Contains(err.Error(), "resume") {
+			t.Errorf("a paused session can be resumed, so say so: %v", err)
+		}
+	})
+
+	t.Run("completed does not offer resume", func(t *testing.T) {
+		h := newHarness(t, nil, []provider.Response{{Content: "done"}})
+		s := h.create(t)
+		if _, err := h.m.Prompt(context.Background(), s.ID(), "hi"); err != nil {
+			t.Fatal(err)
+		}
+		h.m.WaitIdle(s.ID())
+		if err := h.m.Stop(context.Background(), s.ID()); err != nil {
+			t.Fatal(err)
+		}
+		_, err := h.m.Prompt(context.Background(), s.ID(), "again")
+		if err == nil {
+			t.Fatal("a completed session must reject a prompt")
+		}
+		if strings.Contains(err.Error(), "resume") {
+			t.Errorf("Resume refuses anything but paused, so a completed session "+
+				"must not be told to resume: %v", err)
+		}
+		if !strings.Contains(err.Error(), "new session") {
+			t.Errorf("the message must name the remedy that does work: %v", err)
+		}
+	})
+}
