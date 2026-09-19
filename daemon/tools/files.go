@@ -17,8 +17,13 @@ import (
 	"github.com/corporealshift/nabu/protocol"
 )
 
-// skipDir names directories never walked by glob and grep.
-var skipDir = map[string]bool{".git": true, "node_modules": true}
+// skipDir names directories glob and grep never walk.
+//
+// Generated and vendored content only. Dotted directories are deliberately not
+// skipped here, unlike in the picker and the watcher: .github holds files a
+// reader genuinely greps for, and a search tool that silently cannot find them
+// is worse than one that returns a few extra hits.
+func skipDir(name string) bool { return module.NoiseDir(name) }
 
 func (b *Builtins) readTool() module.Tool {
 	type args struct {
@@ -303,7 +308,7 @@ func walk(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) e
 			return ctx.Err()
 		}
 		if d.IsDir() {
-			if p != root && skipDir[d.Name()] {
+			if p != root && skipDir(d.Name()) {
 				return fs.SkipDir
 			}
 			return nil

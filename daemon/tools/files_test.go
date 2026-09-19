@@ -150,3 +150,61 @@ func TestGlobToRegexp(t *testing.T) {
 		}
 	}
 }
+
+// Dotted directories are searchable on purpose. The picker and the watcher both
+// skip them, and both are right to; a search tool that silently cannot find
+// .github/workflows/ci.yml is worse than one that returns a few extra hits.
+func TestGrepStillSearchesDottedDirectories(t *testing.T) {
+	dir := t.TempDir()
+	b := &Builtins{}
+	s := fakeSession{dir}
+
+	if err := os.MkdirAll(filepath.Join(dir, ".github", "workflows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".github", "workflows", "ci.yml"),
+		[]byte("name: CI\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := run(t, b, s, "grep", `{"pattern":"name: CI"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "ci.yml") {
+		t.Errorf("grep should search .github, got %q", out)
+	}
+}
+
+// Generated content is not searched, which is what it shares with the picker
+// and the watcher.
+func TestGrepSkipsGeneratedDirectories(t *testing.T) {
+	dir := t.TempDir()
+	b := &Builtins{}
+	s := fakeSession{dir}
+
+	for _, d := range []string{"build", "vendor", "node_modules", "dist", "__pycache__"} {
+		if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, d, "x.txt"), []byte("needle\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "real.txt"), []byte("needle\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := run(t, b, s, "grep", `{"pattern":"needle"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "real.txt") {
+		t.Fatalf("the real file should be found, got %q", out)
+	}
+	for _, d := range []string{"build", "vendor", "node_modules", "dist", "__pycache__"} {
+		if strings.Contains(out, d) {
+			t.Errorf("%s should not be searched, got %q", d, out)
+		}
+	}
+}
