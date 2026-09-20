@@ -24,7 +24,7 @@ ordinary module (`daemon/tools`). Modules see the daemon only through
 **Tech Stack:** Go 1.26, standard library only. `net/http` + hand-rolled SSE for the
 provider. `httptest` for provider tests. `go test ./...` is the gate.
 
-**Spec:** `docs/superpowers/specs/2026-09-11-nabu-architecture-design.md` §4–§6,
+**Spec:** `docs/specs/2026-09-11-nabu-architecture-design.md` §4–§6,
 §8–§10, §12, §14. Wire contract: `protocol/spec.md`.
 
 **P1 is split into three plans** because the spec's P1 covers three independently
