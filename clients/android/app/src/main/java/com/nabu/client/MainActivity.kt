@@ -8,6 +8,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +22,9 @@ import com.nabu.client.ui.theme.Scheme
 import com.nabu.client.ui.overlay
 import com.nabu.client.ui.projectName
 import com.nabu.client.ui.tasksOf
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
@@ -79,9 +83,25 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
 
     // With nowhere to connect to, the first screen is the one that fixes that.
     var screen: Screen by remember { mutableStateOf(Screen.Sessions) }
-    LaunchedEffect(settings) {
+
+    // Keyed on where it connects, not on all of Settings: changing the palette
+    // would otherwise drop and rebuild the connection.
+    val endpoint = settings?.let { "${it.host}:${it.port}:${it.token}" }
+    LaunchedEffect(endpoint) {
         val s = settings ?: return@LaunchedEffect
         if (s.host.isBlank()) screen = Screen.Settings else vm.reconnect()
+    }
+
+    // Android freezes a backgrounded process, which kills the socket while the
+    // connection loop is in no position to notice. Coming back is the moment to
+    // try again, rather than waiting out a backoff that elapsed while frozen.
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) vm.onForeground()
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
     }
 
     permission?.let { req ->
