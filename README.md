@@ -113,6 +113,40 @@ The list is names, not paths the model supplies: there is no spelling of a name 
 reaches a directory you did not list, and a path that climbs out of a named root with
 `../` is refused.
 
+### Asking Claude
+
+nabu can fetch a second opinion for itself, instead of you carrying the message. The
+`claude.ask` tool runs the `claude` CLI in the session's workspace, so Claude reads the
+same repository nabu is working in — the diff, the spec, the code.
+
+It appears only when `claude` is on PATH. To tune it, add a `modules.claude` block:
+
+```json
+{
+  "modules": {
+    "claude": {
+      "enabled": true,
+      "timeout_seconds": 300,
+      "model": "",
+      "allowed_tools": ["Read", "Grep", "Glob"]
+    }
+  }
+}
+```
+
+**The reviewer is read-only.** `allowed_tools` defaults to reading only, because a
+reviewer that can quietly edit the repository removes the one thing a review is for — that
+somebody else looked and did not touch it. Verified rather than assumed: asked to create a
+file under these flags, Claude reports the write blocked and no file appears.
+
+The cost is that Claude cannot run your tests. nabu can: it runs them and puts the output
+in the prompt. Claude does not need a shell to know a test failed.
+
+It uses whatever `claude` login is on the machine, so it spends your Claude Code
+allowance. Each call is slow and real money, from a process you are not watching — the
+timeout bounds one call, nothing bounds how many a run makes. Set `enabled: false` to turn
+it off.
+
 ### Working notes
 
 The agent keeps notes on what it worked out in a repository — dead ends, why one thing
