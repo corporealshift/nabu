@@ -350,6 +350,9 @@ var toolTiers = map[string]Tier{
 	// Fetching is medium because the page decides what comes back: a
 	// result the model was told to read is somebody else's writing.
 	"web.fetch": TierMedium,
+	// Asking Claude reaches the network and spends the owner's quota, and
+	// what comes back is another model's writing.
+	"claude.ask": TierMedium,
 }
 
 // writingOps are the vcs ops that change something observable. Everything else
