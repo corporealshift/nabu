@@ -10,7 +10,7 @@ event schema, session states and options, the JSON-RPC method set, error codes, 
 state projection, request assembly, and the two normative text templates — backed by
 a language-neutral conformance vector suite and a Go reference implementation.
 
-**Architecture:** `docs/superpowers/specs/2026-09-11-nabu-architecture-design.md`
+**Architecture:** `docs/specs/2026-09-11-nabu-architecture-design.md`
 §5–§7 and §14. The protocol is the one process boundary in nabu (daemon ↔ clients);
 the Go daemon, Go TUI, Kotlin Android client, and later Rust GUI all implement it.
 

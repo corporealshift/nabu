@@ -540,7 +540,7 @@ rest.
 ## Contributing
 
 Read `ARCHITECTURE.md` first; it is short and states the invariants. The full design,
-including every rejected alternative, is under `docs/superpowers/specs/`.
+including every rejected alternative, is under `docs/specs/`.
 
 The gate, which CI runs on Linux, macOS and Windows:
 

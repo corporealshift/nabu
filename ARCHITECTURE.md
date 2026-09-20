@@ -2,7 +2,7 @@
 
 Short orientation for anyone (human or agent) opening this repo. The full design with
 every decision and rejected alternative is
-`docs/superpowers/specs/2026-09-11-nabu-architecture-design.md`; read it before
+`docs/specs/2026-09-11-nabu-architecture-design.md`; read it before
 proposing changes. The wire contract is `protocol/spec.md`.
 
 ## In one paragraph
@@ -48,7 +48,9 @@ daemon/
   workspace/              workspace key, trust, permission plumbing
 cmd/nabu/                 the single binary (daemon + CLI subcommands)
 clients/                  go-tui/ android/ rust-gui/
-docs/superpowers/specs/   design specs; plans/ implementation plans
+docs/specs/               design specs: what was decided, and what was rejected
+docs/plans/               implementation plans, one per piece of work
+docs/proposals/           ideas not yet decided on
 ```
 
 ## Event types (16)

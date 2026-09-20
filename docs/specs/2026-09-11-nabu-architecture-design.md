@@ -910,7 +910,7 @@ nabu/
     android/
     rust-gui/
   protocol/         normative spec, JSON schemas, conformance vectors, Go protocol package
-  docs/superpowers/specs/
+  docs/specs/
 ```
 
 ## 21. Decisions and rejected alternatives
