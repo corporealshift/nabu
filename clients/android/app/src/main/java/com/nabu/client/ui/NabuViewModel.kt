@@ -16,6 +16,7 @@ import com.nabu.client.protocol.NabuJson
 import com.nabu.client.settings.Settings
 import com.nabu.client.settings.SettingsStore
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -38,6 +40,10 @@ enum class Connection { Offline, Connecting, Connected }
 /** A session as the list shows it: the mirror's row plus what was last asked. */
 data class SessionCard(val row: SessionRow, val prompt: String)
 
+/** Reconnect backoff. A dropped connection is routine; a long wait after one is not. */
+private const val MIN_BACKOFF = 1_000L
+private const val MAX_BACKOFF = 30_000L
+
 class NabuViewModel(app: Application) : AndroidViewModel(app) {
 
     private val db = MirrorDb.get(app)
@@ -47,6 +53,16 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
 
     private var client: DaemonClient? = null
     private var loop: Job? = null
+
+    /**
+     * Wakes the connection loop out of its backoff.
+     *
+     * Conflated because ten nudges and one mean the same thing: try now. The
+     * loop waits on this instead of sleeping blind, so returning to the app does
+     * not mean sitting out a delay that was counting down while the process was
+     * frozen.
+     */
+    private val wake = Channel<Unit>(Channel.CONFLATED)
 
     private val _connection = MutableStateFlow(Connection.Offline)
     val connection: StateFlow<Connection> = _connection.asStateFlow()
@@ -83,7 +99,7 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     fun reconnect() {
         loop?.cancel()
         loop = viewModelScope.launch {
-            var backoff = 1_000L
+            var backoff = MIN_BACKOFF
             while (true) {
                 val s = settings.first { it != null }!!
                 if (s.host.isBlank()) {
@@ -92,26 +108,60 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 _connection.value = Connection.Connecting
                 try {
-                    runConnection(s)
-                    backoff = 1_000L
+                    // Reset when the socket actually opened, not when
+                    // runConnection returns: it never returns, it throws when
+                    // the connection drops. Resetting on return meant the
+                    // backoff only ever grew, so an app that had dropped a few
+                    // times waited 30s to retry even after a good connection.
+                    runConnection(s) { backoff = MIN_BACKOFF }
                 } catch (e: Exception) {
                     _error.value = e.message
                 } finally {
                     _connection.value = Connection.Offline
-                    client = null
                 }
-                delay(backoff)
-                backoff = (backoff * 2).coerceAtMost(30_000L)
+                // Wake early when the app comes back, rather than sitting out a
+                // delay that elapsed while the process was frozen.
+                withTimeoutOrNull(backoff) { wake.receive() }
+                backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF)
             }
         }
     }
 
-    private suspend fun runConnection(s: Settings) {
+    /**
+     * Called when the app comes to the foreground.
+     *
+     * Android freezes a backgrounded process, which kills the socket without the
+     * loop ever noticing. Nothing else asks it to try again: the only other
+     * callers of reconnect are a settings change and a save.
+     */
+    fun onForeground() {
+        wake.trySend(Unit)
+    }
+
+    private suspend fun runConnection(s: Settings, onConnected: () -> Unit) {
         val c = DaemonClient(baseUrl = "http://${s.host}:${s.port}/", token = s.token)
+        try {
+            runConnected(s, c, onConnected)
+        } finally {
+            // The socket outlives the coroutine unless it is closed here.
+            // Cancelling stops the collection, not the connection, and a
+            // reconnect that only dropped the reference left the old websocket
+            // open: the daemon has logged five live ones from this phone at
+            // once, all reaped together when the OS froze the process.
+            runCatching { c.close() }
+            // Only if it is still ours. A newer loop may already have connected
+            // and installed its own, and clearing that would say offline over a
+            // live connection and fail the next prompt.
+            if (client === c) client = null
+        }
+    }
+
+    private suspend fun runConnected(s: Settings, c: DaemonClient, onConnected: () -> Unit) {
         c.connect()
         client = c
         _connection.value = Connection.Connected
         _error.value = null
+        onConnected()
 
         val listed = c.callOrThrow("nabu.session.list").jsonObject["sessions"]
             ?.jsonArray
