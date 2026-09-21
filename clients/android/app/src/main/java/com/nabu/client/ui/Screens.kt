@@ -268,6 +268,7 @@ fun TranscriptScreen(
     onSend: (String) -> Unit,
     onTaskDone: (String) -> Unit,
     onResume: () -> Unit,
+    onInterrupt: () -> Unit,
     onRetryBlocked: (String) -> Unit,
     onDiscardBlocked: (String) -> Unit,
     onBack: () -> Unit,
@@ -295,7 +296,7 @@ fun TranscriptScreen(
         bottomBar = {
             Composer(
                 state, pending, blocked, tasks,
-                onSend, onTaskDone, onResume, onRetryBlocked, onDiscardBlocked,
+                onSend, onTaskDone, onResume, onInterrupt, onRetryBlocked, onDiscardBlocked,
             )
         },
     ) { padding ->
@@ -325,6 +326,7 @@ private fun Composer(
     onSend: (String) -> Unit,
     onTaskDone: (String) -> Unit,
     onResume: () -> Unit,
+    onInterrupt: () -> Unit,
     onRetryBlocked: (String) -> Unit,
     onDiscardBlocked: (String) -> Unit,
 ) {
@@ -342,6 +344,7 @@ private fun Composer(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         WorkingIndicator(state)
+        if (state == "running") StopBar(onInterrupt)
         TaskCard(tasks, onTaskDone)
         if (state == "paused") ResumeBar(onResume)
         BlockedPrompts(blocked, onRetryBlocked, onDiscardBlocked)
@@ -396,6 +399,26 @@ private fun Composer(
  * will take back (spec 7.9). Completed and errored sessions are terminal and
  * get no button, because resume would refuse them.
  */
+/**
+ * Stops the turn in flight.
+ *
+ * Beside the working indicator rather than in the toolbar: the question "is it
+ * still going, and can I stop it" has one answer and should have one place.
+ */
+@Composable
+private fun StopBar(onInterrupt: () -> Unit) {
+    val c = NabuTheme.colors
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(onClick = onInterrupt) {
+            Text("Stop", color = c.danger)
+        }
+    }
+}
+
 @Composable
 private fun ResumeBar(onResume: () -> Unit) {
     val c = NabuTheme.colors

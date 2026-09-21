@@ -405,6 +405,24 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
      * errored session is terminal and the caller is offered a new session
      * instead, so a refusal here is worth surfacing rather than swallowing.
      */
+    /**
+     * Stops the turn in flight. The daemon records the partial reply as
+     * interrupted and returns the session to idle, so nothing said so far is
+     * lost.
+     */
+    fun interruptSession(sessionId: String) {
+        viewModelScope.launch {
+            val c = client
+            if (c == null) {
+                _error.value = "not connected"
+                return@launch
+            }
+            runCatching { repo.interruptSession(c, sessionId) }
+                .onSuccess { _error.value = null }
+                .onFailure { _error.value = it.message }
+        }
+    }
+
     fun resumeSession(sessionId: String) {
         viewModelScope.launch {
             val c = client

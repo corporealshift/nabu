@@ -187,6 +187,19 @@ class SessionRepository(
      * Resumes a paused session (spec 7.9). Only `paused` is accepted; a
      * session that has ended is terminal and needs a new one.
      */
+    /**
+     * Cancels the turn in flight, leaving the session alive.
+     *
+     * Not nabu.session.stop, which ends the session outright. Stopping what it
+     * is doing and being finished with it are different intentions and only one
+     * of them is recoverable.
+     */
+    suspend fun interruptSession(client: DaemonClient, sessionId: String) {
+        client.callOrThrow("nabu.session.interrupt", buildJsonObject {
+            put("session_id", sessionId)
+        })
+    }
+
     suspend fun resumeSession(client: DaemonClient, sessionId: String) {
         client.callOrThrow("nabu.session.resume", buildJsonObject {
             put("session_id", sessionId)
