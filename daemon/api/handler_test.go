@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/coder/websocket"
 
@@ -25,6 +26,7 @@ type harness struct {
 	h     *Handler
 	cs    *connState
 	m     *agent.Manager
+	fake  *provider.Fake
 	store *session.Store
 	dir   string
 }
@@ -39,7 +41,8 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(func() { _ = store.Close() })
 
 	pr := provider.NewRegistry()
-	pr.Add(provider.Config{Name: "fake", ContextWindow: 8000}, &provider.Fake{}, true)
+	fake := &provider.Fake{}
+	pr.Add(provider.Config{Name: "fake", ContextWindow: 8000}, fake, true)
 	builtins := &tools.Builtins{}
 	mr := module.NewRegistry([]module.Module{builtins}, module.Options{Log: discardLogger()})
 
@@ -52,7 +55,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	t.Cleanup(func() { _ = m.Shutdown(context.Background()) })
 
-	hn := &harness{h: NewHandler(m, store, discardLogger()), m: m, store: store, dir: dir}
+	hn := &harness{h: NewHandler(m, store, discardLogger()), m: m, fake: fake, store: store, dir: dir}
 	hn.cs = &connState{conn: &scriptedConn{}, ctx: context.Background()}
 	return hn
 }
@@ -244,7 +247,7 @@ func TestSessionCreateMissingWorkspace(t *testing.T) {
 
 func TestSessionNotFound(t *testing.T) {
 	hn := newHarness(t)
-	for _, method := range []string{"nabu.session.state", "nabu.session.events_after"} {
+	for _, method := range []string{"nabu.session.state", "nabu.session.events_after", "nabu.session.compact"} {
 		resp := hn.call(t, 1, method, map[string]any{"session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
 		if resp == nil || resp.Error == nil {
 			t.Fatalf("%s: want a session-not-found error", method)
@@ -257,7 +260,7 @@ func TestSessionNotFound(t *testing.T) {
 
 func TestSessionIDRequired(t *testing.T) {
 	hn := newHarness(t)
-	for _, method := range []string{"nabu.session.state", "nabu.session.events_after"} {
+	for _, method := range []string{"nabu.session.state", "nabu.session.events_after", "nabu.session.compact"} {
 		resp := hn.call(t, 1, method, map[string]any{})
 		if resp == nil || resp.Error == nil {
 			t.Fatalf("%s: want an invalid-params error", method)
@@ -522,4 +525,80 @@ func TestWorkspaceCreateDirectoryOverRPC(t *testing.T) {
 			t.Fatal("no parent should be refused")
 		}
 	})
+}
+
+// Spec 7.15. The wire contract is the pair: an id a client can look up, and the
+// mode that actually ran — which is not always the one that was asked for.
+func TestCompactReturnsTheEventIDAndTheModeThatRan(t *testing.T) {
+	hn := newHarness(t)
+	hn.fake.Script = []provider.Response{
+		{Content: "done"},
+		{Content: "THE SUMMARY"}, // the summariser call
+	}
+	id := hn.mustCreate(t)
+	if _, err := hn.m.Prompt(context.Background(), id, "go"); err != nil {
+		t.Fatal(err)
+	}
+	hn.m.WaitIdle(id)
+
+	resp := hn.call(t, 2, "nabu.session.compact", map[string]any{"session_id": id})
+	var out struct {
+		EventID string `json:"event_id"`
+		Mode    string `json:"mode"`
+	}
+	result(t, resp, &out)
+	if out.Mode != string(protocol.CompactionSummarize) {
+		t.Fatalf("mode: %q", out.Mode)
+	}
+
+	s, err := hn.store.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, e := range s.Events() {
+		if e.ID == out.EventID {
+			found = true
+			if e.Type != protocol.EventCompaction {
+				t.Fatalf("event %s is a %s", e.ID, e.Type)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("event_id %q is not in the log", out.EventID)
+	}
+}
+
+// Refused while running, with the code a client can branch on rather than a
+// message it would have to read (spec 7.15).
+func TestCompactIsRefusedWhileTheSessionIsRunning(t *testing.T) {
+	hn := newHarness(t)
+	block := make(chan struct{})
+	hn.fake.Script = []provider.Response{{Content: "done"}}
+	hn.fake.BlockOn = block
+	id := hn.mustCreate(t)
+	if _, err := hn.m.Prompt(context.Background(), id, "go"); err != nil {
+		t.Fatal(err)
+	}
+	s, err := hn.store.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; s.State().State != protocol.StateRunning; i++ {
+		if i > 2000 {
+			t.Fatalf("never started running (state %s)", s.State().State)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	resp := hn.call(t, 2, "nabu.session.compact", map[string]any{"session_id": id})
+	if resp == nil || resp.Error == nil {
+		t.Fatal("want a refusal")
+	}
+	if resp.Error.Code != protocol.CodeInvalidTransition {
+		t.Errorf("code: got %d, want %d", resp.Error.Code, protocol.CodeInvalidTransition)
+	}
+
+	close(block)
+	hn.m.WaitIdle(id)
 }

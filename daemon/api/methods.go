@@ -49,6 +49,22 @@ func (h *Handler) registerMutators() {
 	h.register("nabu.session.clear_goal", h.handleClearGoal)
 	h.register("nabu.session.set_option", h.handleSetOption)
 	h.register("nabu.session.update_tasks", h.handleUpdateTasks)
+	h.register("nabu.session.compact", h.handleCompact)
+}
+
+// handleCompact implements nabu.session.compact (spec 7.15). It is a model
+// call, so it takes seconds rather than returning immediately like the other
+// mutators.
+func (h *Handler) handleCompact(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
+	id, rpcErr := h.sessionID(params)
+	if rpcErr != nil {
+		return nil, rpcErr
+	}
+	e, err := h.manager.Compact(ctx, id)
+	if err != nil {
+		return nil, rpcErrOf(err)
+	}
+	return map[string]any{"event_id": e.ID, "mode": protocol.MustData[protocol.CompactionData](e).Mode}, nil
 }
 
 // handleSendPrompt implements nabu.session.send_prompt (spec 7.4). A prompt

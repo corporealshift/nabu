@@ -344,7 +344,7 @@ func (h *Handler) roots() []string {
 	return workspace.DefaultRoots()
 }
 
-// handleWorkspaceBrowse implements nabu.workspace.browse (spec 7.15).
+// handleWorkspaceBrowse implements nabu.workspace.browse (spec 7.16).
 //
 // A client picking a directory on another machine cannot see its filesystem,
 // and typing an absolute Windows path on a phone is not a user interface. An
@@ -366,7 +366,7 @@ func (h *Handler) handleWorkspaceBrowse(_ context.Context, _ *connState, params 
 }
 
 // handleWorkspaceCreateDirectory implements nabu.workspace.create_directory
-// (spec 7.16).
+// (spec 7.17).
 //
 // The one place a client writes to the daemon's filesystem. Not a new tier of
 // access — a client may already start a session anywhere and have the agent

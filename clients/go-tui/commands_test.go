@@ -111,3 +111,27 @@ func TestCommandsAreCaseInsensitive(t *testing.T) {
 		t.Errorf("/Stop should stop, got %+v", res)
 	}
 }
+
+func TestCompactIsACommandNotAPrompt(t *testing.T) {
+	res := parseCommand("/compact")
+	if res.act == nil || res.act.kind != actCompact {
+		t.Fatalf("result: %+v", res)
+	}
+	if res.note != "" {
+		t.Fatalf("a recognised command must act, not explain: %q", res.note)
+	}
+}
+
+func TestCompactIsCaseInsensitiveLikeTheRest(t *testing.T) {
+	if res := parseCommand("/Compact"); res.act == nil || res.act.kind != actCompact {
+		t.Fatalf("result: %+v", res)
+	}
+}
+
+// The help line is the only place the command is discoverable, so a command
+// that is not in it may as well not exist.
+func TestHelpMentionsCompact(t *testing.T) {
+	if !strings.Contains(helpText, "/compact") {
+		t.Fatalf("help: %q", helpText)
+	}
+}

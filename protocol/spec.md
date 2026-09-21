@@ -459,7 +459,32 @@ Appends `options_change`. `key` ∈ `model | compaction_enabled | permission_mod
 
 Appends a `tasks` snapshot with `source: client`. Same shape as the tool's argument.
 
-### 7.15 `nabu.workspace.browse {path?}` → `{path, parent, entries}`
+### 7.15 `nabu.session.compact {session_id}` → `{event_id, mode}`
+
+Summarises the session's history now, rather than waiting for it to cross the automatic
+threshold. Appends a `compaction` event and returns its id.
+
+`mode` is `summarize` normally. It is `clear_results` when the summariser itself failed:
+the daemon falls back to stubbing old tool results rather than leaving the context
+untouched, and says which happened instead of reporting the one that was asked for.
+
+**Refused while the session is `running`**, with `nabu_invalid_transition`. Compaction
+rewrites what the next request is assembled from, and doing that under a turn already in
+flight would change the ground beneath it. Interrupt first (§7.7), then compact. A
+`completed` or `error` session is refused for the same reason it cannot be prompted.
+
+**Refused when there is too little history to summarise**, with `nabu_invalid_params`.
+The automatic pass treats that as "not yet" and says nothing, which is right for something
+that runs on its own; a client that asked deserves an answer rather than a success that
+did nothing.
+
+**Allowed when `compaction_enabled` is false.** That option turns off the *automatic*
+pass. Asking explicitly is the owner overriding their own default.
+
+This is a model call, so it takes seconds. Clients should expect it to be slow and should
+not assume the reply is immediate.
+
+### 7.16 `nabu.workspace.browse {path?}` → `{path, parent, entries}`
 
 Lists the directories a client may start a session in. `path` absent returns the
 configured roots; otherwise it returns the directories inside `path`.
@@ -482,12 +507,12 @@ They exist so that a client cannot enumerate the machine for the asking.
 
 Roots come from `daemon.browse_roots`, defaulting to the user's home directory.
 
-### 7.16 `nabu.workspace.create_directory {parent, name}` → `{path, parent, entries}`
+### 7.17 `nabu.workspace.create_directory {parent, name}` → `{path, parent, entries}`
 
 Creates one directory inside `parent` and returns **the new directory's listing**, in the
-same shape as §7.15, so a client can move into what it just made rather than asking again.
+same shape as §7.16, so a client can move into what it just made rather than asking again.
 
-`parent` must be inside the configured roots, checked exactly as §7.15 checks it. `name`
+`parent` must be inside the configured roots, checked exactly as §7.16 checks it. `name`
 is **one directory name, never a path**: separators, `.`, `..`, a leading dot, a leading
 or trailing space, the characters `: * ? " < > |`, and anything over 64 characters are all
 `nabu_invalid_params`. A name that already exists is `nabu_invalid_params` too — a client
@@ -498,7 +523,7 @@ is not a new level of access: §7.3 already lets a client start a session at any
 agent can create directories. It is listed separately because the daemon acts here on a
 client's word rather than a model's.
 
-### 7.17 Daemon → client requests
+### 7.18 Daemon → client requests
 
 Sent as JSON-RPC requests (with `id`) to every subscriber of the session. The first
 response wins; later responders receive `nabu_already_resolved`.

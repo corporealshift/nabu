@@ -159,7 +159,7 @@ func TestPermissionTimesOutAndDenies(t *testing.T) {
 	}
 }
 
-// Spec 7.15: an answer arriving after the timeout is still accepted. It is too
+// Spec 7.18: an answer arriving after the timeout is still accepted. It is too
 // late to feed the call that asked, so what it buys is the session moving on.
 func TestAnswerAfterTimeoutIsAccepted(t *testing.T) {
 	hn := newHarness(t)

@@ -80,6 +80,7 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
     val permission by vm.pendingPermission.collectAsState()
     val ask by vm.pendingAsk.collectAsState()
     val error by vm.error.collectAsState()
+    val compacting by vm.compacting.collectAsState()
 
     // With nowhere to connect to, the first screen is the one that fixes that.
     var screen: Screen by remember { mutableStateOf(Screen.Sessions) }
@@ -161,10 +162,13 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
                 pending = pending,
                 blocked = blocked,
                 tasks = tasks,
+                compacting = compacting,
+                error = error,
                 onSend = { vm.sendPrompt(s.id, it) },
                 onTaskDone = { vm.completeTask(s.id, tasks, it) },
                 onResume = { vm.resumeSession(s.id) },
                 onInterrupt = { vm.interruptSession(s.id) },
+                onCompact = { vm.compactSession(s.id) },
                 onRetryBlocked = { vm.retryBlocked(it) },
                 onDiscardBlocked = { vm.discardBlocked(it) },
                 onBack = { screen = Screen.Sessions },
