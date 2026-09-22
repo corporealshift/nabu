@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -139,11 +140,18 @@ func (m model) status() string {
 	if ind := m.workingIndicator(); ind != "" {
 		parts = append(parts, ind)
 	} else {
-		parts = append(parts, stateBadge(m.state))
+		label := stateBadge(m.state)
+		if m.state == protocol.StateIdle {
+			if age := idleAge(m.lastEventAt, time.Now()); age != "" {
+				label += " " + dim.Render(age)
+			}
+		}
+		parts = append(parts, label)
 	}
 	if g := m.goalBadge(); g != "" {
 		parts = append(parts, g)
 	}
+
 	if c := m.contextBadge(); c != "" {
 		parts = append(parts, c)
 	}
@@ -154,6 +162,31 @@ func (m model) status() string {
 		parts = append(parts, dim.Render(shortID(m.sessionID)))
 	}
 	return statusBar.Render(strings.Join(parts, "  "))
+}
+
+const idleThreshold = 5 * time.Minute
+
+func idleAge(at, now time.Time) string {
+	if at.IsZero() || now.Before(at) {
+		return ""
+	}
+	age := now.Sub(at)
+	if age < idleThreshold {
+		return ""
+	}
+	if age >= time.Hour {
+		hours := int(age / time.Hour)
+		return fmt.Sprintf("%d hour%s ago", hours, plural(hours))
+	}
+	minutes := int(age / time.Minute)
+	return fmt.Sprintf("%d minute%s ago", minutes, plural(minutes))
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // contextBadge says how full the context is, and warns before compaction

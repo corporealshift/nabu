@@ -64,11 +64,12 @@ type model struct {
 	// second thing while waiting.
 	asking *question
 
-	conn      connState
-	connNote  string
-	state     protocol.SessionState
-	turns     int
-	lastError string
+	conn        connState
+	connNote    string
+	state       protocol.SessionState
+	turns       int
+	lastError   string
+	lastEventAt time.Time
 
 	// runningSince is when the current turn began, so the working indicator
 	// reports how long the model has actually been thinking rather than how
@@ -153,6 +154,9 @@ func (m *model) appendEventWithoutRefresh(ev protocol.Event) {
 	}
 	if ev.ID != "" {
 		m.lastEventID = ev.ID
+	}
+	if !ev.Timestamp.IsZero() {
+		m.lastEventAt = ev.Timestamp
 	}
 
 	// The final message supersedes every delta of its turn.
@@ -249,6 +253,7 @@ func (m *model) reset(sessionID string) {
 	m.asking = nil
 	m.state = protocol.StateIdle
 	m.runningSince = time.Time{}
+	m.lastEventAt = time.Time{}
 	m.refresh()
 }
 
