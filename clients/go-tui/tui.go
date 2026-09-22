@@ -75,7 +75,7 @@ func Run(ctx context.Context, opts Options) error {
 // reconnects with backoff and replays from the cursor, so closing a laptop lid
 // costs the gap and nothing else.
 func connectLoop(ctx context.Context, p *tea.Program, addr, token, sessionID string, actions chan action) {
-	backoff := minBackoff
+	var wait retry
 	var cursor string
 
 	for ctx.Err() == nil {
@@ -83,10 +83,10 @@ func connectLoop(ctx context.Context, p *tea.Program, addr, token, sessionID str
 
 		// An attach action switches sessions: the loop reconnects against
 		// the new one and starts its cursor from nothing.
-		next, err := attach(ctx, p, addr, token, sessionID, &cursor, actions)
+		next, err := attach(ctx, p, addr, token, sessionID, &cursor, actions, wait.connected)
 		if next != "" && next != sessionID {
 			sessionID, cursor = next, ""
-			backoff = minBackoff
+			wait.connected()
 			continue
 		}
 		if ctx.Err() != nil {
@@ -101,17 +101,36 @@ func connectLoop(ctx context.Context, p *tea.Program, addr, token, sessionID str
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(backoff):
-		}
-		if backoff *= 2; backoff > maxBackoff {
-			backoff = maxBackoff
+		case <-time.After(wait.failed()):
 		}
 	}
 }
 
+// retry is the reconnect backoff. It doubles on each failure and starts over
+// once a connection is actually made. It used to start over only on a session
+// switch, so after a few drops every reconnect waited the full ten seconds,
+// however long the connection before it had lasted — the fault issue 69 found
+// on Android.
+type retry struct{ next time.Duration }
+
+// failed returns how long to wait before trying again.
+func (r *retry) failed() time.Duration {
+	if r.next == 0 {
+		r.next = minBackoff
+	}
+	wait := r.next
+	if r.next *= 2; r.next > maxBackoff {
+		r.next = maxBackoff
+	}
+	return wait
+}
+
+// connected starts the backoff over.
+func (r *retry) connected() { r.next = 0 }
+
 // attach dials, catches up, subscribes and pumps. It returns the session to
 // switch to, if the human picked a different one, and the reason it ended.
-func attach(ctx context.Context, p *tea.Program, addr, token, sessionID string, cursor *string, actions chan action) (string, error) {
+func attach(ctx context.Context, p *tea.Program, addr, token, sessionID string, cursor *string, actions chan action, onConnected func()) (string, error) {
 	dctx, cancel := context.WithTimeout(ctx, goclient.DialTimeout)
 	c, err := goclient.Dial(dctx, addr, token, "nabu-tui", version)
 	cancel()
@@ -139,6 +158,7 @@ func attach(ctx context.Context, p *tea.Program, addr, token, sessionID string, 
 		*cursor = events[len(events)-1].ID
 	}
 	p.Send(connMsg{state: connected})
+	onConnected()
 
 	// Carry out actions for as long as this connection lives. The channel is
 	// owned by the caller, so a decision made mid-reconnect is not lost.
