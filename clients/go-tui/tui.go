@@ -134,9 +134,9 @@ func attach(ctx context.Context, p *tea.Program, addr, token, sessionID string, 
 	if err != nil {
 		return "", err
 	}
-	for _, ev := range events {
-		p.Send(eventMsg{ev: ev})
-		*cursor = ev.ID
+	if len(events) > 0 {
+		p.Send(eventsMsg{events: events})
+		*cursor = events[len(events)-1].ID
 	}
 	p.Send(connMsg{state: connected})
 

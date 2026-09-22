@@ -85,6 +85,27 @@ func TestOlderEventIsIgnored(t *testing.T) {
 	}
 }
 
+func TestReplayBatchAppliesEventsInOrder(t *testing.T) {
+	m := sized(t, nil)
+	from := protocol.StateIdle
+	m, _ = send(m, eventsMsg{events: []protocol.Event{
+		event("e1", protocol.EventMessage, protocol.MessageData{Role: "user", Content: "first"}),
+		event("e2", protocol.EventStateChange, protocol.StateChangeData{From: &from, To: protocol.StateRunning}),
+		event("e3", protocol.EventMessage, protocol.MessageData{Role: "assistant", Content: "second"}),
+	}})
+
+	body := m.body()
+	if !strings.Contains(body, "first") || !strings.Contains(body, "second") {
+		t.Errorf("replay batch must render every event, got %q", body)
+	}
+	if m.lastEventID != "e3" {
+		t.Errorf("cursor: got %q, want e3", m.lastEventID)
+	}
+	if m.state != protocol.StateRunning {
+		t.Errorf("state: got %q, want running", m.state)
+	}
+}
+
 // Deltas are ephemeral. The final message carries the whole text, so the live
 // preview must be cleared or the text appears twice.
 func TestDeltaPreviewIsReplacedByTheFinalMessage(t *testing.T) {
