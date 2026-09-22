@@ -543,6 +543,12 @@ private fun LineView(line: Line) {
                     style = MaterialTheme.typography.bodySmall,
                     color = NabuTheme.colors.muted,
                 )
+                if (s.state == "idle") {
+                    idleAge(s.updatedAt, System.currentTimeMillis())?.let {
+                        Text(it, style = MaterialTheme.typography.labelMedium,
+                            color = NabuTheme.colors.muted)
+                    }
+                }
             }
         }
 
@@ -555,22 +561,26 @@ private fun LineView(line: Line) {
         ) {
             Spacer(Modifier.width(12.dp))
             LineCopyButton(line)
-            Text(
-                line.text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = NabuTheme.colors.ink,
-                modifier = Modifier
+            Column(
+                Modifier
                     .weight(1f, fill = false)
                     .background(NabuTheme.colors.mine, RoundedCornerShape(16.dp))
                     .padding(horizontal = 14.dp, vertical = 10.dp),
-            )
+            ) {
+                Text(line.text, style = MaterialTheme.typography.bodyMedium, color = NabuTheme.colors.ink)
+                if (line.timestamp.isNotEmpty()) {
+                    Text(line.timestamp, style = MaterialTheme.typography.labelSmall, color = NabuTheme.colors.muted)
+                }
+            }
         }
 
         is Line.AgentSaid -> Row(Modifier.fillMaxWidth()) {
-            MarkdownText(
-                line.text,
-                modifier = Modifier.weight(1f).padding(vertical = 2.dp),
-            )
+            Column(Modifier.weight(1f).padding(vertical = 2.dp)) {
+                MarkdownText(line.text)
+                if (line.timestamp.isNotEmpty()) {
+                    Text(line.timestamp, style = MaterialTheme.typography.labelSmall, color = NabuTheme.colors.muted)
+                }
+            }
             LineCopyButton(line)
         }
 

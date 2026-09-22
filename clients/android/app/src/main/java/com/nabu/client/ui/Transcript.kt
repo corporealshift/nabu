@@ -11,13 +11,15 @@ import com.nabu.client.protocol.ThinkingData
 import com.nabu.client.protocol.ToolCallData
 import com.nabu.client.protocol.ToolResultData
 import com.nabu.client.protocol.payload
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 
 /** One rendered line of a transcript. */
 sealed interface Line {
     val key: String
 
-    data class UserSaid(override val key: String, val text: String) : Line
-    data class AgentSaid(override val key: String, val text: String) : Line
+    data class UserSaid(override val key: String, val text: String, val timestamp: String = "") : Line
+    data class AgentSaid(override val key: String, val text: String, val timestamp: String = "") : Line
     /**
      * A tool call. [summary] is shortened to fit one line; [full] is what it
      * was shortened from, so copying yields the whole command rather than an
@@ -86,8 +88,25 @@ private fun render(key: String, e: Event): Line? = when (e.type) {
         val text = d.content.trim()
         when {
             text.isEmpty() -> null
-            d.role == "user" -> Line.UserSaid(key, text)
-            else -> Line.AgentSaid(key, text)
+            d.role == "user" -> Line.UserSaid(key, text, formatMessageTime(e.timestamp))
+            else -> Line.AgentSaid(key, text, formatMessageTime(e.timestamp))
+        }
+
+        private val messageTimeFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm")
+
+        internal fun formatMessageTime(timestamp: String): String =
+            runCatching {
+                OffsetDateTime.parse(timestamp).format(messageTimeFormatter)
+            }.getOrDefault("")
+
+        internal fun idleAge(updatedAt: Long, now: Long): String? {
+            val age = now - updatedAt
+            if (updatedAt <= 0L || age < 5 * 60 * 1000L) return null
+            return if (age >= 60 * 60 * 1000L) {
+                "${age / (60 * 60 * 1000L)}h ago"
+            } else {
+                "${age / (60 * 1000L)}m ago"
+            }
         }
     }
 

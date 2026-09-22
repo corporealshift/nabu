@@ -28,6 +28,15 @@ class TranscriptTest {
         assertTrue(lines[0] is Line.UserSaid)
         assertTrue(lines[1] is Line.AgentSaid)
         assertEquals("do the thing", (lines[0] as Line.UserSaid).text)
+        assertEquals("Sep 16, 00:00", (lines[0] as Line.UserSaid).timestamp)
+    }
+
+    @Test
+    fun `message timestamps and idle ages are human readable`() {
+        assertEquals("Sep 16, 00:00", formatMessageTime("2026-09-16T00:00:00Z"))
+        assertEquals("5m ago", idleAge(1L, 1L + 5 * 60 * 1000L))
+        assertEquals("2h ago", idleAge(1L, 1L + 2 * 60 * 60 * 1000L))
+        assertEquals(null, idleAge(1L, 1L + 4 * 60 * 1000L))
     }
 
     /** An assistant message with no text is the model calling a tool. */
