@@ -244,3 +244,56 @@ func TestDisablingTasksLeavesTheOtherToolsAlone(t *testing.T) {
 		t.Errorf("disabling tasks removed unrelated tools: %v", names)
 	}
 }
+
+// Issue 80. A tool call the server reported as thinking is rebuilt by the
+// provider; the agent's job is to run it and to say that it happened, rather
+// than treating the empty answer as "the model is finished".
+func TestARecoveredCallRunsAndIsReported(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{
+		// What a recovered turn looks like: no content, a call the provider
+		// rebuilt out of the reasoning.
+		{Reasoning: "Let me look.", ToolCalls: globCall("c1"), Recovered: 1},
+		{Content: "done"},
+	})
+	s := h.create(t)
+	h.m.Prompt(context.Background(), s.ID(), "go")
+	h.m.WaitIdle(s.ID())
+
+	var ranTool, saidSo bool
+	for _, e := range s.Events() {
+		switch e.Type {
+		case protocol.EventToolCall:
+			ranTool = true
+		case protocol.EventNotice:
+			if strings.Contains(protocol.MustData[protocol.NoticeData](e).Message, "into its reasoning") {
+				saidSo = true
+			}
+		}
+	}
+	if !ranTool {
+		t.Fatal("the recovered call must actually run")
+	}
+	if !saidSo {
+		t.Fatal("rewriting what the model produced has to be stated in the log")
+	}
+	// The turn continued instead of ending on an empty answer, which is the
+	// stall in issue 80.
+	if st := s.State(); st.State != protocol.StateIdle || st.Turns < 2 {
+		t.Fatalf("state=%s turns=%d", st.State, st.Turns)
+	}
+}
+
+// Nothing recovered, nothing said: the notice must not become background noise.
+func TestAnOrdinaryTurnSaysNothingAboutRecovery(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{{Content: "done"}})
+	s := h.create(t)
+	h.m.Prompt(context.Background(), s.ID(), "go")
+	h.m.WaitIdle(s.ID())
+
+	for _, e := range s.Events() {
+		if e.Type == protocol.EventNotice &&
+			strings.Contains(protocol.MustData[protocol.NoticeData](e).Message, "into its reasoning") {
+			t.Fatal("a clean turn must not report a recovery")
+		}
+	}
+}

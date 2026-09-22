@@ -49,6 +49,11 @@ type Response struct {
 	ToolCalls    []ToolCall
 	Usage        protocol.Usage
 	FinishReason string // "stop" | "tool_calls" | "length" | provider-specific
+	// Recovered counts tool calls parsed back out of Reasoning because the
+	// server reported them as thinking rather than as calls. Zero is the
+	// normal case. It is non-zero only when something upstream is misreading
+	// the model, which is worth saying out loud rather than silently fixing.
+	Recovered int
 }
 
 // Provider streams one completion. onDelta and onThinking (either may be nil)
