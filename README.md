@@ -222,6 +222,21 @@ paying for a walk on every request.
 
 It never interrupts a turn: changes that land mid-turn appear in the next request.
 
+### Asking a question
+
+Ask the agent something ("what's the status here?", "why did it stop?") and it answers
+rather than taking the question as a cue to carry on with the work. On a turn where your
+last message only asks, the agent may read files and run commands to find the answer, but
+an edit, a commit or another change to the workspace waits for you to approve it, with a
+prompt that says so. Any request in the message ("can you…", "please…", "fix…") makes it
+an ordinary turn. Nothing changes inside a run with a goal.
+
+On by default. To turn it off:
+
+```json
+{ "modules": { "answer": { "enabled": false } } }
+```
+
 ### Searching the web
 
 Off until you give it a key. Add a `modules.web` block:

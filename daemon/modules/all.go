@@ -2,6 +2,7 @@ package modules
 
 import (
 	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/daemon/modules/answer"
 	"github.com/corporealshift/nabu/daemon/modules/ask"
 	"github.com/corporealshift/nabu/daemon/modules/claude"
 	"github.com/corporealshift/nabu/daemon/modules/guard"
@@ -29,6 +30,7 @@ var All = []module.Module{
 	&watch.Module{},
 	&web.Module{},
 	&vcs.Module{},
+	&answer.Module{},
 	&guard.Module{},
 	&verify.Module{},
 	&report.Module{},
