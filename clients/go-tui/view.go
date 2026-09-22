@@ -175,9 +175,18 @@ func idleAge(at, now time.Time) string {
 		return ""
 	}
 	if age >= time.Hour {
-		return fmt.Sprintf("%dh ago", int(age/time.Hour))
+		hours := int(age / time.Hour)
+		return fmt.Sprintf("%d hour%s ago", hours, plural(hours))
 	}
-	return fmt.Sprintf("%dm ago", int(age/time.Minute))
+	minutes := int(age / time.Minute)
+	return fmt.Sprintf("%d minute%s ago", minutes, plural(minutes))
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // contextBadge says how full the context is, and warns before compaction

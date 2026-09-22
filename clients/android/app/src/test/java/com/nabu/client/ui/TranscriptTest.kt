@@ -34,8 +34,8 @@ class TranscriptTest {
     @Test
     fun `message timestamps and idle ages are human readable`() {
         assertEquals("Sep 16, 00:00", formatMessageTime("2026-09-16T00:00:00Z"))
-        assertEquals("5m ago", idleAge(1L, 1L + 5 * 60 * 1000L))
-        assertEquals("2h ago", idleAge(1L, 1L + 2 * 60 * 60 * 1000L))
+        assertEquals("5 minutes ago", idleAge(1L, 1L + 5 * 60 * 1000L))
+        assertEquals("2 hours ago", idleAge(1L, 1L + 2 * 60 * 60 * 1000L))
         assertEquals(null, idleAge(1L, 1L + 4 * 60 * 1000L))
     }
 

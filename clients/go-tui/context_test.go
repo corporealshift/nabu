@@ -88,21 +88,6 @@ func TestCompactionSaysWhichKind(t *testing.T) {
 		{protocol.CompactionClearResults, "tool output cleared"},
 	}
 
-	func TestMessageTimestampAndIdleAge(t *testing.T) {
-		ev := event("e1", protocol.EventMessage,
-			protocol.MessageData{Role: "user", Content: "hello"})
-		ev.Timestamp = time.Date(2026, time.September, 16, 0, 0, 0, 0, time.UTC)
-		if got := renderEvent(ev); len(got) != 1 || !strings.Contains(got[0], "Sep 16 00:00") {
-			t.Errorf("rendered message = %q, want timestamp", got)
-		}
-		if got := idleAge(time.Unix(0, 0), time.Unix(5*60, 0)); got != "5m ago" {
-			t.Errorf("idle age = %q, want 5m ago", got)
-		}
-		if got := idleAge(time.Unix(0, 0), time.Unix(4*60, 0)); got != "" {
-			t.Errorf("idle age before threshold = %q, want empty", got)
-		}
-	}
-
 	for _, tt := range tests {
 		t.Run(string(tt.mode), func(t *testing.T) {
 			lines := renderEvent(event("e1", protocol.EventCompaction,
@@ -112,5 +97,20 @@ func TestCompactionSaysWhichKind(t *testing.T) {
 				t.Errorf("rendered %q, want it to mention %q", lines, tt.want)
 			}
 		})
+	}
+}
+
+func TestMessageTimestampAndIdleAge(t *testing.T) {
+	ev := event("e1", protocol.EventMessage,
+		protocol.MessageData{Role: "user", Content: "hello"})
+	ev.Timestamp = time.Date(2026, time.September, 16, 0, 0, 0, 0, time.UTC)
+	if got := renderEvent(ev); len(got) != 1 || !strings.Contains(got[0], "Sep 16 00:00") {
+		t.Errorf("rendered message = %q, want timestamp", got)
+	}
+	if got := idleAge(time.Unix(0, 0), time.Unix(5*60, 0)); got != "5 minutes ago" {
+		t.Errorf("idle age = %q, want 5 minutes ago", got)
+	}
+	if got := idleAge(time.Unix(0, 0), time.Unix(4*60, 0)); got != "" {
+		t.Errorf("idle age before threshold = %q, want empty", got)
 	}
 }

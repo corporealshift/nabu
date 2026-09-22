@@ -103,9 +103,11 @@ private fun render(key: String, e: Event): Line? = when (e.type) {
             val age = now - updatedAt
             if (updatedAt <= 0L || age < 5 * 60 * 1000L) return null
             return if (age >= 60 * 60 * 1000L) {
-                "${age / (60 * 60 * 1000L)}h ago"
+                val hours = age / (60 * 60 * 1000L)
+                "$hours hour${if (hours == 1L) "" else "s"} ago"
             } else {
-                "${age / (60 * 1000L)}m ago"
+                val minutes = age / (60 * 1000L)
+                "$minutes minute${if (minutes == 1L) "" else "s"} ago"
             }
         }
     }
