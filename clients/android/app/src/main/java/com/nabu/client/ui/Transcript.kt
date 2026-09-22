@@ -12,6 +12,7 @@ import com.nabu.client.protocol.ToolCallData
 import com.nabu.client.protocol.ToolResultData
 import com.nabu.client.protocol.payload
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /** One rendered line of a transcript. */
@@ -96,7 +97,9 @@ private fun render(key: String, e: Event): Line? = when (e.type) {
 
         internal fun formatMessageTime(timestamp: String): String =
             runCatching {
-                OffsetDateTime.parse(timestamp).format(messageTimeFormatter)
+                OffsetDateTime.parse(timestamp).toInstant()
+                    .atZone(ZoneId.systemDefault())
+                    .format(messageTimeFormatter)
             }.getOrDefault("")
 
         internal fun idleAge(updatedAt: Long, now: Long): String? {
