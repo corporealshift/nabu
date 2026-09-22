@@ -63,7 +63,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
 import com.nabu.client.data.SessionRow
 import com.nabu.client.protocol.Task
@@ -268,7 +267,7 @@ fun SessionListScreen(
 @Composable
 fun TranscriptScreen(
     title: String,
-    events: List<EventRow>,
+    view: TranscriptView,
     synced: Boolean,
     state: String,
     pending: List<OutboxRow>,
@@ -285,11 +284,17 @@ fun TranscriptScreen(
     onDiscardBlocked: (String) -> Unit,
     onBack: () -> Unit,
 ) {
-    val lines = remember(events, synced) { transcript(events, synced) }
+    val lines = remember(view, synced) { withGap(view.lines, synced, view.fetched) }
     val listState = rememberLazyListState()
 
+    // Jump on opening, glide after. Animating from the top of two thousand
+    // lines to the bottom is a long way to scroll just to arrive.
+    var shown by remember { mutableStateOf(0) }
     LaunchedEffect(lines.size) {
-        if (lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1)
+        if (lines.isEmpty()) return@LaunchedEffect
+        if (shown == 0) listState.scrollToItem(lines.size - 1)
+        else listState.animateScrollToItem(lines.size - 1)
+        shown = lines.size
     }
 
     Scaffold(
@@ -302,7 +307,7 @@ fun TranscriptScreen(
                 ),
                 title = { Text(title, style = MaterialTheme.typography.titleSmall) },
                 actions = {
-                    ContextBadge(events)
+                    ContextBadge(view.contextUsed)
                     CompactButton(compacting, onCompact)
                 },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
@@ -767,8 +772,8 @@ private fun ThoughtLine(line: Line.Thought) {
  * number would be an invention.
  */
 @Composable
-private fun ContextBadge(events: List<EventRow>) {
-    val used = remember(events) { contextUsed(events) } ?: return
+private fun ContextBadge(used: Float?) {
+    used ?: return
     val c = NabuTheme.colors
 
     Text(

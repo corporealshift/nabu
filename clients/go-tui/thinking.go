@@ -54,6 +54,8 @@ func (m *model) toggleThinking() {
 			m.transcript[at] = thinkingLine(content, m.showThinking)
 		}
 	}
+	// Entries already wrapped just changed in place.
+	m.invalidateWrap()
 	m.refresh()
 }
 

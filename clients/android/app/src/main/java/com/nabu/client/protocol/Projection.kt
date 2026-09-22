@@ -27,9 +27,12 @@ data class State(
         get() = tasks.filter { it.status == "pending" || it.status == "in_progress" }
 }
 
-/** Folds a log into its state. */
-fun project(log: List<Event>): State {
-    var st = State()
+/**
+ * Folds a log into its state. [from] continues a fold already made, so a
+ * client that has projected a long log folds in only what is new.
+ */
+fun project(log: List<Event>, from: State = State()): State {
+    var st = from
     for (e in log) {
         st = st.copy(lastEventId = e.id)
         when (e.type) {
