@@ -28,12 +28,20 @@ class TranscriptTest {
         assertTrue(lines[0] is Line.UserSaid)
         assertTrue(lines[1] is Line.AgentSaid)
         assertEquals("do the thing", (lines[0] as Line.UserSaid).text)
-        assertEquals("Sep 16, 00:00", (lines[0] as Line.UserSaid).timestamp)
+        // The machine's own timezone decides the text; that one is stamped at all
+        // is what this checks. The format is pinned below with a fixed zone.
+        assertEquals(formatMessageTime("2026-09-16T00:00:00Z"), (lines[0] as Line.UserSaid).timestamp)
+        assertTrue((lines[0] as Line.UserSaid).timestamp.isNotEmpty())
     }
 
     @Test
     fun `message timestamps and idle ages are human readable`() {
-        assertEquals("Sep 16, 00:00", formatMessageTime("2026-09-16T00:00:00Z"))
+        assertEquals("Sep 16, 00:00", formatMessageTime("2026-09-16T00:00:00Z", java.time.ZoneOffset.UTC))
+        // Local time, not the daemon's: midnight UTC is still the 15th in New York.
+        assertEquals(
+            "Sep 15, 20:00",
+            formatMessageTime("2026-09-16T00:00:00Z", java.time.ZoneId.of("America/New_York")),
+        )
         assertEquals("5 minutes ago", idleAge(1L, 1L + 5 * 60 * 1000L))
         assertEquals("2 hours ago", idleAge(1L, 1L + 2 * 60 * 60 * 1000L))
         assertEquals(null, idleAge(1L, 1L + 4 * 60 * 1000L))

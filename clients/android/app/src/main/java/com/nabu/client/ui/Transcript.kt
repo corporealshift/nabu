@@ -92,27 +92,6 @@ private fun render(key: String, e: Event): Line? = when (e.type) {
             d.role == "user" -> Line.UserSaid(key, text, formatMessageTime(e.timestamp))
             else -> Line.AgentSaid(key, text, formatMessageTime(e.timestamp))
         }
-
-        private val messageTimeFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm")
-
-        internal fun formatMessageTime(timestamp: String): String =
-            runCatching {
-                OffsetDateTime.parse(timestamp).toInstant()
-                    .atZone(ZoneId.systemDefault())
-                    .format(messageTimeFormatter)
-            }.getOrDefault("")
-
-        internal fun idleAge(updatedAt: Long, now: Long): String? {
-            val age = now - updatedAt
-            if (updatedAt <= 0L || age < 5 * 60 * 1000L) return null
-            return if (age >= 60 * 60 * 1000L) {
-                val hours = age / (60 * 60 * 1000L)
-                "$hours hour${if (hours == 1L) "" else "s"} ago"
-            } else {
-                val minutes = age / (60 * 1000L)
-                "$minutes minute${if (minutes == 1L) "" else "s"} ago"
-            }
-        }
     }
 
     "tool_call" -> e.payload<ToolCallData>()?.let { d ->
@@ -146,6 +125,30 @@ private fun render(key: String, e: Event): Line? = when (e.type) {
     // context is what a module injected, and report is rendered as its own
     // card rather than inline. Everything else is not worth a line.
     else -> null
+}
+
+private val messageTimeFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm")
+
+/** When a message was sent, in the reader's own timezone rather than the daemon's. */
+internal fun formatMessageTime(timestamp: String, zone: ZoneId = ZoneId.systemDefault()): String =
+    runCatching {
+        OffsetDateTime.parse(timestamp).toInstant().atZone(zone).format(messageTimeFormatter)
+    }.getOrDefault("")
+
+/**
+ * How long an idle session has sat untouched, or null under five minutes: a
+ * session that went quiet a moment ago is not news.
+ */
+internal fun idleAge(updatedAt: Long, now: Long): String? {
+    val age = now - updatedAt
+    if (updatedAt <= 0L || age < 5 * 60 * 1000L) return null
+    return if (age >= 60 * 60 * 1000L) {
+        val hours = age / (60 * 60 * 1000L)
+        "$hours hour${if (hours == 1L) "" else "s"} ago"
+    } else {
+        val minutes = age / (60 * 1000L)
+        "$minutes minute${if (minutes == 1L) "" else "s"} ago"
+    }
 }
 
 /** The argument worth showing: the command, path, pattern, name or query. */
