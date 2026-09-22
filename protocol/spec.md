@@ -381,10 +381,14 @@ wherever shown.
 
 ### 7.1 `nabu.hello` — §1.1.
 
-### 7.2 `nabu.session.list` → `{sessions: [SessionSummary]}`
+### 7.2 `nabu.session.list {archived?}` → `{sessions: [SessionSummary]}`
 
 `SessionSummary = {session_id, workspace, workspace_key, state, event_count,
-created_at, updated_at, goal?: {condition, state}, tasks?: {total, done}}`.
+created_at, updated_at, goal?: {condition, state}, tasks?: {total, done}, archived?}`.
+
+Lists the sessions in use. With `archived: true` it lists the archive instead (§7.19),
+and each summary carries `archived: true`. A client that mirrors sessions SHOULD drop
+any it holds that a full listing leaves out: they were archived.
 
 ### 7.3 `nabu.session.create {workspace, options?}` → `{session_id, event}`
 
@@ -535,6 +539,27 @@ response wins; later responders receive `nabu_already_resolved`.
 
 Requests time out after a configurable interval (default 10 minutes) with the
 session moving to `blocked`; a later answer is still accepted and resumes it.
+
+### 7.19 `nabu.session.archive {session_id}` → `{}`
+
+Puts a session away: it leaves the list, is not loaded when the daemon starts, and is
+no longer mirrored. Its log is kept whole, and an `info` `notice` saying why is appended
+before it moves. Every subscription to it ends.
+
+**Refused while the session is `running`**, with `nabu_invalid_transition`: archiving
+closes the log under a turn still writing to it. Archiving an archived session does
+nothing.
+
+The daemon also archives, with the same notice, any session not `running` whose last
+event is older than `daemon.archive_after_days` (default 3; 0 turns this off).
+
+An archived session is not found by any other method until it is restored.
+
+### 7.20 `nabu.session.restore {session_id}` → `{}`
+
+Brings an archived session back, appending an `info` `notice`, which also restarts its
+idle clock. An unknown id is `nabu_session_not_found`; restoring a session that is not
+archived does nothing.
 
 ## 8. Error codes
 

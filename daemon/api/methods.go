@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
+	"github.com/corporealshift/nabu/daemon/session"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -18,6 +20,9 @@ func rpcErrOf(err error) *protocol.RPCError {
 	var known *protocol.RPCError
 	if errors.As(err, &known) {
 		return known
+	}
+	if errors.Is(err, session.ErrNotFound) {
+		return protocol.NewRPCError(protocol.CodeSessionNotFound, err.Error())
 	}
 	return protocol.NewRPCError(protocol.CodeInternalError, err.Error())
 }
@@ -50,6 +55,36 @@ func (h *Handler) registerMutators() {
 	h.register("nabu.session.set_option", h.handleSetOption)
 	h.register("nabu.session.update_tasks", h.handleUpdateTasks)
 	h.register("nabu.session.compact", h.handleCompact)
+	h.register("nabu.session.archive", h.handleArchive)
+	h.register("nabu.session.restore", h.handleRestore)
+}
+
+// handleArchive implements nabu.session.archive (spec 7.19).
+func (h *Handler) handleArchive(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
+	id, rpcErr := h.sessionID(params)
+	if rpcErr != nil {
+		return nil, rpcErr
+	}
+	if err := h.manager.Archive(ctx, id, "by request"); err != nil {
+		return nil, rpcErrOf(err)
+	}
+	return map[string]any{}, nil
+}
+
+// handleRestore implements nabu.session.restore (spec 7.20). The session is
+// archived, so it cannot be looked up the way every other method does.
+func (h *Handler) handleRestore(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
+	var p sessionParams
+	if rpcErr := decodeParams(params, &p); rpcErr != nil {
+		return nil, rpcErr
+	}
+	if strings.TrimSpace(p.SessionID) == "" {
+		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, "session_id is required")
+	}
+	if err := h.manager.Restore(ctx, p.SessionID); err != nil {
+		return nil, rpcErrOf(err)
+	}
+	return map[string]any{}, nil
 }
 
 // handleCompact implements nabu.session.compact (spec 7.15). It is a model

@@ -222,8 +222,19 @@ func (h *Handler) getSession(id string) (*session.Session, *protocol.RPCError) {
 }
 
 // handleSessionList implements nabu.session.list (spec 7.2).
-func (h *Handler) handleSessionList(context.Context, *connState, json.RawMessage) (any, *protocol.RPCError) {
-	summaries, err := h.store.List()
+func (h *Handler) handleSessionList(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
+	var p struct {
+		// Archived lists the archive instead (spec 7.19).
+		Archived bool `json:"archived"`
+	}
+	if rpcErr := decodeParams(params, &p); rpcErr != nil {
+		return nil, rpcErr
+	}
+	list := h.store.List
+	if p.Archived {
+		list = h.store.ListArchived
+	}
+	summaries, err := list()
 	if err != nil {
 		return nil, protocol.NewRPCError(protocol.CodeInternalError, err.Error())
 	}

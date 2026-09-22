@@ -602,3 +602,37 @@ func TestCompactIsRefusedWhileTheSessionIsRunning(t *testing.T) {
 	close(block)
 	hn.m.WaitIdle(id)
 }
+
+// Spec 7.19-7.20. Archived sessions leave the list and come back on request.
+func TestArchiveAndRestoreOverRPC(t *testing.T) {
+	hn := newHarness(t)
+	id := hn.mustCreate(t)
+
+	result(t, hn.call(t, 2, "nabu.session.archive", map[string]any{"session_id": id}), &struct{}{})
+
+	var active, archived struct {
+		Sessions []struct {
+			SessionID string `json:"session_id"`
+			Archived  bool   `json:"archived"`
+		} `json:"sessions"`
+	}
+	result(t, hn.call(t, 3, "nabu.session.list", nil), &active)
+	if len(active.Sessions) != 0 {
+		t.Fatalf("an archived session is still listed: %+v", active.Sessions)
+	}
+	result(t, hn.call(t, 4, "nabu.session.list", map[string]any{"archived": true}), &archived)
+	if len(archived.Sessions) != 1 || archived.Sessions[0].SessionID != id || !archived.Sessions[0].Archived {
+		t.Fatalf("archived list = %+v", archived.Sessions)
+	}
+
+	result(t, hn.call(t, 5, "nabu.session.restore", map[string]any{"session_id": id}), &struct{}{})
+	result(t, hn.call(t, 6, "nabu.session.list", nil), &active)
+	if len(active.Sessions) != 1 {
+		t.Fatalf("a restored session should list again: %+v", active.Sessions)
+	}
+
+	resp := hn.call(t, 7, "nabu.session.restore", map[string]any{"session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
+	if resp == nil || resp.Error == nil || resp.Error.Code != protocol.CodeSessionNotFound {
+		t.Fatalf("restoring an unknown session: %+v", resp)
+	}
+}

@@ -30,6 +30,7 @@ import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
 import com.nabu.client.ui.Connection
 import com.nabu.client.ui.NabuViewModel
+import com.nabu.client.ui.ArchivedScreen
 import com.nabu.client.ui.AskSheet
 import com.nabu.client.ui.PermissionSheet
 import com.nabu.client.ui.BrowseScreen
@@ -51,6 +52,7 @@ private sealed interface Screen {
     data object Sessions : Screen
     data object Settings : Screen
     data object Browse : Screen
+    data object Archived : Screen
     data class Transcript(val id: String) : Screen
 }
 
@@ -143,7 +145,20 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
             onOpen = { screen = Screen.Transcript(it) },
             onSettings = { screen = Screen.Settings },
             onNewSession = { vm.startBrowsing(); screen = Screen.Browse },
+            onArchive = { vm.archiveSession(it) },
+            onArchived = { vm.loadArchived(); screen = Screen.Archived },
         )
+
+        is Screen.Archived -> {
+            val archived by vm.archived.collectAsState()
+            ArchivedScreen(
+                archived = archived,
+                connection = connection,
+                error = error,
+                onRestore = { id -> vm.restoreSession(id) { screen = Screen.Transcript(it) } },
+                onBack = { screen = Screen.Sessions },
+            )
+        }
 
         is Screen.Transcript -> {
             val row by vm.watchSession(s.id).collectAsState(initial = null)

@@ -34,6 +34,16 @@ class SessionRepository(
     fun watchPending(sessionId: String): Flow<List<OutboxRow>> =
         db.outbox().watchPendingFor(sessionId)
 
+    /**
+     * Forgets every session the daemon's full list leaves out: archived, by
+     * hand or for sitting idle (issue 56). Without this an archived session
+     * stayed on the phone for good, and every reconnect tried to sync it. Only
+     * for a complete listing: anything shorter would forget what it omitted.
+     */
+    suspend fun forgetUnlisted(summaries: List<SessionSummary>) {
+        db.sessions().deleteAllExcept(summaries.map { it.sessionId })
+    }
+
     /** Records the sessions the daemon knows about, without their events. */
     suspend fun recordSessions(summaries: List<SessionSummary>) {
         for (s in summaries) {
@@ -198,6 +208,36 @@ class SessionRepository(
         client.callOrThrow("nabu.session.interrupt", buildJsonObject {
             put("session_id", sessionId)
         })
+    }
+
+    /** Puts a session away on the daemon, and drops this device's copy of it. */
+    suspend fun archiveSession(client: DaemonClient, sessionId: String) {
+        client.callOrThrow("nabu.session.archive", buildJsonObject {
+            put("session_id", sessionId)
+        })
+        db.sessions().delete(sessionId)
+    }
+
+    /** Brings an archived session back. The next sync mirrors it again. */
+    suspend fun restoreSession(client: DaemonClient, sessionId: String) {
+        client.callOrThrow("nabu.session.restore", buildJsonObject {
+            put("session_id", sessionId)
+        })
+    }
+
+    /** What is in the archive. Asked, never mirrored: it is put away. */
+    suspend fun listArchived(client: DaemonClient): List<SessionSummary> = list(client, archived = true)
+
+    /** The sessions in use. */
+    suspend fun listSessions(client: DaemonClient): List<SessionSummary> = list(client, archived = false)
+
+    private suspend fun list(client: DaemonClient, archived: Boolean): List<SessionSummary> {
+        val result = client.callOrThrow("nabu.session.list", buildJsonObject {
+            if (archived) put("archived", true)
+        })
+        return result.jsonObject["sessions"]?.jsonArray
+            ?.map { NabuJson.decodeFromJsonElement(SessionSummary.serializer(), it) }
+            ?: emptyList()
     }
 
     suspend fun resumeSession(client: DaemonClient, sessionId: String) {

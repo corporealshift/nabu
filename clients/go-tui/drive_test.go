@@ -428,3 +428,45 @@ func TestGoalBadge(t *testing.T) {
 		t.Error("a cleared goal should remove the badge")
 	}
 }
+
+// Issue 56: sessions can be put away from the picker and brought back.
+func TestThePickerArchivesAndRestores(t *testing.T) {
+	actions := make(chan action, 4)
+	m := sized(t, actions)
+	m, _ = send(m, sessionsMsg{sessions: []goclient.SessionSummary{
+		{SessionID: "01ARZ3NDEKTSV4RRFFQ69G5FAA", State: "idle"},
+		{SessionID: "01ARZ3NDEKTSV4RRFFQ69G5FBB", State: "completed"},
+	}})
+
+	m, _ = send(m, tea.KeyMsg{Type: tea.KeyDown})
+	m, cmd := send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	cmd()
+	if a := <-actions; a.kind != actArchive || a.sessionID != "01ARZ3NDEKTSV4RRFFQ69G5FBB" {
+		t.Fatalf("a should archive the highlighted session, got %+v", a)
+	}
+
+	m, cmd = send(m, tea.KeyMsg{Type: tea.KeyTab})
+	cmd()
+	if a := <-actions; a.kind != actListArchived {
+		t.Fatalf("tab should ask for the archive, got %v", a.kind)
+	}
+	m, _ = send(m, sessionsMsg{archived: true, sessions: []goclient.SessionSummary{
+		{SessionID: "01ARZ3NDEKTSV4RRFFQ69G5FCC", State: "idle"},
+	}})
+	if !strings.Contains(stripANSI(m.View()), "Archived sessions") {
+		t.Fatalf("the picker should say it is showing the archive:\n%s", stripANSI(m.View()))
+	}
+
+	m, cmd = send(m, tea.KeyMsg{Type: tea.KeyEnter})
+	cmd()
+	if a := <-actions; a.kind != actRestore || a.sessionID != "01ARZ3NDEKTSV4RRFFQ69G5FCC" {
+		t.Fatalf("enter in the archive should restore, got %+v", a)
+	}
+	if m.sessionID != "01ARZ3NDEKTSV4RRFFQ69G5FCC" || m.picking {
+		t.Errorf("restoring should attach to it and close the picker")
+	}
+
+	if res := parseCommand("/archive"); res.act == nil || res.act.kind != actArchive {
+		t.Errorf("/archive should archive the current session, got %+v", res)
+	}
+}

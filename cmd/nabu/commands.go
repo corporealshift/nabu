@@ -466,6 +466,16 @@ func cmdResume(args []string, stdout, stderr io.Writer) int {
 		func(w io.Writer, id string) { fmt.Fprintf(w, "resumed %s\n", id) })
 }
 
+func cmdArchive(args []string, stdout, stderr io.Writer) int {
+	return simpleSessionCommand("archive", "nabu.session.archive", args, stdout, stderr,
+		func(w io.Writer, id string) { fmt.Fprintf(w, "archived %s\n", id) })
+}
+
+func cmdRestore(args []string, stdout, stderr io.Writer) int {
+	return simpleSessionCommand("restore", "nabu.session.restore", args, stdout, stderr,
+		func(w io.Writer, id string) { fmt.Fprintf(w, "restored %s\n", id) })
+}
+
 // simpleSessionCommand runs a method that takes a session id and returns
 // nothing interesting.
 func simpleSessionCommand(name, method string, args []string, stdout, stderr io.Writer, done func(io.Writer, string)) int {

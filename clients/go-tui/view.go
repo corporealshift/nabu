@@ -95,9 +95,15 @@ func taskLine(t protocol.Task) string {
 // picker lists the sessions to switch between.
 func (m model) picker() string {
 	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Sessions") + "\n\n")
+	title, empty, help := "Sessions", "no sessions yet — start one with `nabu run`",
+		"↑↓ move · enter attach · a archive · tab archived · esc cancel"
+	if m.pickingArchived {
+		title, empty, help = "Archived sessions", "nothing archived",
+			"↑↓ move · enter restore and attach · tab back · esc cancel"
+	}
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n\n")
 	if len(m.sessions) == 0 {
-		b.WriteString(dim.Render("no sessions yet — start one with `nabu run`"))
+		b.WriteString(dim.Render(empty))
 	}
 	for i, s := range m.sessions {
 		line := shortID(s.SessionID) + "  " + s.State + "  " + truncate(s.Workspace, 48)
@@ -108,7 +114,7 @@ func (m model) picker() string {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("\n" + dim.Render("↑↓ move · enter attach · esc cancel"))
+	b.WriteString("\n" + dim.Render(help))
 
 	box := overlayBox.Render(b.String())
 	if m.width > 0 && m.height > 0 {

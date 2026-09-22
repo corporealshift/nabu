@@ -244,6 +244,23 @@ func perform(ctx context.Context, c *goclient.Client, p *tea.Program, a action) 
 		if sessions, err = c.List(ctx); err == nil {
 			p.Send(sessionsMsg{sessions: sessions})
 		}
+	case actListArchived:
+		var sessions []goclient.SessionSummary
+		if sessions, err = c.ListArchived(ctx); err == nil {
+			p.Send(sessionsMsg{sessions: sessions, archived: true})
+		}
+	case actArchive:
+		if _, err = c.Call(ctx, "nabu.session.archive", map[string]any{"session_id": a.sessionID}); err == nil {
+			p.Send(noteMsg{text: "archived " + shortID(a.sessionID) + " — tab in the picker shows the archive"})
+			var sessions []goclient.SessionSummary
+			if sessions, err = c.List(ctx); err == nil {
+				p.Send(sessionsMsg{sessions: sessions})
+			}
+		}
+	case actRestore:
+		if _, err = c.Call(ctx, "nabu.session.restore", map[string]any{"session_id": a.sessionID}); err == nil {
+			return a.sessionID
+		}
 	case actAttach:
 		return a.sessionID
 	}

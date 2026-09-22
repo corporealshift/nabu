@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // DaemonConfig holds the "daemon" object.
@@ -25,6 +26,27 @@ type DaemonConfig struct {
 	// user's home directory. Point them at where the projects actually are and
 	// the picker stops being a tapping exercise.
 	BrowseRoots []string `json:"browse_roots"`
+	// ArchiveAfterDays archives a session nothing has happened in for this
+	// many days (issue 56). A pointer because 0 is a real setting, meaning
+	// never; unset means DefaultArchiveAfterDays.
+	ArchiveAfterDays *int `json:"archive_after_days"`
+}
+
+// DefaultArchiveAfterDays is how long a session sits untouched before it is
+// archived, when the config does not say.
+const DefaultArchiveAfterDays = 3
+
+// ArchiveAfter is the configured idle period, and false when archiving by age
+// is off.
+func (c DaemonConfig) ArchiveAfter() (time.Duration, bool) {
+	days := DefaultArchiveAfterDays
+	if c.ArchiveAfterDays != nil {
+		days = *c.ArchiveAfterDays
+	}
+	if days <= 0 {
+		return 0, false
+	}
+	return time.Duration(days) * 24 * time.Hour, true
 }
 
 func (c *DaemonConfig) withDefaults() {

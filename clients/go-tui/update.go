@@ -39,8 +39,12 @@ type (
 		state connState
 		note  string
 	}
-	// sessionsMsg carries the session list for the picker.
-	sessionsMsg struct{ sessions []goclient.SessionSummary }
+	// sessionsMsg carries the session list for the picker: the active ones, or
+	// the archive.
+	sessionsMsg struct {
+		sessions []goclient.SessionSummary
+		archived bool
+	}
 	// errMsg is something the user should see that did not come from the log.
 	errMsg struct{ text string }
 	// noteMsg is the same, for something that went right. It is separate from
@@ -115,7 +119,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case sessionsMsg:
 		m.sessions = msg.sessions
-		m.cursorAt = 0
+		m.pickingArchived = msg.archived
+		if m.cursorAt >= len(m.sessions) {
+			m.cursorAt = 0
+		}
 		m.picking = true
 		return m, nil
 
@@ -178,12 +185,32 @@ func (m model) onPickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursorAt++
 		}
 		return m, nil
-	case "enter":
-		m.picking = false
-		if m.cursorAt >= len(m.sessions) {
+	case "tab":
+		// Between the sessions in use and the archive (issue 56).
+		kind := actListArchived
+		if m.pickingArchived {
+			kind = actListSessions
+		}
+		m.cursorAt = 0
+		return m, m.emit(action{kind: kind})
+	case "a":
+		if m.pickingArchived || m.cursorAt >= len(m.sessions) {
 			return m, nil
 		}
 		chosen := m.sessions[m.cursorAt].SessionID
+		return m, m.emit(action{kind: actArchive, sessionID: chosen})
+	case "r", "enter":
+		if m.cursorAt >= len(m.sessions) || (msg.String() == "r" && !m.pickingArchived) {
+			return m, nil
+		}
+		m.picking = false
+		chosen := m.sessions[m.cursorAt].SessionID
+		if m.pickingArchived {
+			// Restoring is for reading it again, so it attaches too.
+			m.reset(chosen)
+			m.note("restoring and attaching to " + shortID(chosen))
+			return m, m.emit(action{kind: actRestore, sessionID: chosen})
+		}
 		if chosen == m.sessionID {
 			return m, nil // already attached; resetting would lose the view for nothing
 		}

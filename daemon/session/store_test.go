@@ -102,3 +102,56 @@ func TestListIsNewestFirst(t *testing.T) {
 		}
 	}
 }
+
+// Issue 56: a session can be put away and brought back, and nothing in its log
+// is lost on the way.
+func TestArchiveAndRestore(t *testing.T) {
+	st := newStore(t)
+	keep, _ := st.Create("C:/w", "w-1", opts, 0)
+	gone, _ := st.Create("C:/w", "w-1", opts, 0)
+	gone.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "hi"})
+	want := len(gone.Events())
+	ch, cancel := gone.Subscribe(4)
+	defer cancel()
+
+	if err := st.Archive(gone.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := <-ch; ok {
+		t.Error("archiving should end the session's subscriptions")
+	}
+	if _, err := gone.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "late"}); err != ErrClosed {
+		t.Errorf("an archived session must not take appends, got %v", err)
+	}
+	sums, _ := st.List()
+	if len(sums) != 1 || sums[0].SessionID != keep.ID() {
+		t.Fatalf("active list = %+v, want only %s", sums, keep.ID())
+	}
+	if _, err := st.Get(gone.ID()); err != ErrNotFound {
+		t.Errorf("an archived session should not load, got %v", err)
+	}
+	archived, err := st.ListArchived()
+	if err != nil || len(archived) != 1 || archived[0].SessionID != gone.ID() || !archived[0].Archived {
+		t.Fatalf("archived list = %+v (%v)", archived, err)
+	}
+	if err := st.Archive(gone.ID()); err != nil {
+		t.Errorf("archiving twice should be a no-op, got %v", err)
+	}
+
+	if err := st.Restore(gone.ID()); err != nil {
+		t.Fatal(err)
+	}
+	back, err := st.Get(gone.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(back.Events()); got != want {
+		t.Errorf("restored with %d events, want %d", got, want)
+	}
+	if sums, _ := st.List(); len(sums) != 2 {
+		t.Errorf("restored session should list again, got %d", len(sums))
+	}
+	if err := st.Archive("01ARZ3NDEKTSV4RRFFQ69G5FAV"); err != ErrNotFound {
+		t.Errorf("an unknown id should be not found, got %v", err)
+	}
+}

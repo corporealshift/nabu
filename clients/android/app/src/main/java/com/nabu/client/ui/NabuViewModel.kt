@@ -175,6 +175,7 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
             ?.jsonArray
             ?.map { NabuJson.decodeFromJsonElement(SessionSummary.serializer(), it) }
             ?: emptyList()
+        repo.forgetUnlisted(listed)
         repo.recordSessions(listed)
 
         // Anything composed offline goes as soon as there is a connection.
@@ -468,6 +469,51 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
                 .onSuccess { _error.value = null }
                 .onFailure { _error.value = it.message ?: "could not compact the session" }
             _compacting.value = false
+        }
+    }
+
+    // ------------------------------------------------------------- archive
+
+    private val _archived = MutableStateFlow<List<SessionSummary>?>(null)
+
+    /** The daemon's archive, or null until it has been asked for. */
+    val archived: StateFlow<List<SessionSummary>?> = _archived.asStateFlow()
+
+    /** Puts a session away (issue 56). It leaves the list here and on the daemon. */
+    fun archiveSession(sessionId: String) {
+        viewModelScope.launch {
+            val c = client ?: run { _error.value = "not connected"; return@launch }
+            runCatching { repo.archiveSession(c, sessionId) }
+                .onSuccess { _error.value = null }
+                .onFailure { _error.value = it.message ?: "could not archive the session" }
+        }
+    }
+
+    /** Asks the daemon what is archived. */
+    fun loadArchived() {
+        viewModelScope.launch {
+            val c = client ?: run { _error.value = "not connected"; return@launch }
+            runCatching { repo.listArchived(c) }
+                .onSuccess { _archived.value = it; _error.value = null }
+                .onFailure { _error.value = it.message ?: "could not list the archive" }
+        }
+    }
+
+    /** Brings a session back and mirrors it, then hands over its id to open. */
+    fun restoreSession(sessionId: String, then: (String) -> Unit) {
+        viewModelScope.launch {
+            val c = client ?: run { _error.value = "not connected"; return@launch }
+            runCatching {
+                repo.restoreSession(c, sessionId)
+                repo.recordSessions(repo.listSessions(c).filter { it.sessionId == sessionId })
+                repo.sync(c, sessionId)
+            }
+                .onSuccess {
+                    _error.value = null
+                    _archived.value = _archived.value?.filterNot { it.sessionId == sessionId }
+                    then(sessionId)
+                }
+                .onFailure { _error.value = it.message ?: "could not restore the session" }
         }
     }
 
