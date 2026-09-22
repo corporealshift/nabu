@@ -68,6 +68,14 @@ func skipDir(name string) bool {
 	return strings.HasPrefix(name, ".") || module.NoiseDir(name)
 }
 
+// skipFile reports a file this module never reports: any dotted one. The
+// directory rule above left them in, so an .env edited in another terminal,
+// an editor's swap file or a tool's .lock landed in front of the model (issue
+// 66). They are configuration and scratch, not the code being worked on.
+func skipFile(name string) bool {
+	return strings.HasPrefix(name, ".")
+}
+
 // stamp is what identifies a file version without reading it.
 type stamp struct {
 	mod  time.Time
@@ -264,7 +272,7 @@ func (m *Module) scan(root string) (snapshot, bool) {
 			}
 			return nil
 		}
-		if !d.Type().IsRegular() {
+		if !d.Type().IsRegular() || skipFile(d.Name()) {
 			return nil
 		}
 		if len(snap) >= m.maxFiles {

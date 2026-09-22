@@ -404,3 +404,29 @@ func TestBuildScratchIsNotAChange(t *testing.T) {
 		t.Errorf("build scratch should not be reported as a change, got:\n%s", got)
 	}
 }
+
+// Issue 66: dotted directories were skipped but dotted files were not, so a
+// session was told ".env" and ".env.example" had changed. Neither is.
+func TestDottedFilesAreNotAChange(t *testing.T) {
+	m, s := newModule(t, nil)
+	write(t, s.dir, "src.go", "package x")
+	write(t, s.dir, ".env", "A=1")
+	if _, err := m.SessionStart(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+
+	write(t, s.dir, ".env", "A=2")
+	write(t, s.dir, ".env.example", "A=")
+	write(t, s.dir, "pkg/.main.go.swp", "x")
+	write(t, s.dir, ".DS_Store", "x")
+
+	if got := request(t, m, s); got != "" {
+		t.Errorf("dotted files should not be reported, got:\n%s", got)
+	}
+
+	// An ordinary file beside them still is.
+	write(t, s.dir, "pkg/main.go", "package pkg")
+	if got := request(t, m, s); !strings.Contains(got, "pkg/main.go") || strings.Contains(got, ".env") {
+		t.Errorf("want only pkg/main.go reported, got:\n%s", got)
+	}
+}
