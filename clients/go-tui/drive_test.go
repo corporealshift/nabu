@@ -428,3 +428,48 @@ func TestGoalBadge(t *testing.T) {
 		t.Error("a cleared goal should remove the badge")
 	}
 }
+
+// Issue 75: the task list takes room the transcript wants. p puts the pane
+// away and brings it back; while it is away the status line keeps the count.
+func TestTheTaskPaneCanBePutAway(t *testing.T) {
+	m := sized(t, nil)
+	m, _ = send(m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m, _ = send(m, eventMsg{ev: event("e1", protocol.EventTasks,
+		protocol.TasksData{Tasks: []protocol.Task{
+			{ID: "t1", Title: "read", Status: protocol.TaskDone},
+			{ID: "t2", Title: "port the engine", Status: protocol.TaskInProgress},
+		}})})
+	if !m.showTasks() {
+		t.Fatal("with room and tasks, the pane shows")
+	}
+	wide := m.viewport.Width
+
+	m, _ = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	if m.showTasks() {
+		t.Fatal("p should put the pane away")
+	}
+	if m.viewport.Width <= wide {
+		t.Errorf("the transcript should take the pane's width back: %d, was %d", m.viewport.Width, wide)
+	}
+	if !strings.Contains(stripANSI(m.status()), "tasks 1/2") {
+		t.Errorf("the status line should still count the tasks, got %q", stripANSI(m.status()))
+	}
+
+	m, _ = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	if !m.showTasks() {
+		t.Fatal("p again should bring it back")
+	}
+}
+
+// The first task list arrived without anything laying the screen out again,
+// so the pane was drawn beside a transcript still as wide as the terminal.
+func TestTheFirstTaskListMakesRoomForItsPane(t *testing.T) {
+	m := sized(t, nil)
+	m, _ = send(m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m, _ = send(m, eventMsg{ev: event("e1", protocol.EventTasks,
+		protocol.TasksData{Tasks: []protocol.Task{{ID: "t1", Title: "read", Status: protocol.TaskPending}}})})
+
+	if got, want := m.viewport.Width, 140-taskPaneWidth; got != want {
+		t.Fatalf("transcript width = %d, want %d beside the pane", got, want)
+	}
+}

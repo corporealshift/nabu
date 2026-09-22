@@ -277,6 +277,11 @@ func (m model) onTranscriptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "t":
 		m.toggleThinking()
 		return m, nil
+	case "p":
+		m.hideTasks = !m.hideTasks
+		m.relayout()
+		m.refresh()
+		return m, nil
 	case "s":
 		return m, m.emit(action{kind: actListSessions})
 	case "ctrl+x":

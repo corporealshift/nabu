@@ -1,6 +1,7 @@
 package com.nabu.client.settings
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -19,6 +20,8 @@ data class Settings(
     val token: String = "",
     val scheme: Scheme = Scheme.Verdigris,
     val mode: Mode = Mode.System,
+    /** The task card folded to one line. It stays folded until opened again. */
+    val tasksCollapsed: Boolean = false,
 )
 
 private val Context.store by preferencesDataStore(name = "nabu-settings")
@@ -29,6 +32,7 @@ class SettingsStore(private val context: Context) {
     private val tokenKey = stringPreferencesKey("token")
     private val schemeKey = stringPreferencesKey("scheme")
     private val modeKey = stringPreferencesKey("mode")
+    private val tasksCollapsedKey = booleanPreferencesKey("tasks_collapsed")
 
     val settings: Flow<Settings> = context.store.data.map { p ->
         Settings(
@@ -39,7 +43,13 @@ class SettingsStore(private val context: Context) {
                 ?: Scheme.Verdigris,
             mode = p[modeKey]?.let { runCatching { Mode.valueOf(it) }.getOrNull() }
                 ?: Mode.System,
+            tasksCollapsed = p[tasksCollapsedKey] ?: false,
         )
+    }
+
+    /** Saves on its own, like appearance: folding a card is not a reason to reconnect. */
+    suspend fun saveTasksCollapsed(collapsed: Boolean) {
+        context.store.edit { p -> p[tasksCollapsedKey] = collapsed }
     }
 
     /** Appearance saves on its own so a tap applies without touching the connection. */

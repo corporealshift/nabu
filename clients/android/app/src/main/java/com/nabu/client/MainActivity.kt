@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -19,6 +20,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import com.nabu.client.ui.theme.Mode
 import com.nabu.client.ui.theme.NabuTheme
 import com.nabu.client.ui.theme.Scheme
+import com.nabu.client.ui.LocalTaskCardFold
+import com.nabu.client.ui.TaskCardFold
 import com.nabu.client.ui.overlay
 import com.nabu.client.ui.projectName
 import com.nabu.client.ui.tasksOf
@@ -67,7 +70,11 @@ private fun App(vm: NabuViewModel = viewModel()) {
 
     NabuTheme(scheme = chosen?.scheme ?: Scheme.Verdigris, dark = dark) {
         Surface(color = NabuTheme.colors.background) {
-            Screens(vm = vm, systemDark = systemDark)
+            val collapsed = chosen?.tasksCollapsed ?: false
+            val fold = TaskCardFold(collapsed = collapsed, onToggle = { vm.setTasksCollapsed(!collapsed) })
+            CompositionLocalProvider(LocalTaskCardFold provides fold) {
+                Screens(vm = vm, systemDark = systemDark)
+            }
         }
     }
 }
