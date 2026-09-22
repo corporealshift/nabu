@@ -71,6 +71,11 @@ type model struct {
 	lastError   string
 	lastEventAt time.Time
 
+	// compactingSince is when a requested compaction was sent, and zero when
+	// none is in flight. The session is idle while one runs, so without this
+	// the TUI would say nothing is happening and refuse ctrl+x for minutes.
+	compactingSince time.Time
+
 	// runningSince is when the current turn began, so the working indicator
 	// reports how long the model has actually been thinking rather than how
 	// long the program has been open. Zero when not running.
@@ -228,6 +233,11 @@ func (m model) working() bool {
 	return m.state == protocol.StateRunning
 }
 
+// compacting reports whether a compaction this client asked for is in flight.
+func (m model) compacting() bool {
+	return !m.compactingSince.IsZero()
+}
+
 // elapsed is how long the current turn has run.
 func (m model) elapsed() time.Duration {
 	if m.runningSince.IsZero() {
@@ -253,6 +263,7 @@ func (m *model) reset(sessionID string) {
 	m.asking = nil
 	m.state = protocol.StateIdle
 	m.runningSince = time.Time{}
+	m.compactingSince = time.Time{}
 	m.lastEventAt = time.Time{}
 	m.refresh()
 }

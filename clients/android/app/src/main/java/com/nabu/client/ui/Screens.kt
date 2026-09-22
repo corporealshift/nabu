@@ -310,7 +310,7 @@ fun TranscriptScreen(
         },
         bottomBar = {
             Composer(
-                state, pending, blocked, tasks,
+                state, compacting, pending, blocked, tasks,
                 onSend, onTaskDone, onResume, onInterrupt, onRetryBlocked, onDiscardBlocked,
             )
         },
@@ -374,6 +374,7 @@ private fun RefusalBanner(text: String) {
 @Composable
 private fun Composer(
     state: String,
+    compacting: Boolean,
     pending: List<OutboxRow>,
     blocked: List<OutboxRow>,
     tasks: List<Task>,
@@ -397,8 +398,10 @@ private fun Composer(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        WorkingIndicator(state)
-        if (state == "running") StopBar(onInterrupt)
+        WorkingIndicator(state, compacting)
+        // A requested compaction runs while the session is idle, and on a
+        // local model it takes minutes: it needs a way out as much as a turn.
+        if (state == "running" || compacting) StopBar(onInterrupt)
         TaskCard(tasks, onTaskDone)
         if (state == "paused") ResumeBar(onResume)
         BlockedPrompts(blocked, onRetryBlocked, onDiscardBlocked)
@@ -677,8 +680,8 @@ private fun LineView(line: Line) {
  * nothing has to be inferred from stillness.
  */
 @Composable
-private fun WorkingIndicator(state: String) {
-    if (state != "running") return
+private fun WorkingIndicator(state: String, compacting: Boolean = false) {
+    if (state != "running" && !compacting) return
     val c = NabuTheme.colors
 
     val move = rememberInfiniteTransition(label = "working")
@@ -705,7 +708,7 @@ private fun WorkingIndicator(state: String) {
                 .background(c.accent)
         )
         Text(
-            "working",
+            if (compacting) "summarising the history — this can take minutes" else "working",
             style = MaterialTheme.typography.labelMedium,
             color = c.muted,
         )

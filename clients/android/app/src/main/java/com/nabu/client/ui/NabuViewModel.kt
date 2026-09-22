@@ -72,8 +72,8 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Whether a compaction is in flight. It is a model call on the daemon and
-     * takes seconds, during which nothing else changes on screen — so without
-     * this the control looks like it did nothing.
+     * takes minutes on a local model, during which nothing else changes on
+     * screen — so without this the control looks like it did nothing.
      */
     private val _compacting = MutableStateFlow(false)
     val compacting: StateFlow<Boolean> = _compacting.asStateFlow()
@@ -466,7 +466,7 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
             _compacting.value = true
             runCatching { repo.compactSession(c, sessionId) }
                 .onSuccess { _error.value = null }
-                .onFailure { _error.value = it.message ?: "could not compact the session" }
+                .onFailure { _error.value = compactFailure(it) }
             _compacting.value = false
         }
     }
@@ -482,3 +482,16 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
     }
 }
+
+/**
+ * What to say when a requested compaction did not come back.
+ *
+ * A refusal from the daemon carries a code and its own reason, which is passed
+ * through. No code means the connection went, and the daemon does not stop
+ * because the phone did: the summary lands in the transcript regardless, so
+ * saying it failed would be wrong.
+ */
+internal fun compactFailure(e: Throwable): String =
+    if (e is com.nabu.client.net.DaemonException && e.code == null)
+        "lost the connection while summarising — the daemon carries on, and the summary will appear here when it is written"
+    else e.message ?: "could not compact the session"

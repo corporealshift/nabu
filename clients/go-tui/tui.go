@@ -217,22 +217,33 @@ func perform(ctx context.Context, c *goclient.Client, p *tea.Program, a action) 
 	case actPrompt:
 		_, err = c.Call(ctx, "nabu.session.send_prompt",
 			map[string]any{"session_id": a.sessionID, "content": a.text})
-	case actInterrupt:
-		_, err = c.Call(ctx, "nabu.session.interrupt",
-			map[string]any{"session_id": a.sessionID})
-	case actStop:
-		_, err = c.Call(ctx, "nabu.session.stop",
-			map[string]any{"session_id": a.sessionID})
+	case actInterrupt, actStop:
+		// Off the action queue: these exist to end something slow, and would
+		// be useless waiting behind it (a prompt held until a summary lands).
+		method := "nabu.session.interrupt"
+		if a.kind == actStop {
+			method = "nabu.session.stop"
+		}
+		go func() {
+			if _, err := c.Call(ctx, method, map[string]any{"session_id": a.sessionID}); err != nil {
+				p.Send(errMsg{text: err.Error()})
+			}
+		}()
 	case actCompact:
-		// A model call, so it takes seconds. The note before it is what tells
-		// the user the client has not simply ignored them (spec 7.15).
-		var out struct {
-			Mode string `json:"mode"`
-		}
-		if err = c.CallInto(ctx, "nabu.session.compact",
-			map[string]any{"session_id": a.sessionID}, &out); err == nil {
-			p.Send(noteMsg{text: "compacted (" + out.Mode + ")"})
-		}
+		// A model call, and minutes on a local one (issue 87). It runs off the
+		// action queue so ctrl+x can still reach the daemon while it does.
+		go func() {
+			var out struct {
+				Mode string `json:"mode"`
+			}
+			err := c.CallInto(ctx, "nabu.session.compact",
+				map[string]any{"session_id": a.sessionID}, &out)
+			done := compactedMsg{mode: out.Mode}
+			if err != nil {
+				done.err = err.Error()
+			}
+			p.Send(done)
+		}()
 	case actSetGoal:
 		_, err = c.Call(ctx, "nabu.session.set_goal",
 			map[string]any{"session_id": a.sessionID, "condition": a.text})
