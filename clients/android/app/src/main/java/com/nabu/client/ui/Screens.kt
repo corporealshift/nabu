@@ -247,6 +247,15 @@ fun SessionListScreen(
                                     color = NabuTheme.colors.danger,
                                 )
                             }
+                            if (s.state == "idle") {
+                                idleAge(s.updatedAt, System.currentTimeMillis())?.let {
+                                    Text(
+                                        it,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = NabuTheme.colors.muted,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -543,12 +552,6 @@ private fun LineView(line: Line) {
                     style = MaterialTheme.typography.bodySmall,
                     color = NabuTheme.colors.muted,
                 )
-                if (s.state == "idle") {
-                    idleAge(s.updatedAt, System.currentTimeMillis())?.let {
-                        Text(it, style = MaterialTheme.typography.labelMedium,
-                            color = NabuTheme.colors.muted)
-                    }
-                }
             }
         }
 

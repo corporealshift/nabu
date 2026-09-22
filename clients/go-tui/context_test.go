@@ -104,7 +104,11 @@ func TestMessageTimestampAndIdleAge(t *testing.T) {
 	ev := event("e1", protocol.EventMessage,
 		protocol.MessageData{Role: "user", Content: "hello"})
 	ev.Timestamp = time.Date(2026, time.September, 16, 0, 0, 0, 0, time.UTC)
-	if got := renderEvent(ev); len(got) != 1 || !strings.Contains(got[0], "Sep 16 00:00") {
+	// The reader's zone, not the daemon's: pinned, so the test does not pass
+	// only on a machine that happens to run in UTC.
+	defer func(was *time.Location) { time.Local = was }(time.Local)
+	time.Local = time.FixedZone("EDT", -4*60*60)
+	if got := renderEvent(ev); len(got) != 1 || !strings.Contains(got[0], "Sep 15 20:00") {
 		t.Errorf("rendered message = %q, want timestamp", got)
 	}
 	if got := idleAge(time.Unix(0, 0), time.Unix(5*60, 0)); got != "5 minutes ago" {
