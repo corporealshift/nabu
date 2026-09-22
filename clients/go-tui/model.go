@@ -135,6 +135,19 @@ func newModel(sessionID string, actions chan<- action) model {
 // A duplicate arriving from both the live stream and a replay is ignored,
 // because the cursor only ever moves forward.
 func (m *model) appendEvent(ev protocol.Event) {
+	m.appendEvents([]protocol.Event{ev})
+}
+
+// appendEvents applies a replay batch and refreshes the viewport once. Rebuilding
+// the viewport for each event makes attaching to a long session quadratic.
+func (m *model) appendEvents(events []protocol.Event) {
+	for _, ev := range events {
+		m.appendEventWithoutRefresh(ev)
+	}
+	m.refresh()
+}
+
+func (m *model) appendEventWithoutRefresh(ev protocol.Event) {
 	if ev.ID != "" && ev.ID <= m.lastEventID {
 		return
 	}
@@ -186,11 +199,9 @@ func (m *model) appendEvent(ev protocol.Event) {
 		if line := m.rememberThought(ev); line != "" {
 			m.transcript = append(m.transcript, line)
 		}
-		m.refresh()
 		return
 	}
 	m.transcript = append(m.transcript, renderEvent(ev)...)
-	m.refresh()
 }
 
 // setState records a state change and starts or stops the turn clock. The

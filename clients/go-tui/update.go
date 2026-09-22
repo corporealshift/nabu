@@ -18,6 +18,9 @@ const tickInterval = 450 * time.Millisecond
 type (
 	// eventMsg is one logged session event.
 	eventMsg struct{ ev protocol.Event }
+	// eventsMsg is a catch-up batch. Rendering it at once avoids rebuilding the
+	// entire viewport once per event when attaching to a long session.
+	eventsMsg struct{ events []protocol.Event }
 	// askMsg is a question from the agent, waiting on an answer.
 	askMsg struct{ q question }
 
@@ -74,6 +77,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case eventMsg:
 		m.appendEvent(msg.ev)
+		return m, nil
+
+	case eventsMsg:
+		m.appendEvents(msg.events)
 		return m, nil
 
 	case deltaMsg:
