@@ -199,7 +199,9 @@ type Range struct {
 
 // CompactionHook lets a module protect state across a summarize compaction:
 // BeforeCompaction returns strings the summary prompt must preserve;
-// AfterCompaction re-injects prefix blocks the compaction retired.
+// AfterCompaction re-injects prefix blocks the compaction retired. Both run
+// under Options.CompactionTimeout rather than HookTimeout, because a hook here
+// may make a model call of its own.
 type CompactionHook interface {
 	BeforeCompaction(ctx context.Context, s Session, r Range) []string
 	AfterCompaction(ctx context.Context, s Session) ([]ContextBlock, error)
