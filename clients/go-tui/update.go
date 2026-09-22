@@ -98,6 +98,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case askMsg:
 		q := msg.q
 		m.asking = &q
+		// The panel is taller than the composer it replaces.
+		m.relayout()
+		m.refresh()
 		return m, nil
 
 	case resolvedMsg:
@@ -318,6 +321,7 @@ func (m model) answerQuestion(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	id := next.asking.id
 	next.asking = nil
+	next.relayout()
 	next.note("answered: " + answer)
 	return next, next.emit(action{kind: actAnswerAsk, id: id, text: answer})
 }
