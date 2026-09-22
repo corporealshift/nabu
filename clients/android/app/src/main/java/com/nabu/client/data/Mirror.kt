@@ -115,6 +115,16 @@ interface EventDao {
     suspend fun lastOrdinal(sessionId: String): Long?
 
     /**
+     * The newest ordinal, watched. A screen reads what follows the last row it
+     * saw rather than the whole log again on every change.
+     */
+    @Query("SELECT MAX(ordinal) FROM events WHERE session_id = :sessionId")
+    fun watchLastOrdinal(sessionId: String): Flow<Long?>
+
+    @Query("SELECT * FROM events WHERE session_id = :sessionId AND ordinal > :after ORDER BY ordinal ASC")
+    suspend fun after(sessionId: String, after: Long): List<EventRow>
+
+    /**
      * The newest prompts. A long agent run can put dozens of assistant turns
      * between two prompts, so the role is matched in SQL rather than by taking
      * the last few messages; the caller confirms it after parsing.

@@ -15,6 +15,7 @@ import com.nabu.client.protocol.EventType
 import com.nabu.client.protocol.NabuJson
 import com.nabu.client.settings.Settings
 import com.nabu.client.settings.SettingsStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -22,6 +23,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -85,11 +89,52 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     val sessions: StateFlow<List<SessionCard>> =
         repo.watchSessions()
             .map { rows -> rows.map { SessionCard(it, repo.latestPrompt(it.id)) } }
+            // Every event in every session touches the sessions table, and each
+            // pass parses a prompt per session: not work for the main thread.
+            .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     fun watchSession(id: String) = repo.watchSession(id)
     fun watchEvents(id: String) = repo.watchEvents(id)
     fun watchPending(id: String) = repo.watchPending(id)
+
+    private val feeds = HashMap<String, StateFlow<TranscriptView>>()
+
+    /**
+     * One session's transcript, projected off the main thread and one new row
+     * at a time (issue 82).
+     *
+     * The same flow comes back for the same session. A screen that asked for a
+     * fresh one on every recomposition restarted the query each time, and every
+     * event in any session recomposes it.
+     */
+    fun transcript(sessionId: String): StateFlow<TranscriptView> = feeds.getOrPut(sessionId) {
+        val feed = TranscriptFeed()
+        repo.watchLastOrdinal(sessionId)
+            .distinctUntilChanged()
+            // Ten new rows or one: either way the next read takes all of them.
+            .conflate()
+            .map { newest ->
+                // A mirror emptied underneath starts its ordinals again.
+                if ((newest ?: 0L) < feed.lastOrdinal) feed.reset()
+                feed.add(repo.rowsAfter(sessionId, feed.lastOrdinal))
+                feed.view()
+            }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TranscriptView())
+    }
+
+    /**
+     * Brings one session up to date now, ahead of the rest.
+     *
+     * A connection catches up on every session in turn, and the one being read
+     * would otherwise wait its place in that queue, showing "Not downloaded"
+     * the whole time.
+     */
+    fun syncNow(sessionId: String) {
+        val c = client ?: return
+        viewModelScope.launch { runCatching { repo.sync(c, sessionId) } }
+    }
 
     /** Appearance saves without disturbing the connection. */
     fun setAppearance(scheme: com.nabu.client.ui.theme.Scheme, mode: com.nabu.client.ui.theme.Mode) {
