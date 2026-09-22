@@ -81,8 +81,14 @@ func (m model) composerLines() []string {
 	return out
 }
 
-// composerHeight is how many rows the composer needs right now.
-func (m model) composerHeight() int { return len(m.composerLines()) }
+// composerHeight is how many rows the composer needs right now. A question
+// takes the composer's place, and its rows come out of the transcript too.
+func (m model) composerHeight() int {
+	if m.asking != nil {
+		return len(m.askLines()) + askBoxHeightChrome
+	}
+	return len(m.composerLines())
+}
 
 // viewportHeight is what the transcript gets: the screen, less the status and
 // help lines, less however many rows the composer is using. A prompt that grows
