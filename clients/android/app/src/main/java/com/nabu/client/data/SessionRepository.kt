@@ -207,6 +207,21 @@ class SessionRepository(
     }
 
     /**
+     * Summarises a session's history now, rather than waiting for it to cross
+     * the automatic threshold (spec 7.15). Returns the mode that actually ran.
+     *
+     * The daemon refuses a running session and tells the caller to interrupt
+     * first. That rule is not repeated here: two copies of it would drift, and
+     * only the daemon's copy is the one that decides.
+     */
+    suspend fun compactSession(client: DaemonClient, sessionId: String): String {
+        val result = client.callOrThrow("nabu.session.compact", buildJsonObject {
+            put("session_id", sessionId)
+        })
+        return result.jsonObject["mode"]?.jsonPrimitive?.content.orEmpty()
+    }
+
+    /**
      * Sends everything pending, oldest first. The client id makes a retry safe;
      * an item clears only once the daemon returns an event id for it.
      */

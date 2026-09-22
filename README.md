@@ -283,8 +283,12 @@ the offered answers, or type your own and press enter. Everything else you type 
 into the answer, so `q` does not quit while one is on screen.
 
 In the composer, a line starting with `/` is a command rather than a prompt: `/goal
-<text>` sets the run goal, `/goal` on its own clears it, `/stop` ends the session,
+<text>` sets the run goal, `/goal` on its own clears it, `/compact` summarises the
+history now instead of waiting for the automatic pass, `/stop` ends the session,
 `/sessions` switches, `/help` lists them.
+
+`/compact` is refused while a turn is running — compaction rewrites what the next
+request is built from, so interrupt with `ctrl+x` first.
 
 Quitting does not stop the run. Reopen with `nabu --session <id>` or press `s` and pick
 it.

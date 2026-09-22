@@ -223,6 +223,16 @@ func perform(ctx context.Context, c *goclient.Client, p *tea.Program, a action) 
 	case actStop:
 		_, err = c.Call(ctx, "nabu.session.stop",
 			map[string]any{"session_id": a.sessionID})
+	case actCompact:
+		// A model call, so it takes seconds. The note before it is what tells
+		// the user the client has not simply ignored them (spec 7.15).
+		var out struct {
+			Mode string `json:"mode"`
+		}
+		if err = c.CallInto(ctx, "nabu.session.compact",
+			map[string]any{"session_id": a.sessionID}, &out); err == nil {
+			p.Send(noteMsg{text: "compacted (" + out.Mode + ")"})
+		}
 	case actSetGoal:
 		_, err = c.Call(ctx, "nabu.session.set_goal",
 			map[string]any{"session_id": a.sessionID, "condition": a.text})

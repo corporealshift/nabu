@@ -265,10 +265,13 @@ fun TranscriptScreen(
     pending: List<OutboxRow>,
     blocked: List<OutboxRow>,
     tasks: List<Task>,
+    compacting: Boolean,
+    error: String?,
     onSend: (String) -> Unit,
     onTaskDone: (String) -> Unit,
     onResume: () -> Unit,
     onInterrupt: () -> Unit,
+    onCompact: () -> Unit,
     onRetryBlocked: (String) -> Unit,
     onDiscardBlocked: (String) -> Unit,
     onBack: () -> Unit,
@@ -289,7 +292,10 @@ fun TranscriptScreen(
                     titleContentColor = NabuTheme.colors.ink,
                 ),
                 title = { Text(title, style = MaterialTheme.typography.titleSmall) },
-                actions = { ContextBadge(events) },
+                actions = {
+                    ContextBadge(events)
+                    CompactButton(compacting, onCompact)
+                },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
             )
         },
@@ -300,21 +306,60 @@ fun TranscriptScreen(
             )
         },
     ) { padding ->
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            // One container per line rather than one around the list: a
-            // LazyColumn recycles its items, and a selection spanning an item
-            // that scrolls out of composition loses its anchor. Per line, a
-            // selection survives because everything it covers stays composed.
-            items(lines, key = { it.key }) {
-                SelectionContainer { LineView(it) }
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            // The daemon's refusals land here: compacting a running session is
+            // turned down, and a reason nobody sees is not a reason.
+            error?.let { RefusalBanner(it) }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                // One container per line rather than one around the list: a
+                // LazyColumn recycles its items, and a selection spanning an
+                // item that scrolls out of composition loses its anchor. Per
+                // line, a selection survives because everything it covers
+                // stays composed.
+                items(lines, key = { it.key }) {
+                    SelectionContainer { LineView(it) }
+                }
             }
         }
     }
+}
+
+/**
+ * Asks the daemon to summarise the history now.
+ *
+ * It does not grey itself out while the session is running. The daemon owns
+ * that rule and states it plainly when it refuses; a second copy on the phone
+ * would be one more thing to keep in step, and a disabled control explains
+ * nothing.
+ */
+@Composable
+private fun CompactButton(compacting: Boolean, onCompact: () -> Unit) {
+    TextButton(onClick = onCompact, enabled = !compacting) {
+        Text(
+            if (compacting) "Compacting…" else "Compact",
+            style = MaterialTheme.typography.labelMedium,
+            color = if (compacting) NabuTheme.colors.muted else NabuTheme.colors.accent,
+        )
+    }
+}
+
+/** What the daemon said when it turned something down. */
+@Composable
+private fun RefusalBanner(text: String) {
+    val c = NabuTheme.colors
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = c.danger,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    )
 }
 
 @Composable

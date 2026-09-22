@@ -70,6 +70,14 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    /**
+     * Whether a compaction is in flight. It is a model call on the daemon and
+     * takes seconds, during which nothing else changes on screen — so without
+     * this the control looks like it did nothing.
+     */
+    private val _compacting = MutableStateFlow(false)
+    val compacting: StateFlow<Boolean> = _compacting.asStateFlow()
+
     val settings: StateFlow<Settings?> =
         settingsStore.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -437,6 +445,29 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
                     runCatching { repo.flushOutbox(c) }
                 }
                 .onFailure { _error.value = it.message ?: "could not resume the session" }
+        }
+    }
+
+    /**
+     * Summarises the session's history on request (spec 7.15).
+     *
+     * A success needs no message of its own: the daemon appends a `compaction`
+     * event and the transcript renders it. A refusal does — the daemon turns
+     * one down while it is running, and the reason is the whole point.
+     */
+    fun compactSession(sessionId: String) {
+        if (_compacting.value) return
+        viewModelScope.launch {
+            val c = client
+            if (c == null) {
+                _error.value = "not connected"
+                return@launch
+            }
+            _compacting.value = true
+            runCatching { repo.compactSession(c, sessionId) }
+                .onSuccess { _error.value = null }
+                .onFailure { _error.value = it.message ?: "could not compact the session" }
+            _compacting.value = false
         }
     }
 

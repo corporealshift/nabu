@@ -40,6 +40,9 @@ type (
 	sessionsMsg struct{ sessions []goclient.SessionSummary }
 	// errMsg is something the user should see that did not come from the log.
 	errMsg struct{ text string }
+	// noteMsg is the same, for something that went right. It is separate from
+	// errMsg so a success does not leave lastError set behind it.
+	noteMsg struct{ text string }
 	// tickMsg advances the working indicator.
 	tickMsg time.Time
 )
@@ -111,6 +114,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		m.lastError = msg.text
+		m.note(msg.text)
+		return m, nil
+
+	case noteMsg:
 		m.note(msg.text)
 		return m, nil
 	}
@@ -239,8 +246,13 @@ func (m model) submit() (tea.Model, tea.Cmd) {
 
 	act := *res.act
 	act.sessionID = m.sessionID
-	if act.kind == actPrompt {
+	switch act.kind {
+	case actPrompt:
 		m.note("› " + act.text)
+	case actCompact:
+		// It is a model call and the transcript does not move while it runs,
+		// so without this the client looks like it dropped the command.
+		m.note("compacting the history — this takes a few seconds")
 	}
 	return m, m.emit(act)
 }

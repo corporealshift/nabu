@@ -23,6 +23,13 @@ class FakeDaemon {
     /** Set to refuse the handshake, for the failure path. */
     @Volatile var refuseHandshake = false
 
+    /**
+     * What a compaction reports having done. The daemon falls back to clearing
+     * tool results when the summariser fails, and says so rather than claiming
+     * the summary it was asked for (spec 7.15).
+     */
+    @Volatile var compactMode = "summarize"
+
     /** Prompts accepted, so a returned event id is unique per send. */
     val sent = java.util.concurrent.atomic.AtomicInteger(0)
 
@@ -32,6 +39,13 @@ class FakeDaemon {
      * ended: an error the same request will always get.
      */
     val refuseSession = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    /**
+     * Methods this daemon turns down, and what it says, keyed by method name.
+     * A refusal is half of several contracts — compacting a running session,
+     * for one — and a fake that only ever succeeds cannot test them.
+     */
+    val refuseMethod = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, String>>()
 
     /** Held open to prove a notification arrives while a call is in flight. */
     @Volatile var holdCall: CountDownLatch? = null
@@ -62,6 +76,10 @@ class FakeDaemon {
                         ws.send(errorFor(id, "session is completed; refused", code))
                         return
                     }
+                }
+                refuseMethod[msg.method]?.let { (code, text) ->
+                    ws.send(errorFor(id, text, code))
+                    return
                 }
                 holdCall?.let {
                     // Answer only when the test says so.
@@ -99,11 +117,13 @@ class FakeDaemon {
         server.shutdown()
     }
 
-    private fun resultFor(id: kotlinx.serialization.json.JsonElement, method: String) =
-        if (method == "nabu.session.send_prompt")
+    private fun resultFor(id: kotlinx.serialization.json.JsonElement, method: String) = when (method) {
+        "nabu.session.send_prompt" ->
             """{"jsonrpc":"2.0","id":${id},"result":{"event_id":"01SENT${sent.incrementAndGet()}"}}"""
-        else
-            """{"jsonrpc":"2.0","id":${id},"result":{"ok":true,"method":"$method"}}"""
+        "nabu.session.compact" ->
+            """{"jsonrpc":"2.0","id":${id},"result":{"event_id":"01COMPACTED","mode":"$compactMode"}}"""
+        else -> """{"jsonrpc":"2.0","id":${id},"result":{"ok":true,"method":"$method"}}"""
+    }
 
     private fun errorFor(
         id: kotlinx.serialization.json.JsonElement,

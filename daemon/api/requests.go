@@ -12,7 +12,7 @@ import (
 )
 
 // DefaultRequestTimeout bounds how long the daemon waits for a client to
-// answer a permission or ask request. Spec 7.15 fixes the default at ten
+// answer a permission or ask request. Spec 7.18 fixes the default at ten
 // minutes: long enough for a phone in a pocket, short enough that a run does
 // not hang forever on a client that will never answer.
 const DefaultRequestTimeout = 10 * time.Minute
@@ -113,7 +113,7 @@ func (h *Handler) ask(ctx context.Context, sessionID, method string, params map[
 	h.pending[id] = p
 	h.reqMu.Unlock()
 
-	// The entry outlives the wait on purpose. Spec 7.15 requires that a late
+	// The entry outlives the wait on purpose. Spec 7.18 requires that a late
 	// responder be told the request is already resolved, and that an answer
 	// arriving after a timeout still be accepted — neither is possible once
 	// the id has been forgotten. It is dropped after a grace window.
@@ -173,12 +173,12 @@ func (h *Handler) routeResponse(ctx context.Context, cs *connState, msg *clientM
 	case requestOpen:
 		// This client won. Nothing to send back.
 	case requestAnswered:
-		// Spec 7.15: a later responder is told the request is already resolved
+		// Spec 7.18: a later responder is told the request is already resolved
 		// so it can dismiss its prompt.
 		_ = cs.write(errorResp(msg.ID, protocol.CodeAlreadyResolved,
 			protocol.ErrorNames[protocol.CodeAlreadyResolved]))
 	case requestTimedOut:
-		// Spec 7.15: "a later answer is still accepted and resumes it." The
+		// Spec 7.18: "a later answer is still accepted and resumes it." The
 		// answer is too late to feed the call that asked, so what it buys is
 		// the session moving on.
 		h.resumeAfterLateAnswer(ctx, p.sessionID)

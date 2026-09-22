@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -59,7 +60,7 @@ func (m *Manager) maybeCompact(ctx context.Context, h *sessionHandle, pcfg provi
 		return nil
 	}
 	if used >= m.cfg.Compaction.SummarizeAt {
-		return m.summarize(ctx, h, pcfg)
+		return m.summarize(ctx, h)
 	}
 	if used >= m.cfg.Compaction.ClearAt {
 		return m.clearResults(ctx, h)
@@ -140,7 +141,7 @@ func clearedAlready(log []protocol.Event, id string) bool {
 // anything the range left out would be dropped from the request without ever
 // reaching the summary. Everything up to the compaction point is summarized;
 // the Current state block carries goal, tasks and budget across losslessly.
-func (m *Manager) summarize(ctx context.Context, h *sessionHandle, pcfg provider.Config) error {
+func (m *Manager) summarize(ctx context.Context, h *sessionHandle) error {
 	log := h.s.Events()
 	st := protocol.Project(log)
 	start := 1 // never the session event
@@ -152,7 +153,7 @@ func (m *Manager) summarize(ctx context.Context, h *sessionHandle, pcfg provider
 			}
 		}
 	}
-	if len(log)-start < 2 {
+	if !enoughToSummarise(log, st) {
 		return nil // not enough history to be worth a model call
 	}
 	rng := module.Range{Start: log[start].ID, End: log[len(log)-1].ID}
@@ -222,4 +223,77 @@ func truncateText(s string, max int) string {
 		return s
 	}
 	return s[:max] + fmt.Sprintf(" …(%d more bytes)", len(s)-max)
+}
+
+// ErrNothingToCompact is returned when a session holds too little history for a
+// summary to be worth a model call.
+//
+// maybeCompact treats that case as "not yet" and says nothing, which is right
+// for something that runs on its own between turns. A person who asked for it
+// deserves an answer: a button that appears to do nothing is indistinguishable
+// from one that is broken.
+var ErrNothingToCompact = errors.New("nothing to compact yet: the session has too little history to summarise")
+
+// Compact summarises a session's history on request, rather than waiting for it
+// to cross the automatic threshold.
+//
+// Refused while the session is running. Compaction rewrites what the next
+// request is assembled from, and doing that under a turn already in flight
+// would change the ground beneath it. Interrupt first, then compact — which is
+// why the two arrived together.
+//
+// Allowed when compaction_enabled is false. That option turns off the automatic
+// pass; asking explicitly is the owner overriding their own default, not
+// working around it.
+func (m *Manager) Compact(ctx context.Context, id string) (protocol.Event, error) {
+	h, err := m.handle(id)
+	if err != nil {
+		return protocol.Event{}, err
+	}
+
+	st := h.State()
+	switch st.State {
+	case protocol.StateRunning:
+		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidTransition,
+			"session is running; interrupt it before compacting")
+	case protocol.StateCompleted, protocol.StateError:
+		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidTransition,
+			fmt.Sprintf("session has ended (%s); there is nothing further to compact", st.State))
+	}
+
+	if !enoughToSummarise(h.s.Events(), st) {
+		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams,
+			ErrNothingToCompact.Error())
+	}
+
+	before := len(h.s.Events())
+	if err := m.summarize(ctx, h); err != nil {
+		return protocol.Event{}, err
+	}
+
+	// summarize appends the compaction itself, and falls back to clearing tool
+	// results when the summariser fails. Report whichever actually landed
+	// rather than the one that was asked for.
+	log := h.s.Events()
+	for i := len(log) - 1; i >= before; i-- {
+		if log[i].Type == protocol.EventCompaction {
+			return log[i], nil
+		}
+	}
+	return protocol.Event{}, fmt.Errorf("compaction produced no event")
+}
+
+// enoughToSummarise is summarize's own threshold, asked in advance so a request
+// that would do nothing is refused instead of silently succeeding.
+func enoughToSummarise(log []protocol.Event, st protocol.State) bool {
+	start := 1 // never the session event
+	if st.CompactedThrough != "" {
+		for i, e := range log {
+			if e.ID == st.CompactedThrough {
+				start = i + 1
+				break
+			}
+		}
+	}
+	return len(log)-start >= 2
 }
