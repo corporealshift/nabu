@@ -82,6 +82,15 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 		}
 	}
 
+	// The provider rebuilt a call the server had reported as thinking. Saying
+	// so keeps the log honest — the alternative is quietly rewriting what the
+	// model produced — and names a fault that lives upstream of nabu.
+	if resp.Recovered > 0 {
+		h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "warn",
+			Message: fmt.Sprintf("the model wrote %s into its reasoning instead of calling %s; "+
+				"recovered and ran anyway", plural(resp.Recovered, "tool call"), thatOrThose(resp.Recovered))})
+	}
+
 	msg := protocol.MessageData{Role: "assistant", Content: resp.Content}
 	if resp.Usage != (protocol.Usage{}) {
 		u := resp.Usage
@@ -130,4 +139,19 @@ func (m *Manager) toIdle(ctx context.Context, h *sessionHandle, reason string) e
 	_, err := h.s.Append(protocol.EventStateChange, protocol.StateChangeData{
 		From: &from, To: protocol.StateIdle, Reason: reason})
 	return err
+}
+
+// plural renders a count with its noun: "1 tool call", "2 tool calls".
+func plural(n int, noun string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, noun)
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+func thatOrThose(n int) string {
+	if n == 1 {
+		return "it"
+	}
+	return "them"
 }

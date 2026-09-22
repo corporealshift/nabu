@@ -74,7 +74,7 @@ func (p *OpenAI) Complete(ctx context.Context, req Request, onDelta, onThinking 
 		}
 		resp, err := p.once(ctx, req, watch(onDelta), watch(onThinking))
 		if err == nil {
-			return resp, nil
+			return recoverLeakedCalls(resp, req.Tools), nil
 		}
 		lastErr = err
 		if ctx.Err() != nil || started || !isRetryable(err) || attempt == attempts-1 {
