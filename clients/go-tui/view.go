@@ -29,9 +29,6 @@ func (m model) View() string {
 	if m.pending != nil {
 		return m.overlay()
 	}
-	if m.asking != nil {
-		return m.askOverlay()
-	}
 	if m.picking {
 		return m.picker()
 	}
@@ -41,6 +38,9 @@ func (m model) View() string {
 		main = lipgloss.JoinHorizontal(lipgloss.Top, main, m.taskPane())
 	}
 	composer := strings.Join(m.composerLines(), "\n")
+	if m.asking != nil {
+		composer = m.askPanel()
+	}
 	return main + "\n" + composer + "\n" + m.status() + "\n" + m.help()
 }
 

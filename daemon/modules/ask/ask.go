@@ -44,14 +44,18 @@ func (m *Module) Tools() []module.Tool {
 			"Use it when the work genuinely forks and the right branch is theirs to " +
 			"choose: which of two designs they want, which of several files they meant, " +
 			"whether to go ahead with something that cannot be undone. " +
+			"Ask exactly one question that resolves exactly one decision per call; " +
+			"never bundle several questions or decisions together. If more input is " +
+			"needed, ask the most important question first, then ask another only after " +
+			"receiving its answer. " +
 			"Do not use it for anything you can find out by reading the repository, " +
 			"and do not use it to ask permission for a tool call — that is asked for " +
 			"you. They may be asleep, so a question costs them an interruption and " +
 			"costs you the wait.",
 		Schema: json.RawMessage(`{"type":"object","required":["question"],"properties":{` +
-			`"question":{"type":"string","description":"one clear question, in plain words"},` +
+			`"question":{"type":"string","description":"one clear question about one decision, in plain words"},` +
 			`"choices":{"type":"array","items":{"type":"string"},` +
-			`"description":"up to 6 options, when the answer is a choice rather than free text"}}}`),
+			`"description":"up to 6 mutually exclusive options for that one decision"}}}`),
 		Run: m.run,
 	}}
 }

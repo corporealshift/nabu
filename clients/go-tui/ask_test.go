@@ -27,7 +27,7 @@ func press(t *testing.T, m model, keys string) model {
 }
 
 // Issue 36: the agent can now put a question, and it has to be answerable.
-func TestAQuestionTakesOverTheScreen(t *testing.T) {
+func TestAQuestionIsShown(t *testing.T) {
 	m := asked(sized(t, nil), "which design do you want?", "the simple one", "the fast one")
 
 	view := m.View()
@@ -35,6 +35,17 @@ func TestAQuestionTakesOverTheScreen(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Errorf("the overlay never shows %q:\n%s", want, view)
 		}
+	}
+}
+
+func TestAQuestionKeepsTheTranscriptVisible(t *testing.T) {
+	m := sized(t, nil)
+	m.transcript = []string{"the implementation has two viable designs"}
+	m.refresh()
+	m = asked(m, "which design do you want?", "the simple one", "the fast one")
+
+	if view := m.View(); !strings.Contains(view, "the implementation has two viable designs") {
+		t.Errorf("a question should leave its context visible:\n%s", view)
 	}
 }
 
