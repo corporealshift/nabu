@@ -88,7 +88,9 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
     val endpoint = settings?.let { "${it.host}:${it.port}:${it.token}" }
     LaunchedEffect(endpoint) {
         val s = settings ?: return@LaunchedEffect
-        if (s.host.isBlank()) screen = Screen.Settings else vm.reconnect()
+        // connect, not reconnect: this runs again whenever the activity is
+        // recreated, and restarting a healthy connection each time is a drop.
+        if (s.host.isBlank()) screen = Screen.Settings else vm.connect()
     }
 
     // Android freezes a backgrounded process, which kills the socket while the

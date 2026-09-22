@@ -177,7 +177,12 @@ fun SessionListScreen(
             },
         )
     }) { padding ->
-        if (error != null && connection != Connection.Connected) {
+        // With sessions mirrored, a lost connection is a line above them, not a
+        // screen in place of them. Swapping the whole list for an error card
+        // made every reconnect flash between the two (issue 69), and hid the
+        // offline copy the mirror exists to show.
+        val offline = error != null && connection != Connection.Connected
+        if (offline && sessions.isEmpty()) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = NabuTheme.colors.surface),
                 modifier = Modifier.fillMaxWidth().padding(padding).padding(12.dp),
@@ -189,7 +194,7 @@ fun SessionListScreen(
                         color = NabuTheme.colors.danger,
                     )
                     Text(
-                        error,
+                        error.orEmpty(),
                         style = MaterialTheme.typography.bodySmall,
                         color = NabuTheme.colors.muted,
                     )
@@ -212,6 +217,18 @@ fun SessionListScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (offline) {
+                item(key = "offline") {
+                    Text(
+                        if (connection == Connection.Connecting) "Reconnecting — ${error.orEmpty()}"
+                        else "Offline — ${error.orEmpty()}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = NabuTheme.colors.danger,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             items(sessions, key = { it.row.id }) { card ->
                 val s = card.row
                 Card(

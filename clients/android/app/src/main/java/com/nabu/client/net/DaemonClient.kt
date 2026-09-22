@@ -71,7 +71,6 @@ sealed interface Incoming {
     data class Event(val value: SessionEvent) : Incoming
     data class Permission(val value: PermissionRequest) : Incoming
     data class Ask(val value: AskRequest) : Incoming
-    data class Delta(val sessionId: String, val text: String) : Incoming
     data class Other(val value: Rpc) : Incoming
 }
 
@@ -102,6 +101,9 @@ class DaemonClient(
     private val http: OkHttpClient = defaultHttp(),
 ) {
     companion object {
+        /** Ephemeral streams nothing on the phone consumes (spec 7.6). */
+        private val STREAMED = setOf("nabu.session.delta", "nabu.session.thinking")
+
         fun defaultHttp(): OkHttpClient = OkHttpClient.Builder()
             // A turn can be silent for minutes, so pings keep an idle but
             // healthy connection alive.
@@ -119,9 +121,11 @@ class DaemonClient(
     private val nextId = java.util.concurrent.atomic.AtomicLong(0)
     @Volatile private var socket: WebSocket? = null
 
+    // Room for a catch-up's worth of pushes while the collector is busy. It is
+    // never allowed to overflow quietly: see emit.
     private val _incoming = MutableSharedFlow<Incoming>(
         replay = 0,
-        extraBufferCapacity = 256,
+        extraBufferCapacity = 4096,
         onBufferOverflow = BufferOverflow.SUSPEND,
     )
 
@@ -210,6 +214,11 @@ class DaemonClient(
                 return // one unreadable frame is not the end of the connection
             }
             when {
+                // Streamed text, one message per token, from every session the
+                // phone follows. Nothing here reads it — the event that ends a
+                // turn carries the whole text — and passing it on crowded out
+                // what does matter (issue 69).
+                msg.method in STREAMED -> Unit
                 msg.isNotification -> emit(msg)
                 msg.isRequest -> emit(msg)
                 else -> deliver(msg)
@@ -238,8 +247,20 @@ class DaemonClient(
         pending.remove(id)?.complete(msg)
     }
 
+    /**
+     * Passes a push on. This runs on OkHttp's reader thread, which also answers
+     * the daemon's pongs, so it must not wait.
+     *
+     * A full buffer used to drop the message and carry on: an event went
+     * missing from the mirror for good, since the next one moved the cursor
+     * past it, and a permission prompt was never shown. Now the connection is
+     * given up instead, and the reconnect catches up from the cursor.
+     */
     private fun emit(msg: Rpc) {
-        _incoming.tryEmit(classify(msg))
+        if (!_incoming.tryEmit(classify(msg))) {
+            socket?.cancel()
+            fail("fell behind the daemon; reconnecting to catch up")
+        }
     }
 
     private fun fail(reason: String) {
@@ -260,14 +281,6 @@ class DaemonClient(
                     event = NabuJson.decodeFromJsonElement(Event.serializer(), ev),
                 ))
             } else Incoming.Other(msg)
-        }
-
-        "nabu.session.delta" -> {
-            val p = msg.params?.jsonObject
-            Incoming.Delta(
-                sessionId = p?.get("session_id")?.jsonPrimitive?.content ?: "",
-                text = p?.get("text")?.jsonPrimitive?.content ?: "",
-            )
         }
 
         "nabu.rpc.permission.request" -> {
