@@ -18,10 +18,9 @@ type question struct {
 	typed string
 }
 
-// askOverlay draws the question. It takes the whole screen for the same reason
-// the permission prompt does: an answer given to a question you did not read is
-// worth less than no answer.
-func (m model) askOverlay() string {
+// askPanel draws the question below the transcript. Unlike a permission prompt,
+// the context that led to a question helps the person give a useful answer.
+func (m model) askPanel() string {
 	q := m.asking
 
 	var b strings.Builder
@@ -43,11 +42,7 @@ func (m model) askOverlay() string {
 	}
 	b.WriteString(dim.Render(help))
 
-	box := overlayBox.Render(b.String())
-	if m.width > 0 && m.height > 0 {
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
-	}
-	return box
+	return overlayBox.Render(b.String())
 }
 
 // onAskKey edits or sends the answer. Every printable key belongs to the

@@ -157,8 +157,9 @@ func TestTheToolIsCalledAsk(t *testing.T) {
 	if len(tools) != 1 || tools[0].Name != "ask" {
 		t.Fatalf("tools = %v", tools)
 	}
-	// The description has to steer it away from the two obvious misuses.
-	for _, want := range []string{"permission", "reading the repository"} {
+	// The description has to steer it away from the obvious misuses, including
+	// combining multiple decisions into a single unanswerable prompt.
+	for _, want := range []string{"permission", "reading the repository", "exactly one question"} {
 		if !strings.Contains(tools[0].Description, want) {
 			t.Errorf("the description never mentions %q", want)
 		}
