@@ -92,10 +92,47 @@ func (h *Handler) register(name string, fn methodFunc) {
 	h.methods[name] = fn
 }
 
-// ServeConn implements ConnHandler: read a message, dispatch it, reply.
+// callQueue is how many calls one connection may have waiting behind a slow
+// one before its read loop stops accepting more.
+const callQueue = 64
+
+// jumpsQueue names the methods answered at once rather than in turn. Each
+// exists to end whatever is ahead of it, so queueing one behind a compaction
+// would make it useless for exactly the case it is for.
+var jumpsQueue = map[string]bool{
+	"nabu.session.interrupt": true,
+	"nabu.session.stop":      true,
+}
+
+// ServeConn implements ConnHandler: read messages, dispatch calls, reply.
+//
+// The read loop never waits on a handler. The websocket library answers pings
+// only while the connection is being read, so a handler run here — a
+// compaction is minutes on a local model — left a client's keepalive
+// unanswered, and a phone gave up on the connection after one ping interval.
+// Responses to the daemon's own requests are read here too, and waiting would
+// hold those back as well.
+//
+// Calls are still answered in the order they arrive, by one worker, except the
+// few in jumpsQueue.
 func (h *Handler) ServeConn(ctx context.Context, conn Conn) error {
 	cs := &connState{conn: conn, ctx: ctx}
 	defer h.dropConn(cs)
+
+	calls := make(chan json.RawMessage, callQueue)
+	var workers sync.WaitGroup
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		for raw := range calls {
+			h.respond(ctx, cs, raw)
+		}
+	}()
+	// A call already accepted is carried out even if the client has gone:
+	// it was sent, and only the reply is lost.
+	defer workers.Wait()
+	defer close(calls)
+
 	for {
 		var raw json.RawMessage
 		if err := conn.ReadJSON(ctx, &raw); err != nil {
@@ -111,10 +148,28 @@ func (h *Handler) ServeConn(ctx context.Context, conn Conn) error {
 			}
 		}
 
-		if resp := h.dispatch(ctx, cs, raw); resp != nil {
-			if err := cs.write(resp); err != nil {
-				return err
-			}
+		if jumpsQueue[msg.Method] {
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				h.respond(ctx, cs, raw)
+			}()
+			continue
+		}
+		select {
+		case calls <- raw:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+// respond dispatches one call and writes its reply. A failed write is the
+// connection ending, which the read loop reports.
+func (h *Handler) respond(ctx context.Context, cs *connState, raw json.RawMessage) {
+	if resp := h.dispatch(ctx, cs, raw); resp != nil {
+		if err := cs.write(resp); err != nil {
+			h.log.Debug("reply not delivered", "error", err)
 		}
 	}
 }
