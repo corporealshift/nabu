@@ -471,6 +471,27 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ------------------------------------------------------------- stats
+
+    private val _stats = MutableStateFlow<StatsState>(StatsState())
+
+    /** The stats screen's numbers (issue 38). */
+    val stats: StateFlow<StatsState> = _stats.asStateFlow()
+
+    /** Asks the daemon for a session's numbers, and the days around them. */
+    fun loadStats(sessionId: String) {
+        _stats.value = StatsState(sessionId = sessionId, loading = true)
+        viewModelScope.launch {
+            val c = client ?: run {
+                _stats.value = StatsState(sessionId, error = "not connected")
+                return@launch
+            }
+            runCatching { repo.stats(c, sessionId) to runCatching { repo.usage(c, 14) }.getOrDefault(emptyList()) }
+                .onSuccess { (s, days) -> _stats.value = StatsState(sessionId, session = s, days = days) }
+                .onFailure { _stats.value = StatsState(sessionId, error = it.message ?: "could not load the stats") }
+        }
+    }
+
     /** The id that makes a retry safe to repeat. */
     private fun newClientId(): String =
         "outbox-" + java.util.UUID.randomUUID().toString().replace("-", "").take(20)

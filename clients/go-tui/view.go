@@ -32,6 +32,9 @@ func (m model) View() string {
 	if m.picking {
 		return m.picker()
 	}
+	if m.stats != nil {
+		return m.statsPanel()
+	}
 
 	main := m.viewport.View()
 	if m.showTasks() {

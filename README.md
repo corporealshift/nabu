@@ -222,6 +222,15 @@ paying for a walk on every request.
 
 It never interrupts a turn: changes that land mid-turn appear in the next request.
 
+### How much work a session was
+
+`/stats` in the terminal UI, or Stats in a session's top bar on the phone, shows turns,
+prompts, time spent working, tokens in and out, how the context grew turn by turn and
+where compaction cut it back, which tools were used and how often they failed, the files
+read over and over (a first sign of going round in circles), and tokens per day across
+every session. `nabu stats <id>` prints the same as JSON for your own analysis, and
+`nabu stats` prints the days.
+
 ### Searching the web
 
 Off until you give it a key. Add a `modules.web` block:

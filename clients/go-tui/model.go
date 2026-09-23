@@ -96,6 +96,9 @@ type model struct {
 	composing bool
 	input     string
 
+	// stats is the /stats panel on screen, or nil.
+	stats *statsView
+
 	// picker
 	picking  bool
 	sessions []goclient.SessionSummary
