@@ -49,11 +49,26 @@ type commandResult struct {
 	open string
 }
 
-const helpText = "commands: /goal <text> set a goal · /goal clear it · " +
-	"/compact summarise the history now · /stop end the session · " +
-	"/archive put this session away · /stats how much work this session was · " +
-	"/open <name> open a page the agent made · " +
-	"/sessions switch · /help this list"
+// commands is every / command, for /help and the ? panel alike.
+var commands = []struct{ name, what string }{
+	{"/goal <text>", "set a goal"},
+	{"/goal", "clear it"},
+	{"/compact", "summarise the history now"},
+	{"/stop", "end the session"},
+	{"/archive", "put this session away"},
+	{"/stats", "how much work this session was"},
+	{"/open <name>", "open a page the agent made"},
+	{"/sessions", "switch"},
+	{"/help", "this list"},
+}
+
+var helpText = func() string {
+	parts := make([]string, len(commands))
+	for i, c := range commands {
+		parts[i] = c.name + " " + c.what
+	}
+	return "commands: " + strings.Join(parts, " · ")
+}()
 
 // parseCommand turns a line of input into what should happen. Text without a
 // leading slash is a prompt, verbatim.

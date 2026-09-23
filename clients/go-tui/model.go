@@ -121,6 +121,9 @@ type model struct {
 	// stats is the /stats panel on screen, or nil.
 	stats *statsView
 
+	// showKeys is the ? panel: every key and command.
+	showKeys bool
+
 	// picker
 	picking  bool
 	sessions []goclient.SessionSummary
@@ -386,6 +389,10 @@ func (m *model) dropPrompt(requestID string) bool {
 const (
 	taskPaneWidth   = 34
 	minWideTerminal = 100
+	taskPanePad     = 1
+	// taskTitleRoom is what a title gets once the margin, border, padding and
+	// the mark take their share, with a column left for truncate's ellipsis.
+	taskTitleRoom = taskPaneWidth - 2 - taskPanePad - 2 - 1
 )
 
 // showTasks reports whether there is something to show, room to show it, and

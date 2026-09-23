@@ -99,11 +99,11 @@ func TestTranscriptShrinksAsTheComposerGrows(t *testing.T) {
 	}
 }
 
-func TestClosedComposerIsOneLine(t *testing.T) {
+func TestClosedComposerIsOneLineInItsBox(t *testing.T) {
 	m := newModel("S1", make(chan action, 1))
 
-	if n := len(m.composerLines()); n != 1 {
-		t.Errorf("a closed composer should be one line, got %d", n)
+	if n := len(m.composerLines()); n != 3 {
+		t.Errorf("a closed composer should be one line and a border above and below, got %d", n)
 	}
 }
 

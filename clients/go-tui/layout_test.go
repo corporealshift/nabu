@@ -1,9 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/corporealshift/nabu/protocol"
 )
@@ -154,5 +158,117 @@ func TestReportLine(t *testing.T) {
 		if got := stripANSI(renderReport(tt.d)); got != tt.want {
 			t.Errorf("report = %q, want %q", got, tt.want)
 		}
+	}
+}
+
+// The screen is exactly the terminal: the composer's box, the gap above it and
+// the status line all come out of the transcript's rows, and nothing is wider
+// than the terminal, whatever is on screen.
+func TestTheViewFillsTheTerminalExactly(t *testing.T) {
+	states := []struct {
+		name  string
+		setup func(model) model
+	}{
+		{"idle", func(m model) model { return m }},
+		{"composing a long prompt", func(m model) model {
+			m, _ = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+			m, _ = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(strings.Repeat("a long prompt ", 20))})
+			return m
+		}},
+		{"asking", func(m model) model {
+			return asked(m, "which design do you want?", "the simple one", "the fast one")
+		}},
+		{"with the task pane", func(m model) model {
+			m, _ = send(m, eventMsg{ev: event("t1", protocol.EventTasks, protocol.TasksData{Tasks: []protocol.Task{
+				{ID: "1", Title: "read the code", Status: protocol.TaskDone},
+				{ID: "2", Title: "fix the race", Status: protocol.TaskInProgress},
+			}})})
+			return m
+		}},
+		{"session ended", func(m model) model {
+			m, _ = send(m, eventMsg{ev: event("s1", protocol.EventStateChange,
+				protocol.StateChangeData{To: protocol.StateCompleted})})
+			return m
+		}},
+	}
+	for _, size := range [][2]int{{80, 24}, {120, 40}} {
+		for _, st := range states {
+			t.Run(fmt.Sprintf("%s at %dx%d", st.name, size[0], size[1]), func(t *testing.T) {
+				m := sized(t, nil)
+				m, _ = send(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+				for i := 0; i < 30; i++ {
+					m.appendEvent(event(fmt.Sprintf("e%02d", i), protocol.EventMessage,
+						protocol.MessageData{Role: "assistant", Content: long(i)}))
+				}
+				m = st.setup(m)
+
+				view := m.View()
+				if h := lipgloss.Height(view); h != size[1] {
+					t.Errorf("the view is %d rows on a %d-row terminal:\n%s", h, size[1], stripANSI(view))
+				}
+				for i, line := range strings.Split(view, "\n") {
+					if w := visibleWidth(line); w > size[0] {
+						t.Errorf("row %d is %d wide on a %d-column terminal: %q", i, w, size[0], stripANSI(line))
+					}
+				}
+			})
+		}
+	}
+}
+
+// On a narrow terminal the hints give way to the status.
+func TestTheStatusLineFitsANarrowTerminal(t *testing.T) {
+	m := sized(t, nil)
+	m, _ = send(m, tea.WindowSizeMsg{Width: 40, Height: 24})
+	m, _ = send(m, connMsg{state: connected})
+	status := m.status()
+	if w := visibleWidth(status); w > 40 {
+		t.Errorf("the status is %d wide on a 40-column terminal: %q", w, stripANSI(status))
+	}
+	if strings.Contains(status, "? keys") {
+		t.Errorf("the hints should give way: %q", stripANSI(status))
+	}
+	if !strings.Contains(status, "connected") {
+		t.Errorf("the status itself must stay: %q", stripANSI(status))
+	}
+
+	m, _ = send(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	if status := stripANSI(m.status()); !strings.HasSuffix(status, "q quit"+margin) {
+		t.Errorf("at 80 columns the hints fit at the right: %q", status)
+	}
+}
+
+// ? shows every key; esc puts it away, and q closes the panel rather than the
+// client.
+func TestTheKeysPanel(t *testing.T) {
+	m := sized(t, nil)
+	m, _ = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	view := stripANSI(m.View())
+	for _, want := range []string{"ctrl+x", "/compact", m.sessionID} {
+		if !strings.Contains(view, want) {
+			t.Errorf("the keys panel should list %q:\n%s", want, view)
+		}
+	}
+
+	m, cmd := send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if m.quitting || cmd != nil {
+		t.Error("q on the keys panel should close it, not quit")
+	}
+	if m.showKeys {
+		t.Error("q should close the keys panel")
+	}
+
+	m, _ = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	m, _ = send(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.showKeys {
+		t.Error("esc should close the keys panel")
+	}
+}
+
+// A long task title is cut to the pane, never wrapped onto a second row.
+func TestALongTaskTitleFitsThePane(t *testing.T) {
+	line := taskLine(protocol.Task{Title: strings.Repeat("a very long task title ", 5), Status: protocol.TaskInProgress})
+	if w, room := visibleWidth(line), taskPaneWidth-2-taskPanePad; w > room {
+		t.Errorf("the task line is %d wide, the pane holds %d", w, room)
 	}
 }

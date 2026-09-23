@@ -74,7 +74,8 @@ func (m model) askLines() []string {
 	}
 	tail = append(tail, "", userStyle.Render("› ")+q.typed+badgeOK.Render("▌"), "", dim.Render(help))
 
-	// Leave the status and help lines, and one row of transcript.
+	// Leave the gap above the panel, the status line, and one row of
+	// transcript.
 	room := m.height - 3 - askBoxHeightChrome
 	if spare := room - len(head) - len(tail); spare < len(body) {
 		if spare < 1 {

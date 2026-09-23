@@ -53,32 +53,44 @@ func wrapText(text string, width int) []string {
 // visibleWidth is what a string occupies on screen, ignoring styling.
 func visibleWidth(s string) int { return lipgloss.Width(s) }
 
-// composerLines is the input as it is drawn: the prompt, wrapped to the
-// terminal, with the cursor at the end of what has been typed.
+// composerBox frames the composer so it reads as the place to type, not as
+// one more line of transcript. Dim, like the rest of the chrome: the eye
+// belongs on what is typed in it.
+var composerBox = lipgloss.NewStyle().
+	Border(lipgloss.RoundedBorder()).
+	BorderForeground(lipgloss.Color("8")).
+	Padding(0, 1)
+
+// composerChrome is the box's border and padding, one column each per side.
+const composerChrome = 4
+
+// composerLines is the input as it is drawn: the prompt in its box, wrapped
+// to the terminal, with the cursor at the end of what has been typed.
 func (m model) composerLines() []string {
+	inner := max(m.width-composerChrome, 1)
+
+	var body []string
 	if !m.composing {
-		return []string{dim.Render("press i to type, s for sessions")}
-	}
-
-	// Room for the prefix, and for the cursor block after the last character.
-	width := m.width - visibleWidth(composerPrefix) - 1
-	if width < 1 {
-		width = 1
-	}
-
-	body := wrapText(m.input, width)
-	out := make([]string, 0, len(body))
-	for i, line := range body {
-		lead := strings.Repeat(" ", visibleWidth(composerPrefix))
-		if i == 0 {
-			lead = userStyle.Render(composerPrefix)
+		body = []string{userStyle.Render(composerPrefix) + dim.Render("press i to type")}
+	} else {
+		// Room for the prefix, and for the cursor block after the last
+		// character.
+		width := max(inner-visibleWidth(composerPrefix)-1, 1)
+		lines := wrapText(m.input, width)
+		for i, line := range lines {
+			lead := strings.Repeat(" ", visibleWidth(composerPrefix))
+			if i == 0 {
+				lead = userStyle.Render(composerPrefix)
+			}
+			if i == len(lines)-1 {
+				line += badgeOK.Render("▌")
+			}
+			body = append(body, lead+line)
 		}
-		if i == len(body)-1 {
-			line += badgeOK.Render("▌")
-		}
-		out = append(out, lead+line)
 	}
-	return out
+	// Width is inside the border, padding included.
+	box := composerBox.Width(inner + 2).Render(strings.Join(body, "\n"))
+	return strings.Split(box, "\n")
 }
 
 // composerHeight is how many rows the composer needs right now. A question
@@ -90,9 +102,10 @@ func (m model) composerHeight() int {
 	return len(m.composerLines())
 }
 
-// viewportHeight is what the transcript gets: the screen, less the status and
-// help lines, less however many rows the composer is using. A prompt that grows
-// takes rows from the transcript rather than pushing the layout off-screen.
+// viewportHeight is what the transcript gets: the screen, less the blank row
+// above the composer and the status line below it, less however many rows the
+// composer is using. A prompt that grows takes rows from the transcript rather
+// than pushing the layout off-screen.
 func (m model) viewportHeight() int {
 	h := m.height - 2 - m.composerHeight()
 	if h < 1 {
