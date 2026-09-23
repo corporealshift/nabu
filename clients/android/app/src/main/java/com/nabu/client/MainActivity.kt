@@ -21,12 +21,10 @@ import com.nabu.client.ui.theme.NabuTheme
 import com.nabu.client.ui.theme.Scheme
 import com.nabu.client.ui.overlay
 import com.nabu.client.ui.projectName
-import com.nabu.client.ui.tasksOf
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
 import com.nabu.client.ui.Connection
 import com.nabu.client.ui.NabuViewModel
@@ -92,7 +90,9 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
     val endpoint = settings?.let { "${it.host}:${it.port}:${it.token}" }
     LaunchedEffect(endpoint) {
         val s = settings ?: return@LaunchedEffect
-        if (s.host.isBlank()) screen = Screen.Settings else vm.reconnect()
+        // connect, not reconnect: this runs again whenever the activity is
+        // recreated, and restarting a healthy connection each time is a drop.
+        if (s.host.isBlank()) screen = Screen.Settings else vm.connect()
     }
 
     // Android freezes a backgrounded process, which kills the socket while the
@@ -161,17 +161,28 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
         }
 
         is Screen.Transcript -> {
-            val row by vm.watchSession(s.id).collectAsState(initial = null)
-            val events by vm.watchEvents(s.id).collectAsState(initial = emptyList<EventRow>())
-            val pending by vm.watchPending(s.id).collectAsState(initial = emptyList<OutboxRow>())
-            val blocked by vm.watchBlocked().collectAsState(initial = emptyList<OutboxRow>())
+            // Remembered per session: a flow asked for afresh on every
+            // recomposition restarts its query, and any event anywhere
+            // recomposes this screen.
+            val rowFlow = remember(s.id) { vm.watchSession(s.id) }
+            val pendingFlow = remember(s.id) { vm.watchPending(s.id) }
+            val blockedFlow = remember { vm.watchBlocked() }
+            val row by rowFlow.collectAsState(initial = null)
+            val view by vm.transcript(s.id).collectAsState()
+            val pending by pendingFlow.collectAsState(initial = emptyList<OutboxRow>())
+            val blocked by blockedFlow.collectAsState(initial = emptyList<OutboxRow>())
             val tapped by vm.tapped.collectAsState()
-            val tasks = remember(events, tapped) {
-                overlay(tasksOf(events), tapped[s.id].orEmpty())
+            val tasks = remember(view.tasks, tapped) {
+                overlay(view.tasks, tapped[s.id].orEmpty())
+            }
+            // Catch this one up first, rather than wherever it falls in the
+            // connection's pass over every session.
+            LaunchedEffect(s.id, connection) {
+                if (connection == Connection.Connected) vm.syncNow(s.id)
             }
             TranscriptScreen(
                 title = row?.workspace?.let { projectName(it) }?.ifBlank { s.id } ?: s.id,
-                events = events,
+                view = view,
                 synced = row?.synced ?: false,
                 state = row?.state ?: "idle",
                 pending = pending,

@@ -470,3 +470,42 @@ func TestThePickerArchivesAndRestores(t *testing.T) {
 		t.Errorf("/archive should archive the current session, got %+v", res)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Compaction
+
+// A requested compaction runs while the session is idle, and on a local model
+// it takes minutes (issue 87). The TUI has to say it is happening, and ctrl+x
+// has to reach it: "nothing to interrupt" would be false for the whole time.
+func TestACompactionInFlightCanBeSeenAndStopped(t *testing.T) {
+	actions := make(chan action, 4)
+	m := sized(t, actions)
+
+	m, _ = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	m = typeIn(m, "/compact")
+	m, cmd := send(m, tea.KeyMsg{Type: tea.KeyEnter})
+	cmd()
+	if a := <-actions; a.kind != actCompact {
+		t.Fatalf("kind: got %v, want compact", a.kind)
+	}
+	if !strings.Contains(stripANSI(m.status()), "summarising") {
+		t.Fatalf("the status should say a summary is being written, got %q", stripANSI(m.status()))
+	}
+
+	m, cmd = send(m, tea.KeyMsg{Type: tea.KeyCtrlX})
+	if cmd == nil {
+		t.Fatal("ctrl+x must reach a compaction in flight")
+	}
+	cmd()
+	if a := <-actions; a.kind != actInterrupt {
+		t.Fatalf("kind: got %v, want interrupt", a.kind)
+	}
+
+	m, _ = send(m, compactedMsg{err: "compaction was interrupted; the history is unchanged"})
+	if strings.Contains(stripANSI(m.status()), "summarising") {
+		t.Error("the indicator must stop when the compaction does")
+	}
+	if !strings.Contains(m.body(), "history is unchanged") {
+		t.Error("the reason the compaction ended belongs in the transcript")
+	}
+}

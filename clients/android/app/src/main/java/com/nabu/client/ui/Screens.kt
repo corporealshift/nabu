@@ -64,7 +64,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
 import com.nabu.client.data.SessionRow
 import com.nabu.client.protocol.Task
@@ -190,7 +189,12 @@ fun SessionListScreen(
             },
         )
     }) { padding ->
-        if (error != null && connection != Connection.Connected) {
+        // With sessions mirrored, a lost connection is a line above them, not a
+        // screen in place of them. Swapping the whole list for an error card
+        // made every reconnect flash between the two (issue 69), and hid the
+        // offline copy the mirror exists to show.
+        val offline = error != null && connection != Connection.Connected
+        if (offline && sessions.isEmpty()) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = NabuTheme.colors.surface),
                 modifier = Modifier.fillMaxWidth().padding(padding).padding(12.dp),
@@ -202,7 +206,7 @@ fun SessionListScreen(
                         color = NabuTheme.colors.danger,
                     )
                     Text(
-                        error,
+                        error.orEmpty(),
                         style = MaterialTheme.typography.bodySmall,
                         color = NabuTheme.colors.muted,
                     )
@@ -225,6 +229,18 @@ fun SessionListScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (offline) {
+                item(key = "offline") {
+                    Text(
+                        if (connection == Connection.Connecting) "Reconnecting — ${error.orEmpty()}"
+                        else "Offline — ${error.orEmpty()}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = NabuTheme.colors.danger,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             items(sessions, key = { it.row.id }) { card ->
                 val s = card.row
                 Card(
@@ -285,7 +301,7 @@ fun SessionListScreen(
 @Composable
 fun TranscriptScreen(
     title: String,
-    events: List<EventRow>,
+    view: TranscriptView,
     synced: Boolean,
     state: String,
     pending: List<OutboxRow>,
@@ -302,11 +318,17 @@ fun TranscriptScreen(
     onDiscardBlocked: (String) -> Unit,
     onBack: () -> Unit,
 ) {
-    val lines = remember(events, synced) { transcript(events, synced) }
+    val lines = remember(view, synced) { withGap(view.lines, synced, view.fetched) }
     val listState = rememberLazyListState()
 
+    // Jump on opening, glide after. Animating from the top of two thousand
+    // lines to the bottom is a long way to scroll just to arrive.
+    var shown by remember { mutableStateOf(0) }
     LaunchedEffect(lines.size) {
-        if (lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1)
+        if (lines.isEmpty()) return@LaunchedEffect
+        if (shown == 0) listState.scrollToItem(lines.size - 1)
+        else listState.animateScrollToItem(lines.size - 1)
+        shown = lines.size
     }
 
     Scaffold(
@@ -319,7 +341,7 @@ fun TranscriptScreen(
                 ),
                 title = { Text(title, style = MaterialTheme.typography.titleSmall) },
                 actions = {
-                    ContextBadge(events)
+                    ContextBadge(view.contextUsed)
                     CompactButton(compacting, onCompact)
                 },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
@@ -327,7 +349,7 @@ fun TranscriptScreen(
         },
         bottomBar = {
             Composer(
-                state, pending, blocked, tasks,
+                state, compacting, pending, blocked, tasks,
                 onSend, onTaskDone, onResume, onInterrupt, onRetryBlocked, onDiscardBlocked,
             )
         },
@@ -391,6 +413,7 @@ private fun RefusalBanner(text: String) {
 @Composable
 private fun Composer(
     state: String,
+    compacting: Boolean,
     pending: List<OutboxRow>,
     blocked: List<OutboxRow>,
     tasks: List<Task>,
@@ -414,8 +437,10 @@ private fun Composer(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        WorkingIndicator(state)
-        if (state == "running") StopBar(onInterrupt)
+        WorkingIndicator(state, compacting)
+        // A requested compaction runs while the session is idle, and on a
+        // local model it takes minutes: it needs a way out as much as a turn.
+        if (state == "running" || compacting) StopBar(onInterrupt)
         TaskCard(tasks, onTaskDone)
         if (state == "paused") ResumeBar(onResume)
         BlockedPrompts(blocked, onRetryBlocked, onDiscardBlocked)
@@ -694,8 +719,8 @@ private fun LineView(line: Line) {
  * nothing has to be inferred from stillness.
  */
 @Composable
-private fun WorkingIndicator(state: String) {
-    if (state != "running") return
+private fun WorkingIndicator(state: String, compacting: Boolean = false) {
+    if (state != "running" && !compacting) return
     val c = NabuTheme.colors
 
     val move = rememberInfiniteTransition(label = "working")
@@ -722,7 +747,7 @@ private fun WorkingIndicator(state: String) {
                 .background(c.accent)
         )
         Text(
-            "working",
+            if (compacting) "summarising the history — this can take minutes" else "working",
             style = MaterialTheme.typography.labelMedium,
             color = c.muted,
         )
@@ -781,8 +806,8 @@ private fun ThoughtLine(line: Line.Thought) {
  * number would be an invention.
  */
 @Composable
-private fun ContextBadge(events: List<EventRow>) {
-    val used = remember(events) { contextUsed(events) } ?: return
+private fun ContextBadge(used: Float?) {
+    used ?: return
     val c = NabuTheme.colors
 
     Text(

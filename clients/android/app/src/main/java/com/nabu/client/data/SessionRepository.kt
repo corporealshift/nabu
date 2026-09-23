@@ -11,6 +11,8 @@ import com.nabu.client.protocol.NabuJson
 import com.nabu.client.protocol.payload
 import com.nabu.client.protocol.MessageData
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
@@ -30,6 +32,18 @@ class SessionRepository(
 ) {
     fun watchSessions(): Flow<List<SessionRow>> = db.sessions().watchAll()
     fun watchEvents(sessionId: String): Flow<List<EventRow>> = db.events().watch(sessionId)
+    fun watchLastOrdinal(sessionId: String): Flow<Long?> = db.events().watchLastOrdinal(sessionId)
+    suspend fun rowsAfter(sessionId: String, ordinal: Long): List<EventRow> =
+        db.events().after(sessionId, ordinal)
+
+    /**
+     * One writer per session at a time. A catch-up and the live stream both
+     * append, and ordinals are handed out by reading the last one: two writers
+     * interleaved would give two rows the same place, or put a live event
+     * ahead of the history it follows.
+     */
+    private val locks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
+    private fun lockFor(sessionId: String) = locks.getOrPut(sessionId) { Mutex() }
     fun watchSession(sessionId: String): Flow<SessionRow?> = db.sessions().watch(sessionId)
     fun watchPending(sessionId: String): Flow<List<OutboxRow>> =
         db.outbox().watchPendingFor(sessionId)
@@ -78,7 +92,7 @@ class SessionRepository(
      * Brings one session's mirror up to date. Subscribing precedes fetching so
      * an event appended during catch-up is not lost in the gap.
      */
-    suspend fun sync(client: DaemonClient, sessionId: String) {
+    suspend fun sync(client: DaemonClient, sessionId: String) = lockFor(sessionId).withLock {
         client.callOrThrow("nabu.session.subscribe", buildJsonObject {
             put("session_id", sessionId)
         })
@@ -109,9 +123,20 @@ class SessionRepository(
         apply(sessionId, events, synced)
     }
 
-    /** Writes one pushed event, which is the live path after catch-up. */
+    /**
+     * Writes one pushed event, which is the live path after catch-up.
+     *
+     * It waits for a catch-up in progress, then keeps only what that did not
+     * already bring: the daemon subscribes before it answers, so an event can
+     * arrive both ways. Ids within one log sort in creation order (spec 2).
+     */
     suspend fun record(event: Incoming.Event) {
-        apply(event.value.sessionId, listOf(event.value.event), synced = true)
+        val sessionId = event.value.sessionId
+        lockFor(sessionId).withLock {
+            val cursor = db.sessions().get(sessionId)?.cursor.orEmpty()
+            if (cursor.isNotEmpty() && event.value.event.id <= cursor) return@withLock
+            apply(sessionId, listOf(event.value.event), synced = true)
+        }
     }
 
     /** Ordinals continue, so a later batch cannot sort above an earlier one. */

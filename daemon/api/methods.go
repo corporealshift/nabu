@@ -88,14 +88,17 @@ func (h *Handler) handleRestore(ctx context.Context, _ *connState, params json.R
 }
 
 // handleCompact implements nabu.session.compact (spec 7.15). It is a model
-// call, so it takes seconds rather than returning immediately like the other
-// mutators.
+// call, so it takes minutes on a local model rather than returning immediately
+// like the other mutators.
+//
+// The connection's context is not the compaction's: a client that drops while
+// the summary is written loses the reply, not the summary.
 func (h *Handler) handleCompact(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	id, rpcErr := h.sessionID(params)
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	e, err := h.manager.Compact(ctx, id)
+	e, err := h.manager.Compact(context.WithoutCancel(ctx), id)
 	if err != nil {
 		return nil, rpcErrOf(err)
 	}

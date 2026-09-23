@@ -16,6 +16,12 @@ token is refused with `nabu_unauthorized`.
 Every message is one JSON-RPC object per WebSocket text frame. Batches are not
 supported.
 
+The daemon answers a connection's calls in the order they arrive, with one exception:
+`nabu.session.interrupt` and `nabu.session.stop` are answered at once, because each
+exists to end whatever is ahead of it. A slow call does not stop the daemon reading the
+connection, so pings and replies to the daemon's own requests (§7.18) keep flowing
+while one runs.
+
 ### 1.1 Handshake
 
 The first request on a connection MUST be `nabu.hello`. Any other method before a
@@ -402,6 +408,11 @@ and `paused` (those return `nabu_invalid_transition`; use `resume` for `paused`)
 the session is `idle` or `blocked`, the loop starts. If it is `running`, the message is
 picked up at the next request assembly.
 
+While a summary is being written (§7.15, or the automatic pass in §6), the message is
+appended once the summary lands rather than at once, and the call returns then. A
+message appended in between would follow the summarised range and precede the summary,
+so request assembly would keep it out of every later request.
+
 `client_id` is optional and makes the call **idempotent**, which is what a client with
 an offline outbox (§5) needs: a prompt retried after a dropped connection must not be
 appended twice. A `client_id` this session has already seen returns the `event_id` of
@@ -485,8 +496,15 @@ did nothing.
 **Allowed when `compaction_enabled` is false.** That option turns off the *automatic*
 pass. Asking explicitly is the owner overriding their own default.
 
-This is a model call, so it takes seconds. Clients should expect it to be slow and should
-not assume the reply is immediate.
+This is a model call over the whole history, so it takes minutes on a local model.
+Clients should expect it to be slow and must not time the call out on the assumption
+that it is quick. The daemon appends an `info` `notice` when it starts, so every client
+can show that one is under way.
+
+It is not tied to the connection that asked for it: a client that drops meanwhile loses
+the reply, not the summary. `nabu.session.interrupt` and `nabu.session.stop` end it; the
+call then fails with `nabu_invalid_transition` and the history is unchanged, rather than
+falling back to `clear_results`.
 
 ### 7.16 `nabu.workspace.browse {path?}` → `{path, parent, entries}`
 

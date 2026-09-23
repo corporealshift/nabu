@@ -70,6 +70,10 @@ type runState struct {
 	running bool
 	cancel  context.CancelFunc
 	done    chan struct{}
+	// cancelCompact ends a requested compaction. It has no connection to
+	// cancel it: the summary outlives the client that asked for it, so this is
+	// how interrupt, stop and shutdown reach it instead.
+	cancelCompact context.CancelFunc
 }
 
 // New builds a Manager, initialises modules, and collects the tool registry.
@@ -267,6 +271,10 @@ func (m *Manager) PromptWithID(ctx context.Context, id, content, clientID string
 	// Resume (7.9) takes only a paused session, so naming it as the remedy for
 	// a session that has ended points the client at a method that will refuse
 	// it too. A client retrying on that advice never clears the prompt.
+	// Waits out a summary being written, so the prompt lands after it (see
+	// compactMu).
+	h.compactMu.Lock()
+	defer h.compactMu.Unlock()
 	switch st := h.State().State; st {
 	case protocol.StatePaused:
 		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidTransition,
@@ -312,6 +320,8 @@ func (m *Manager) SetGoal(ctx context.Context, id, condition string) (protocol.E
 	if strings.TrimSpace(condition) == "" {
 		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams, "condition is required")
 	}
+	h.compactMu.Lock()
+	defer h.compactMu.Unlock()
 	e, err := h.s.Append(protocol.EventGoal, protocol.GoalData{
 		Condition: condition, State: "set", Source: "client"})
 	if err != nil {
@@ -486,6 +496,25 @@ func (m *Manager) stopRunning(id string) {
 	}
 }
 
+// cancelCompaction ends a requested compaction in progress and waits for it to
+// unwind, so whatever the caller appends next lands after it rather than in
+// the middle of it.
+func (m *Manager) cancelCompaction(h *sessionHandle) {
+	m.mu.Lock()
+	var cancel context.CancelFunc
+	if rs := m.rt[h.ID()]; rs != nil {
+		cancel = rs.cancelCompact
+	}
+	m.mu.Unlock()
+	if cancel == nil {
+		return
+	}
+	cancel()
+	// Taking the lock is the wait: the compaction holds it until it returns.
+	h.compactMu.Lock()
+	h.compactMu.Unlock()
+}
+
 // WaitIdle blocks until the session's loop is not running.
 func (m *Manager) WaitIdle(id string) {
 	m.mu.Lock()
@@ -507,6 +536,7 @@ func (m *Manager) Interrupt(ctx context.Context, id string) error {
 		return err
 	}
 	m.stopRunning(id)
+	m.cancelCompaction(h)
 	from := h.State().State
 	if from == protocol.StateIdle {
 		return nil
@@ -523,6 +553,7 @@ func (m *Manager) Stop(ctx context.Context, id string) error {
 		return err
 	}
 	m.stopRunning(id)
+	m.cancelCompaction(h)
 	if st := h.State().State; st == protocol.StateCompleted || st == protocol.StateError {
 		return nil
 	}
@@ -544,6 +575,8 @@ func (m *Manager) Resume(ctx context.Context, id string, budget *protocol.Budget
 		}
 	}
 	m.deps.Modules.SessionResume(ctx, h)
+	h.compactMu.Lock()
+	defer h.compactMu.Unlock()
 	m.ensureRunning(h, "resumed")
 	return nil
 }
@@ -561,6 +594,9 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	for id, rs := range m.rt {
 		if rs.running {
 			ids = append(ids, id)
+		}
+		if rs.cancelCompact != nil {
+			rs.cancelCompact()
 		}
 	}
 	m.mu.Unlock()
@@ -764,6 +800,11 @@ func (m *Manager) Archive(ctx context.Context, id, why string) error {
 	if err != nil {
 		return err
 	}
+	// A summary being written holds this; archiving meanwhile would close the
+	// log under it. It also keeps a turn from starting between the check below
+	// and the move.
+	h.compactMu.Lock()
+	defer h.compactMu.Unlock()
 	m.mu.Lock()
 	rs := m.rt[id]
 	if (rs != nil && rs.running) || h.State().State == protocol.StateRunning {

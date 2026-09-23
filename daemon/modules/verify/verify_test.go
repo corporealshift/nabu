@@ -777,3 +777,53 @@ func TestResumeRebaselines(t *testing.T) {
 		t.Errorf("resume did not re-baseline: %s", v.Reason)
 	}
 }
+
+// logged builds an event of the given type for a fake session's log.
+func logged(t *testing.T, id string, typ protocol.EventType, data any) protocol.Event {
+	t.Helper()
+	raw, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return protocol.Event{ID: id, Type: typ, Data: raw}
+}
+
+// Issue 76. Asked "what's the status here?" with tasks still open and the tree
+// dirty, the agent answered — and the gate sent it back to finish the tasks
+// and commit. An answered question is the whole turn, until the turn changes
+// something.
+func TestAnAnsweredQuestionIsAFinishedTurn(t *testing.T) {
+	ws := gitRepo(t)
+	m := newVerify(t, module.Config{})
+	open := module.StopInfo{Tasks: []protocol.Task{{ID: "t1", Title: "port the engine", Status: protocol.TaskInProgress}}}
+	question := logged(t, "E1", protocol.EventMessage, protocol.MessageData{Role: "user", Content: "what's the status here?"})
+	answer := logged(t, "E4", protocol.EventMessage, protocol.MessageData{Role: "assistant", Content: "two tests fail"})
+	edit := logged(t, "E2", protocol.EventToolCall, protocol.ToolCallData{CallID: "c1", Tool: "edit", Arguments: json.RawMessage(`{"path":"a.go"}`)})
+	edited := logged(t, "E3", protocol.EventToolResult, protocol.ToolResultData{CallID: "c1", Tool: "edit", Status: "ok"})
+
+	cases := []struct {
+		name      string
+		log       []protocol.Event
+		goal      *protocol.GoalData
+		wantAllow bool
+	}{
+		{"answered", []protocol.Event{question, answer}, nil, true},
+		{"changed something while answering", []protocol.Event{question, edit, edited, answer}, nil, false},
+		{"a request, not a question",
+			[]protocol.Event{logged(t, "E1", protocol.EventMessage, protocol.MessageData{Role: "user", Content: "can you finish the port?"}), answer}, nil, false},
+		{"a run with a goal", []protocol.Event{question, answer}, &protocol.GoalData{Condition: "done", State: "set"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &fakeSession{workspace: ws, events: tc.log, state: protocol.State{Goal: tc.goal}}
+			m.SessionStart(context.Background(), s)
+			if err := os.WriteFile(filepath.Join(ws, "left.txt"), []byte("earlier work"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			v := m.BeforeStop(context.Background(), s, open)
+			if v.Allow != tc.wantAllow {
+				t.Fatalf("allow = %v, want %v (reason %q)", v.Allow, tc.wantAllow, v.Reason)
+			}
+		})
+	}
+}

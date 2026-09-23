@@ -148,3 +148,52 @@ func TestResetClearsTheQuestion(t *testing.T) {
 		t.Error("the question should be gone after switching sessions")
 	}
 }
+
+// Issue 70: a question laid out as a list arrived as one run-on paragraph,
+// because it was wrapped as one. Each line is its own line again.
+func TestAQuestionKeepsItsLineBreaks(t *testing.T) {
+	q := "Two things are failing:\n\n1. golden_cooling_night: the close action is suppressed\n2. golden_storm_arriving: no urgent close\n\nWhich should I fix first?"
+	m := asked(sized(t, nil), q, "the first", "the second")
+
+	lines := m.askLines()
+	var got []string
+	for _, l := range lines {
+		got = append(got, strings.TrimSpace(stripANSI(l)))
+	}
+	joined := strings.Join(got, "\n")
+	for _, want := range []string{
+		"1. golden_cooling_night: the close action is suppressed",
+		"2. golden_storm_arriving: no urgent close",
+	} {
+		found := false
+		for _, l := range got {
+			if strings.HasPrefix(l, want[:20]) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("no line starts with %q:\n%s", want[:20], joined)
+		}
+	}
+}
+
+// A long question on a short terminal still leaves the choices and the answer
+// line on screen: those are what the person has to reach. Before, the panel
+// took no rows from the transcript and ran off the bottom.
+func TestALongQuestionFitsTheScreen(t *testing.T) {
+	m := sized(t, nil)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	m = next.(model)
+	long := strings.Repeat("A line of background the agent thought you needed.\n", 30) + "Which one?"
+	m = asked(m, long, "the first", "the second")
+
+	view := m.View()
+	if n := len(strings.Split(view, "\n")); n > 20 {
+		t.Fatalf("the screen is 20 rows and the view is %d", n)
+	}
+	for _, want := range []string{"the first", "the second", "press a number", "cut to fit"} {
+		if !strings.Contains(stripANSI(view), want) {
+			t.Errorf("%q is not on screen:\n%s", want, stripANSI(view))
+		}
+	}
+}

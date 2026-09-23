@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/corporealshift/nabu/daemon/module"
 	"github.com/corporealshift/nabu/daemon/session"
@@ -26,6 +27,13 @@ type sessionHandle struct {
 	core core
 	s    *session.Session
 	ws   module.Workspace
+
+	// compactMu is held while a summary is being written, and by anything that
+	// would add to the conversation or start a turn meanwhile. Request assembly
+	// keeps only what follows the compaction event by position (spec 6), so a
+	// prompt appended after the summarised range but before the summary landed
+	// would reach neither the summary nor any later request.
+	compactMu sync.Mutex
 }
 
 func (h *sessionHandle) ID() string                  { return h.s.ID() }
