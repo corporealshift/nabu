@@ -215,12 +215,28 @@ It is on by default. To tune or disable it, add a `modules.watch` block:
 ```
 
 The agent's own `write` and `edit` calls are suppressed, so it is told about your edits
-and not its own. `.git`, `node_modules`, `build`, `target` and `vendor` are skipped, so
+and not its own. Every dotted file and directory (`.git`, `.env`, `.gradle`, editor swap
+files) is skipped, as are `node_modules`, `build`, `target` and `vendor`, so
 a compile does not look like the repository being rewritten. A workspace holding more
 than `max_files` files is not scanned at all, and says so in the daemon log rather than
 paying for a walk on every request.
 
 It never interrupts a turn: changes that land mid-turn appear in the next request.
+
+### Asking a question
+
+Ask the agent something ("what's the status here?", "why did it stop?") and it answers
+rather than taking the question as a cue to carry on with the work. On a turn where your
+last message only asks, the agent may read files and run commands to find the answer, but
+an edit, a commit or another change to the workspace waits for you to approve it, with a
+prompt that says so. Any request in the message ("can you…", "please…", "fix…") makes it
+an ordinary turn. Nothing changes inside a run with a goal.
+
+On by default. To turn it off:
+
+```json
+{ "modules": { "answer": { "enabled": false } } }
+```
 
 ### Searching the web
 

@@ -89,4 +89,19 @@ class CompactTest {
             e.message.orEmpty().contains("interrupt"),
         )
     }
+
+    /**
+     * The daemon keeps summarising when the phone drops, so a lost connection
+     * is reported as that, not as a failed compaction (issue 87).
+     */
+    @Test
+    fun `a dropped connection is not reported as a failed compaction`() {
+        val dropped = com.nabu.client.ui.compactFailure(DaemonException("connection reset"))
+        assertTrue(dropped, dropped.contains("the daemon carries on"))
+
+        val refused = com.nabu.client.ui.compactFailure(
+            DaemonException("nabu.session.compact: session is running; interrupt it before compacting", -32002)
+        )
+        assertEquals("nabu.session.compact: session is running; interrupt it before compacting", refused)
+    }
 }

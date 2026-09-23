@@ -358,3 +358,132 @@ func waitForState(t *testing.T, s *session.Session, want protocol.SessionState) 
 	}
 	t.Fatalf("session never reached %s (last: %s)", want, s.State().State)
 }
+
+// waitFor polls until cond holds, failing the test if it never does.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	for i := 0; !cond(); i++ {
+		if i > 2500 {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+// Assembly keeps only what follows the last summary by position (spec 6). A
+// prompt appended while the summary was being written would sit between the
+// summarised range and the summary, and reach neither it nor any request.
+// Issue 87 made summaries take minutes, which made that window wide.
+func TestAPromptSentWhileSummarisingLandsAfterTheSummary(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{
+		{Content: "done"},
+		{Content: "THE SUMMARY"},
+		{Content: "answered after the summary"},
+	})
+	s := h.primed(t)
+	block := make(chan struct{})
+	h.fake.BlockOn = block
+	summariser := h.fake.CallCount()
+
+	compacted := make(chan error, 1)
+	go func() {
+		_, err := h.m.Compact(context.Background(), s.ID())
+		compacted <- err
+	}()
+	waitFor(t, "the summariser to be called", func() bool { return h.fake.CallCount() > summariser })
+
+	prompted := make(chan error, 1)
+	go func() {
+		_, err := h.m.Prompt(context.Background(), s.ID(), "the prompt sent meanwhile")
+		prompted <- err
+	}()
+	select {
+	case err := <-prompted:
+		t.Fatalf("the prompt was appended while the summary was being written (err %v)", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(block)
+	if err := <-compacted; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-prompted; err != nil {
+		t.Fatal(err)
+	}
+	h.m.WaitIdle(s.ID())
+
+	compaction, prompt := -1, -1
+	for i, e := range s.Events() {
+		switch {
+		case e.Type == protocol.EventCompaction:
+			compaction = i
+		case e.Type == protocol.EventMessage &&
+			protocol.MustData[protocol.MessageData](e).Content == "the prompt sent meanwhile":
+			prompt = i
+		}
+	}
+	if compaction < 0 || prompt < compaction {
+		t.Fatalf("prompt at %d, compaction at %d: the prompt must follow the summary", prompt, compaction)
+	}
+	last := h.fake.Calls[len(h.fake.Calls)-1]
+	if !strings.Contains(last.Messages[len(last.Messages)-1].Content, "the prompt sent meanwhile") {
+		t.Fatalf("the next request does not carry the prompt: %+v", last.Messages)
+	}
+}
+
+// Interrupting a requested compaction leaves the history alone rather than
+// falling back to clearing it: nobody asked for that.
+func TestInterruptEndsARequestedCompaction(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{{Content: "done"}})
+	s := h.primed(t)
+	h.fake.BlockOn = make(chan struct{}) // never answers
+	summariser := h.fake.CallCount()
+
+	compacted := make(chan error, 1)
+	go func() {
+		_, err := h.m.Compact(context.Background(), s.ID())
+		compacted <- err
+	}()
+	waitFor(t, "the summariser to be called", func() bool { return h.fake.CallCount() > summariser })
+
+	if err := h.m.Interrupt(context.Background(), s.ID()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-compacted:
+		if rpcCode(err) != protocol.CodeInvalidTransition {
+			t.Fatalf("err: %v (code %d)", err, rpcCode(err))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("interrupt did not end the compaction")
+	}
+	for _, e := range s.Events() {
+		if e.Type == protocol.EventCompaction {
+			t.Fatalf("an interrupted compaction appended %+v", protocol.MustData[protocol.CompactionData](e))
+		}
+	}
+}
+
+// Issue 87's summary was the agent's next edit, not a summary: at the end of a
+// long transcript the model carried on with the work. The instruction now
+// follows the transcript, and reasoning that leaked into the answer is dropped.
+func TestTheSummariserIsAskedAgainAfterTheTranscript(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{
+		{Content: "done"},
+		{Content: "Let me think about this.</think>\n\nTHE SUMMARY"},
+	})
+	s := h.primed(t)
+	ev, err := h.m.Compact(context.Background(), s.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := h.fake.Calls[len(h.fake.Calls)-1]
+	user := req.Messages[len(req.Messages)-1].Content
+	if !strings.HasPrefix(user, "<conversation>\n") || !strings.HasSuffix(user, summarizeClosing) {
+		t.Fatalf("the transcript must be fenced and followed by the instruction:\n%s", user)
+	}
+	if got := protocol.MustData[protocol.CompactionData](ev).Summary; got != "THE SUMMARY" {
+		t.Fatalf("summary: %q", got)
+	}
+}

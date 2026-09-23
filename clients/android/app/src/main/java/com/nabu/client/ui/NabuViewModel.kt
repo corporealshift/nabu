@@ -15,34 +15,27 @@ import com.nabu.client.protocol.EventType
 import com.nabu.client.protocol.NabuJson
 import com.nabu.client.settings.Settings
 import com.nabu.client.settings.SettingsStore
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 
-/** How the app is currently placed with respect to the daemon. */
-enum class Connection { Offline, Connecting, Connected }
-
 /** A session as the list shows it: the mirror's row plus what was last asked. */
 data class SessionCard(val row: SessionRow, val prompt: String)
-
-/** Reconnect backoff. A dropped connection is routine; a long wait after one is not. */
-private const val MIN_BACKOFF = 1_000L
-private const val MAX_BACKOFF = 30_000L
 
 class NabuViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -52,17 +45,6 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     private val settingsStore = SettingsStore(app)
 
     private var client: DaemonClient? = null
-    private var loop: Job? = null
-
-    /**
-     * Wakes the connection loop out of its backoff.
-     *
-     * Conflated because ten nudges and one mean the same thing: try now. The
-     * loop waits on this instead of sleeping blind, so returning to the app does
-     * not mean sitting out a delay that was counting down while the process was
-     * frozen.
-     */
-    private val wake = Channel<Unit>(Channel.CONFLATED)
 
     private val _connection = MutableStateFlow(Connection.Offline)
     val connection: StateFlow<Connection> = _connection.asStateFlow()
@@ -70,10 +52,20 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val loop = ConnectionLoop(
+        scope = viewModelScope,
+        connection = _connection,
+        error = _error,
+        connectOnce = ::connectOnce,
+        // Why a connection ended is the one thing the daemon's log cannot say:
+        // it only sees the phone go away.
+        log = { android.util.Log.w("nabu", it) },
+    )
+
     /**
      * Whether a compaction is in flight. It is a model call on the daemon and
-     * takes seconds, during which nothing else changes on screen — so without
-     * this the control looks like it did nothing.
+     * takes minutes on a local model, during which nothing else changes on
+     * screen — so without this the control looks like it did nothing.
      */
     private val _compacting = MutableStateFlow(false)
     val compacting: StateFlow<Boolean> = _compacting.asStateFlow()
@@ -85,6 +77,9 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     val sessions: StateFlow<List<SessionCard>> =
         repo.watchSessions()
             .map { rows -> rows.map { SessionCard(it, repo.latestPrompt(it.id)) } }
+            // Every event in every session touches the sessions table, and each
+            // pass parses a prompt per session: not work for the main thread.
+            .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     fun watchSession(id: String) = repo.watchSession(id)
@@ -94,6 +89,44 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     /** Folds or unfolds the task card, remembered across sessions and restarts. */
     fun setTasksCollapsed(collapsed: Boolean) {
         viewModelScope.launch { settingsStore.saveTasksCollapsed(collapsed) }
+    }
+
+    private val feeds = HashMap<String, StateFlow<TranscriptView>>()
+
+    /**
+     * One session's transcript, projected off the main thread and one new row
+     * at a time (issue 82).
+     *
+     * The same flow comes back for the same session. A screen that asked for a
+     * fresh one on every recomposition restarted the query each time, and every
+     * event in any session recomposes it.
+     */
+    fun transcript(sessionId: String): StateFlow<TranscriptView> = feeds.getOrPut(sessionId) {
+        val feed = TranscriptFeed()
+        repo.watchLastOrdinal(sessionId)
+            .distinctUntilChanged()
+            // Ten new rows or one: either way the next read takes all of them.
+            .conflate()
+            .map { newest ->
+                // A mirror emptied underneath starts its ordinals again.
+                if ((newest ?: 0L) < feed.lastOrdinal) feed.reset()
+                feed.add(repo.rowsAfter(sessionId, feed.lastOrdinal))
+                feed.view()
+            }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TranscriptView())
+    }
+
+    /**
+     * Brings one session up to date now, ahead of the rest.
+     *
+     * A connection catches up on every session in turn, and the one being read
+     * would otherwise wait its place in that queue, showing "Not downloaded"
+     * the whole time.
+     */
+    fun syncNow(sessionId: String) {
+        val c = client ?: return
+        viewModelScope.launch { runCatching { repo.sync(c, sessionId) } }
     }
 
     /** Appearance saves without disturbing the connection. */
@@ -108,53 +141,34 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Keeps a connection up, retrying with backoff. No screen waits on it. */
-    fun reconnect() {
-        loop?.cancel()
-        loop = viewModelScope.launch {
-            var backoff = MIN_BACKOFF
-            while (true) {
-                val s = settings.first { it != null }!!
-                if (s.host.isBlank()) {
-                    _connection.value = Connection.Offline
-                    return@launch
-                }
-                _connection.value = Connection.Connecting
-                try {
-                    // Reset when the socket actually opened, not when
-                    // runConnection returns: it never returns, it throws when
-                    // the connection drops. Resetting on return meant the
-                    // backoff only ever grew, so an app that had dropped a few
-                    // times waited 30s to retry even after a good connection.
-                    runConnection(s) { backoff = MIN_BACKOFF }
-                } catch (e: Exception) {
-                    _error.value = e.message
-                } finally {
-                    _connection.value = Connection.Offline
-                }
-                // Wake early when the app comes back, rather than sitting out a
-                // delay that elapsed while the process was frozen.
-                withTimeoutOrNull(backoff) { wake.receive() }
-                backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF)
-            }
-        }
-    }
+    /**
+     * Makes sure a connection is being kept up. Safe to call as often as the
+     * screen likes: one already running is left alone.
+     */
+    fun connect() = loop.start()
+
+    /** Drops the connection and starts again, for new settings. */
+    fun reconnect() = loop.start(restart = true)
 
     /**
      * Called when the app comes to the foreground.
      *
      * Android freezes a backgrounded process, which kills the socket without the
-     * loop ever noticing. Nothing else asks it to try again: the only other
-     * callers of reconnect are a settings change and a save.
+     * loop ever noticing. Coming back is the moment to try again, rather than
+     * waiting out a backoff that elapsed while frozen.
      */
-    fun onForeground() {
-        wake.trySend(Unit)
-    }
+    fun onForeground() = loop.nudge()
 
-    private suspend fun runConnection(s: Settings, onConnected: () -> Unit) {
+    /** One connection, for as long as it lasts. Returns only when there is nowhere to connect. */
+    private suspend fun connectOnce(onConnected: () -> Unit) {
+        val s = settings.first { it != null }!!
+        if (s.host.isBlank()) return
         val c = DaemonClient(baseUrl = "http://${s.host}:${s.port}/", token = s.token)
         try {
-            runConnected(s, c, onConnected)
+            c.connect()
+            client = c
+            onConnected()
+            runConnected(c)
         } finally {
             // The socket outlives the coroutine unless it is closed here.
             // Cancelling stops the collection, not the connection, and a
@@ -169,12 +183,12 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun runConnected(s: Settings, c: DaemonClient, onConnected: () -> Unit) {
-        c.connect()
-        client = c
-        _connection.value = Connection.Connected
-        _error.value = null
-        onConnected()
+    private suspend fun runConnected(c: DaemonClient): Nothing = coroutineScope {
+        // Pushes are drained from the start. Catching up subscribes to every
+        // session in turn, and each starts pushing at once: left undrained
+        // until the catch-up ended, they filled the client's buffer, and a
+        // full buffer is a lost event or a permission prompt never shown.
+        val pump = launch { pump(c) }
 
         val listed = c.callOrThrow("nabu.session.list").jsonObject["sessions"]
             ?.jsonArray
@@ -190,26 +204,26 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         // incoming never completes, so the drop is what this waits on.
-        coroutineScope {
-            val pump = launch {
-                c.incoming.collect { msg ->
-                    when (msg) {
-                        is Incoming.Event -> {
-                            repo.record(msg)
-                            // The snapshot is authoritative; taps stop speaking.
-                            if (msg.value.event.type == EventType.TASKS) {
-                                _tapped.value = _tapped.value - msg.value.sessionId
-                            }
-                        }
-                        is Incoming.Permission -> _pendingPermission.value = msg.value
-                        is Incoming.Ask -> _pendingAsk.value = msg.value
-                        else -> Unit
+        val reason = c.awaitClosed()
+        pump.cancel()
+        throw DaemonException(reason)
+    }
+
+    /** Acts on what the daemon pushes, for as long as the connection lasts. */
+    private suspend fun pump(c: DaemonClient) {
+        c.incoming.collect { msg ->
+            when (msg) {
+                is Incoming.Event -> {
+                    repo.record(msg)
+                    // The snapshot is authoritative; taps stop speaking.
+                    if (msg.value.event.type == EventType.TASKS) {
+                        _tapped.value = _tapped.value - msg.value.sessionId
                     }
                 }
+                is Incoming.Permission -> _pendingPermission.value = msg.value
+                is Incoming.Ask -> _pendingAsk.value = msg.value
+                else -> Unit
             }
-            val reason = c.awaitClosed()
-            pump.cancel()
-            throw DaemonException(reason)
         }
     }
 
@@ -471,7 +485,7 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
             _compacting.value = true
             runCatching { repo.compactSession(c, sessionId) }
                 .onSuccess { _error.value = null }
-                .onFailure { _error.value = it.message ?: "could not compact the session" }
+                .onFailure { _error.value = compactFailure(it) }
             _compacting.value = false
         }
     }
@@ -481,9 +495,22 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         "outbox-" + java.util.UUID.randomUUID().toString().replace("-", "").take(20)
 
     override fun onCleared() {
-        loop?.cancel()
+        loop.stop()
         client?.close()
         db.close()
         super.onCleared()
     }
 }
+
+/**
+ * What to say when a requested compaction did not come back.
+ *
+ * A refusal from the daemon carries a code and its own reason, which is passed
+ * through. No code means the connection went, and the daemon does not stop
+ * because the phone did: the summary lands in the transcript regardless, so
+ * saying it failed would be wrong.
+ */
+internal fun compactFailure(e: Throwable): String =
+    if (e is com.nabu.client.net.DaemonException && e.code == null)
+        "lost the connection while summarising — the daemon carries on, and the summary will appear here when it is written"
+    else e.message ?: "could not compact the session"

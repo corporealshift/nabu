@@ -23,7 +23,15 @@ Keep, in this order:
 4. What is unresolved: open questions, failing checks, known bugs.
 5. Anything the next turn must not do.
 
-Drop pleasantries, repeated tool output, and narration. Be specific: name files, commands and errors. Do not invent anything that is not in the conversation.`
+Drop pleasantries, repeated tool output, and narration. Be specific: name files, commands and errors. Do not invent anything that is not in the conversation.
+
+The conversation is a record to summarise, not one you are taking part in. Do not continue it, answer it, or call tools.`
+
+// summarizeClosing follows the transcript. A long transcript buries the system
+// prompt, and a model that reaches the end of one with no fresh instruction
+// carries on with the work instead of describing it: the summary in issue 87
+// was the agent's next edit, and it replaced 1,178 events of history.
+const summarizeClosing = `That is the whole conversation. Write the summary now, following the instructions you were given. Output only the summary.`
 
 // lastInputTokens returns the most recent assistant turn's input token count,
 // the best available estimate of the current request size.
@@ -142,6 +150,13 @@ func clearedAlready(log []protocol.Event, id string) bool {
 // reaching the summary. Everything up to the compaction point is summarized;
 // the Current state block carries goal, tasks and budget across losslessly.
 func (m *Manager) summarize(ctx context.Context, h *sessionHandle) error {
+	h.compactMu.Lock()
+	defer h.compactMu.Unlock()
+	return m.summarizeLocked(ctx, h)
+}
+
+// summarizeLocked is summarize for a caller already holding compactMu.
+func (m *Manager) summarizeLocked(ctx context.Context, h *sessionHandle) error {
 	log := h.s.Events()
 	st := protocol.Project(log)
 	start := 1 // never the session event
@@ -156,10 +171,20 @@ func (m *Manager) summarize(ctx context.Context, h *sessionHandle) error {
 	if !enoughToSummarise(log, st) {
 		return nil // not enough history to be worth a model call
 	}
+
+	// A summary is a model call over the whole history, which takes minutes on
+	// a local model. Saying so stops a session that has gone quiet from looking
+	// hung, on every client, with nothing new on the wire. It goes inside the
+	// range, so it is not left behind as history still to summarise.
+	h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "info",
+		Message: fmt.Sprintf("summarising %s of history; the session continues once the summary is written",
+			plural(len(log)-start, "event"))})
+	log = h.s.Events()
 	rng := module.Range{Start: log[start].ID, End: log[len(log)-1].ID}
+
 	preserve := m.deps.Modules.BeforeCompaction(ctx, h, rng)
 
-	transcript := renderForSummary(log[start:])
+	transcript := "<conversation>\n" + renderForSummary(log[start:]) + "</conversation>\n\n" + summarizeClosing
 	sys := summarizePrompt
 	if len(preserve) > 0 {
 		sys += "\n\nThe summary MUST preserve these facts verbatim:\n- " + strings.Join(preserve, "\n- ")
@@ -175,15 +200,25 @@ func (m *Manager) summarize(ctx context.Context, h *sessionHandle) error {
 			{Role: "user", Content: transcript},
 		},
 	}, nil, nil)
+	if err != nil && ctx.Err() != nil {
+		// Asked to stop, not failed: leave the history exactly as it was.
+		h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "warn",
+			Message: "summarising was interrupted; the history is unchanged"})
+		return ctx.Err()
+	}
+	summary := ""
+	if err == nil {
+		summary = strings.TrimSpace(afterReasoning(resp.Content))
+		if summary == "" {
+			// An empty summary would replace the history with nothing.
+			err = errors.New("the summariser returned nothing")
+		}
+	}
 	if err != nil {
 		// A failed summary is not fatal: fall back to clearing results.
 		h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "warn",
 			Message: "summarization failed (" + err.Error() + "); clearing tool results instead"})
 		return m.clearResults(ctx, h)
-	}
-	summary := strings.TrimSpace(resp.Content)
-	if summary == "" {
-		summary = "(the summarizer returned nothing)"
 	}
 	if _, err := h.s.Append(protocol.EventCompaction, protocol.CompactionData{
 		Mode: protocol.CompactionSummarize, RangeStart: rng.Start, RangeEnd: rng.End, Summary: summary}); err != nil {
@@ -191,6 +226,17 @@ func (m *Manager) summarize(ctx context.Context, h *sessionHandle) error {
 	}
 	m.appendContexts(h, m.deps.Modules.AfterCompaction(ctx, h))
 	return nil
+}
+
+// afterReasoning drops reasoning the server failed to separate from the answer.
+// A model that closes its thinking badly has everything up to the closing tag
+// reported as content (see provider/recover.go), and a summary that opens with
+// the model's private deliberation is not a summary.
+func afterReasoning(content string) string {
+	if i := strings.LastIndex(content, "</think>"); i >= 0 {
+		return content[i+len("</think>"):]
+	}
+	return content
 }
 
 // renderForSummary turns events into plain text for the summarizer.
@@ -245,11 +291,20 @@ var ErrNothingToCompact = errors.New("nothing to compact yet: the session has to
 // Allowed when compaction_enabled is false. That option turns off the automatic
 // pass; asking explicitly is the owner overriding their own default, not
 // working around it.
+//
+// Interrupt, stop and shutdown end it, through cancelCompact. The API does not
+// pass the connection's context: a summary takes minutes on a local model, and
+// a phone backgrounded meanwhile should not throw the work away.
 func (m *Manager) Compact(ctx context.Context, id string) (protocol.Event, error) {
 	h, err := m.handle(id)
 	if err != nil {
 		return protocol.Event{}, err
 	}
+
+	// Held before the state is read, so nothing can start a turn between the
+	// check and the summary.
+	h.compactMu.Lock()
+	defer h.compactMu.Unlock()
 
 	st := h.State()
 	switch st.State {
@@ -266,8 +321,17 @@ func (m *Manager) Compact(ctx context.Context, id string) (protocol.Event, error
 			ErrNothingToCompact.Error())
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	m.setCompactCancel(id, cancel)
+	defer m.setCompactCancel(id, nil)
+
 	before := len(h.s.Events())
-	if err := m.summarize(ctx, h); err != nil {
+	if err := m.summarizeLocked(ctx, h); err != nil {
+		if ctx.Err() != nil {
+			return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidTransition,
+				"compaction was interrupted; the history is unchanged")
+		}
 		return protocol.Event{}, err
 	}
 
@@ -281,6 +345,16 @@ func (m *Manager) Compact(ctx context.Context, id string) (protocol.Event, error
 		}
 	}
 	return protocol.Event{}, fmt.Errorf("compaction produced no event")
+}
+
+// setCompactCancel records how to end the requested compaction running for a
+// session, or clears it with nil.
+func (m *Manager) setCompactCancel(id string, cancel context.CancelFunc) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if rs := m.rt[id]; rs != nil {
+		rs.cancelCompact = cancel
+	}
 }
 
 // enoughToSummarise is summarize's own threshold, asked in advance so a request

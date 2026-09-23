@@ -283,3 +283,55 @@ func TestConfigStringMap(t *testing.T) {
 		t.Error("an already-typed map should pass through")
 	}
 }
+
+// slowCompactor stands in for the memory curator: its BeforeCompaction makes
+// what would be a model call, and takes as long as that call does.
+type slowCompactor struct {
+	base
+	delay time.Duration
+}
+
+func (c slowCompactor) BeforeCompaction(ctx context.Context, _ Session, _ Range) []string {
+	select {
+	case <-time.After(c.delay):
+		return []string{"kept"}
+	case <-ctx.Done():
+		return nil
+	}
+}
+
+func (slowCompactor) AfterCompaction(context.Context, Session) ([]ContextBlock, error) {
+	return nil, nil
+}
+
+// A compaction hook may call the model, so it is held to the compaction budget
+// rather than to the one for hooks that only look at the log. Issue 87: the
+// memory curator was killed at 30 seconds while summarising a long session.
+func TestCompactionHooksGetTheCompactionBudget(t *testing.T) {
+	cases := []struct {
+		name      string
+		delay     time.Duration
+		wantKept  bool
+		wantNotes int
+	}{
+		{"slower than an ordinary hook is allowed", 60 * time.Millisecond, true, 0},
+		{"slower than the compaction budget", 400 * time.Millisecond, false, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := NewRegistry([]Module{slowCompactor{base{"memory"}, tc.delay}}, Options{
+				HookTimeout:       20 * time.Millisecond,
+				CompactionTimeout: 200 * time.Millisecond,
+				Log:               slog.New(slog.DiscardHandler),
+			})
+			s := &fakeSession{id: "S1"}
+			got := r.BeforeCompaction(context.Background(), s, Range{})
+			if kept := len(got) == 1 && got[0] == "kept"; kept != tc.wantKept {
+				t.Fatalf("preserve = %v, want kept=%v", got, tc.wantKept)
+			}
+			if n := s.notices(); len(n) != tc.wantNotes {
+				t.Fatalf("notices = %v, want %d", n, tc.wantNotes)
+			}
+		})
+	}
+}
