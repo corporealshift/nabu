@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/corporealshift/nabu/clients/goclient"
+	"github.com/corporealshift/nabu/daemon/modules/artifact"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -102,6 +103,11 @@ type model struct {
 	// on every update would drown the conversation.
 	tasks []protocol.Task
 	goal  *protocol.GoalData
+
+	// artifacts are the pages the agent made, latest version of each by name,
+	// and lastArtifact the most recent: what o opens.
+	artifacts    map[string]artifact.Args
+	lastArtifact string
 
 	// hideTasks folds the task pane away, for the reader who wants the width
 	// (issue 75). The status line still counts them.
@@ -202,6 +208,9 @@ func (m *model) appendEventWithoutRefresh(ev protocol.Event) {
 			m.lastInput = d.Usage.InputTokens
 		}
 	}
+	if ev.Type == protocol.EventToolCall {
+		m.rememberArtifact(ev)
+	}
 	if ev.Type == protocol.EventTasks {
 		var d protocol.TasksData
 		if unmarshal(ev, &d) == nil {
@@ -273,6 +282,7 @@ func (m *model) reset(sessionID string) {
 	m.turnID = ""
 	m.tasks = nil
 	m.goal = nil
+	m.artifacts, m.lastArtifact = nil, ""
 	m.contextWindow = 0
 	m.lastInput = 0
 	m.pending = nil

@@ -32,7 +32,10 @@ import com.nabu.client.data.OutboxRow
 import com.nabu.client.ui.Connection
 import com.nabu.client.ui.NabuViewModel
 import com.nabu.client.ui.ArchivedScreen
+import com.nabu.client.ui.ArtifactScreen
 import com.nabu.client.ui.AskSheet
+import com.nabu.client.ui.Line
+import com.nabu.client.ui.LocalOpenArtifact
 import com.nabu.client.ui.StatsScreen
 import com.nabu.client.ui.PermissionSheet
 import com.nabu.client.ui.BrowseScreen
@@ -56,6 +59,7 @@ private sealed interface Screen {
     data object Browse : Screen
     data object Archived : Screen
     data class Transcript(val id: String) : Screen
+    data class Artifact(val sessionId: String, val line: Line.Artifact) : Screen
     data class Stats(val id: String) : Screen
 }
 
@@ -174,7 +178,11 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
             )
         }
 
-        is Screen.Transcript -> {
+        is Screen.Artifact -> ArtifactScreen(s.line, onBack = { screen = Screen.Transcript(s.sessionId) })
+
+        is Screen.Transcript -> CompositionLocalProvider(
+            LocalOpenArtifact provides { line -> screen = Screen.Artifact(s.id, line) },
+        ) {
             // Remembered per session: a flow asked for afresh on every
             // recomposition restarts its query, and any event anywhere
             // recomposes this screen.

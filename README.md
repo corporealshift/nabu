@@ -223,6 +223,15 @@ paying for a walk on every request.
 
 It never interrupts a turn: changes that land mid-turn appear in the next request.
 
+### Pages the agent makes
+
+When showing is clearer than telling (a chart of test timings, a table to sort, a diagram)
+the agent can make a page with the `artifact` tool. The transcript says so: press `o` in the
+terminal UI to open the newest in your browser (`/open <name>` for another), or tap Open on
+the phone. A page can run its own scripts but cannot reach the network at all, so a page the
+model was steered into writing cannot call home or talk to the daemon. On by default; turn it
+off with `{ "modules": { "artifact": { "enabled": false } } }`.
+
 ### Cleaning up sessions
 
 A session nothing has happened in for three days is archived: it leaves the list, the

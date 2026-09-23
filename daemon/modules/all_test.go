@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"os"
 	"testing"
 
 	"github.com/corporealshift/nabu/daemon/module"
@@ -100,6 +101,25 @@ func TestModulesImplementTheirHooks(t *testing.T) {
 			if _, ok := m.(module.Reporter); !ok {
 				t.Error("report must be a Reporter")
 			}
+		}
+	}
+}
+
+// A module directory with nothing registered is compiled and inert, and
+// nothing says so: the artifact tool was nearly shipped that way. Every
+// directory here must be in All, under its own name.
+func TestEveryModuleDirectoryIsRegistered(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registered := map[string]bool{}
+	for _, m := range All {
+		registered[m.Name()] = true
+	}
+	for _, e := range entries {
+		if e.IsDir() && !registered[e.Name()] {
+			t.Errorf("daemon/modules/%s is not registered in All", e.Name())
 		}
 	}
 }

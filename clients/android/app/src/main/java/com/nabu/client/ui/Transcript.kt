@@ -51,6 +51,9 @@ sealed interface Line {
     data class Veto(override val key: String, val module: String, val reason: String) : Line
     data class Compacted(override val key: String, val summary: String) : Line
 
+    /** A page the agent made (issue 41). The call carries the whole page. */
+    data class Artifact(override val key: String, val name: String, val title: String, val html: String) : Line
+
     /**
      * Events this device has not fetched. Spec 15 wants the gap visible at the
      * gap, not as a footnote elsewhere.
@@ -96,8 +99,10 @@ internal fun render(key: String, e: Event): Line? = when (e.type) {
     }
 
     "tool_call" -> e.payload<ToolCallData>()?.let { d ->
-        val full = interesting(d)
-        Line.ToolRan(key, d.tool, shorten(full), full)
+        artifactOf(key, d) ?: run {
+            val full = interesting(d)
+            Line.ToolRan(key, d.tool, shorten(full), full)
+        }
     }
 
     "tool_result" -> e.payload<ToolResultData>()?.let { d ->
@@ -183,4 +188,6 @@ fun Line.copyText(): String? = when (this) {
     is Line.Compacted -> summary.ifBlank { null }
     // A gap is the absence of events. There is nothing behind it to copy.
     is Line.Gap -> null
+    // The page's source: what someone copying it wants to keep or share.
+    is Line.Artifact -> html.ifBlank { null }
 }

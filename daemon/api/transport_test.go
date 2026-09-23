@@ -292,3 +292,35 @@ func TestMajorVersion(t *testing.T) {
 		}
 	}
 }
+
+// A page the model wrote is opened on the same machine as the daemon, where no
+// token is needed (issue 41). Its Origin is "null" (a file, a sandbox) or some
+// other site's, never the daemon's own, and either is refused at the upgrade.
+func TestAPageFromElsewhereCannotConnect(t *testing.T) {
+	url := startServer(t, noopHandler{}, &Config{})
+	for _, origin := range []string{"null", "http://evil.example", "file://"} {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		c, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+			HTTPHeader: http.Header{"Origin": []string{origin}},
+		})
+		cancel()
+		if err == nil {
+			c.CloseNow()
+			t.Errorf("Origin %q was let in", origin)
+			continue
+		}
+		if resp == nil || resp.StatusCode != http.StatusForbidden {
+			t.Errorf("Origin %q: want 403, got %v (%v)", origin, resp, err)
+		}
+	}
+
+	// No Origin at all is a client that is not a browser, which is every
+	// real client: still welcome.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, url, nil)
+	if err != nil {
+		t.Fatalf("a client without an Origin should connect: %v", err)
+	}
+	c.CloseNow()
+}

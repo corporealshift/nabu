@@ -276,7 +276,11 @@ func (m model) help() string {
 	if terminal(m.state) {
 		return dim.Render("q quit · i type · s sessions · t thinking · p tasks · g/G top/bottom — the session has ended")
 	}
-	return dim.Render("q quit (the run continues) · i type · s sessions · t thinking · p tasks · ctrl+x interrupt")
+	help := "q quit (the run continues) · i type · s sessions · t thinking · p tasks · ctrl+x interrupt"
+	if m.lastArtifact != "" {
+		help += " · o open page"
+	}
+	return dim.Render(help)
 }
 
 // overlay is the permission prompt. It takes the whole screen deliberately:

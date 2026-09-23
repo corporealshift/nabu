@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/corporealshift/nabu/daemon/modules/artifact"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -48,6 +49,13 @@ func renderEvent(ev protocol.Event) []string {
 		var d protocol.ToolCallData
 		if json.Unmarshal(ev.Data, &d) != nil {
 			return nil
+		}
+		if d.Tool == artifact.Tool {
+			var a artifact.Args
+			if json.Unmarshal(d.Arguments, &a) == nil && a.Name != "" {
+				return []string{okStyle.Render("▣ made a page: " + truncate(a.Title, maxInline) +
+					" · o opens it, or /open " + a.Name)}
+			}
 		}
 		label := d.Tool
 		if arg := firstArg(d.Arguments); arg != "" {
