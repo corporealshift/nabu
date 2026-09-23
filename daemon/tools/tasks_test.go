@@ -114,3 +114,67 @@ func TestTaskUpdateToolRendersList(t *testing.T) {
 		t.Fatal("without a TaskStore the task tool must not be offered")
 	}
 }
+
+func TestMergeKeepsIdsByTitleWhenIdsAreOmitted(t *testing.T) {
+	prev := protocol.TasksData{Revision: 2, Tasks: []protocol.Task{
+		{ID: "t1", Title: "Scaffold", Status: protocol.TaskDone, BlockedBy: []string{}},
+		{ID: "t2", Title: "Domain types", Status: protocol.TaskInProgress, BlockedBy: []string{}},
+		{ID: "t3", Title: "Engine", Status: protocol.TaskPending, BlockedBy: []string{}},
+	}}
+	out, err := Merge(prev, []protocol.Task{
+		{Title: "Scaffold", Status: protocol.TaskDone},
+		{Title: " Domain types ", Status: protocol.TaskDone},
+		{ID: "t3", Title: "Engine, renamed", Status: protocol.TaskPending},
+		{Title: "Engine", Status: protocol.TaskPending},   // t3 is claimed explicitly above
+		{Title: "Scaffold", Status: protocol.TaskPending}, // a second task with a reused title
+	}, nil, "model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, task := range out.Tasks {
+		got = append(got, task.ID)
+	}
+	if strings.Join(got, " ") != "t1 t2 t3 t4 t5" {
+		t.Fatalf("ids: %v", got)
+	}
+}
+
+// logSession keeps what a store appends, so the tool can read it back.
+type logSession struct {
+	fakeSession
+	log []protocol.Event
+}
+
+func (l *logSession) Events(*string) ([]protocol.Event, error) { return l.log, nil }
+
+type loggingStore struct{ s *logSession }
+
+func (st loggingStore) UpdateTasks(_ context.Context, _ module.Session, incoming []protocol.Task, source string) (protocol.TasksData, error) {
+	d, err := Merge(latestTasks(st.s), incoming, st.s.log, source)
+	if err == nil {
+		st.s.log = append(st.s.log, ev(protocol.EventTasks, d))
+	}
+	return d, err
+}
+
+func TestTaskUpdateSaysWhenThePlanIsUnchanged(t *testing.T) {
+	s := &logSession{fakeSession: fakeSession{t.TempDir()}}
+	b := &Builtins{Tasks: loggingStore{s}}
+	plan := `{"tasks":[{"title":"Write test","status":"done"},{"title":"Make pass","status":"in_progress"}]}`
+	first, err := run(t, b, s, "task.update", plan)
+	if err != nil || strings.Contains(first, "no change") {
+		t.Fatalf("first: %q %v", first, err)
+	}
+	again, err := run(t, b, s, "task.update", plan)
+	if err != nil || !strings.HasPrefix(again, "no change: the plan is the same as revision 1\n") {
+		t.Fatalf("resent plan: %q %v", again, err)
+	}
+	if !strings.HasSuffix(again, first) {
+		t.Fatalf("the list must still be rendered:\n%s", again)
+	}
+	moved, _ := run(t, b, s, "task.update", strings.Replace(plan, "in_progress", "done", 1))
+	if strings.Contains(moved, "no change") {
+		t.Fatalf("a status change is a change: %q", moved)
+	}
+}

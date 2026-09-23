@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -18,7 +19,9 @@ type TaskStore interface {
 }
 
 // Merge applies a whole-list snapshot (spec §9.2): stable ids, ids assigned
-// where missing, done_when/check/note carried over when omitted, revision
+// where missing (reusing the id of an existing task with the same title, so a
+// plan resent without ids does not mint new ones on every call),
+// done_when/check/note carried over when omitted, revision
 // incremented, and evidence set mechanically from the latest passing check
 // event for the task. Model-supplied evidence is ignored.
 func Merge(prev protocol.TasksData, incoming []protocol.Task, log []protocol.Event, source string) (protocol.TasksData, error) {
@@ -41,6 +44,12 @@ func Merge(prev protocol.TasksData, incoming []protocol.Task, log []protocol.Eve
 			next = maxSeq(next, t.ID)
 		}
 	}
+	byTitle := map[string]string{}
+	for _, t := range prev.Tasks {
+		if k := strings.TrimSpace(t.Title); !seen[t.ID] && byTitle[k] == "" {
+			byTitle[k] = t.ID
+		}
+	}
 	out := protocol.TasksData{Revision: prev.Revision + 1, Source: source}
 	for _, t := range incoming {
 		if strings.TrimSpace(t.Title) == "" {
@@ -54,8 +63,13 @@ func Merge(prev protocol.TasksData, incoming []protocol.Task, log []protocol.Eve
 				"task %q: status %q invalid (pending|in_progress|blocked|done|failed|cancelled)", t.Title, t.Status)
 		}
 		if t.ID == "" {
-			next++
-			t.ID = "t" + strconv.Itoa(next)
+			if id := byTitle[strings.TrimSpace(t.Title)]; id != "" {
+				t.ID = id
+				delete(byTitle, strings.TrimSpace(t.Title))
+			} else {
+				next++
+				t.ID = "t" + strconv.Itoa(next)
+			}
 		}
 		if t.BlockedBy == nil {
 			t.BlockedBy = []string{}
@@ -95,6 +109,25 @@ func maxSeq(cur int, id string) int {
 	return cur
 }
 
+// latestTasks returns the session's current task snapshot, or none.
+func latestTasks(s module.Session) protocol.TasksData {
+	log, err := s.Events(nil)
+	if err != nil {
+		return protocol.TasksData{}
+	}
+	for i := len(log) - 1; i >= 0; i-- {
+		if log[i].Type != protocol.EventTasks {
+			continue
+		}
+		var d protocol.TasksData
+		if json.Unmarshal(log[i].Data, &d) == nil {
+			return d
+		}
+		break
+	}
+	return protocol.TasksData{}
+}
+
 func latestPassingCheck(log []protocol.Event, taskID string) string {
 	for i := len(log) - 1; i >= 0; i-- {
 		if log[i].Type != protocol.EventCheck {
@@ -128,11 +161,18 @@ func (b *Builtins) taskTool() module.Tool {
 			if err != nil {
 				return "", err
 			}
+			prev := latestTasks(s)
 			data, err := b.Tasks.UpdateTasks(ctx, s, a.Tasks, "model")
 			if err != nil {
 				return "", err
 			}
-			return protocol.RenderTasks(data.Tasks), nil
+			out := protocol.RenderTasks(data.Tasks)
+			// Resending the same plan is a loop shape of its own; the unchanged
+			// list alone reads like progress.
+			if prev.Revision > 0 && reflect.DeepEqual(prev.Tasks, data.Tasks) {
+				out = fmt.Sprintf("no change: the plan is the same as revision %d\n", prev.Revision) + out
+			}
+			return out, nil
 		},
 	}
 }
