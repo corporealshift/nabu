@@ -56,12 +56,17 @@ func TestTheIdleSweepArchivesOnlyWhatSat(t *testing.T) {
 	h := newHarness(t, nil, nil)
 	old := h.create(t)
 	recent := h.create(t)
-	recent.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "info", Message: "touched"})
+	last := func(s *session.Session) time.Time { return s.Events()[len(s.Events())-1].Timestamp }
+	// Timestamps are to the millisecond, and both sessions can be made within
+	// one: touch the recent one until its last event is strictly later.
+	for !last(recent).After(last(old)) {
+		time.Sleep(time.Millisecond)
+		recent.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "info", Message: "touched"})
+	}
 
-	// Measured from the recent session's last event, so the old one is the
-	// only one past the cutoff.
-	now := recent.Events()[len(recent.Events())-1].Timestamp.Add(3 * 24 * time.Hour)
-	cutoff := now.Sub(old.Events()[len(old.Events())-1].Timestamp) - time.Millisecond
+	// Exactly the old session's age: it is at the cutoff, the recent one short of it.
+	now := last(recent).Add(3 * 24 * time.Hour)
+	cutoff := now.Sub(last(old))
 
 	got := h.m.ArchiveIdle(context.Background(), now, cutoff)
 	if len(got) != 1 || got[0] != old.ID() {
