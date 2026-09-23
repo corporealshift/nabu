@@ -102,12 +102,20 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 	m.deps.Modules.TurnEnd(ctx, h)
 
 	if len(resp.ToolCalls) > 0 {
+		h.halted.Store(nil)
 		for _, tc := range resp.ToolCalls {
 			if ctx.Err() != nil {
 				return false, ctx.Err()
 			}
 			m.invokeTool(ctx, h, protocol.ToolCallData{
 				CallID: tc.ID, Tool: tc.Name, Arguments: tc.Arguments, Source: "model"})
+			// A gate halted the session: the rest of the batch does not run,
+			// and no further turn is taken.
+			if why := h.halted.Swap(nil); why != nil {
+				h.s.Append(protocol.EventNotice, protocol.NoticeData{
+					Source: "daemon", Level: "warn", Message: "stopping: " + *why})
+				return false, m.finish(ctx, h, protocol.StateBlocked, *why)
+			}
 		}
 		return m.afterTurn(ctx, h, pcfg)
 	}

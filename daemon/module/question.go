@@ -151,7 +151,7 @@ func ChangesWorkspace(call protocol.ToolCallData) bool {
 		}
 		_ = json.Unmarshal(call.Arguments, &a)
 		return a.Op == "commit"
-	case "bash":
+	case "bash", "wait":
 		var a struct {
 			Command string `json:"command"`
 		}

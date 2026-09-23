@@ -317,7 +317,7 @@ Go packages, each independently testable, each with one clear purpose:
 | `session` | Event log, cursors, index, persistence |
 | `agent` | The agent loop: request assembly, streaming, tool dispatch, stop gate, compaction, budget |
 | `provider` | OpenAI-compatible streaming client, retries with backoff, concurrency limits, usage |
-| `tools` | Built-in tools: bash, read, write, edit, glob, grep, task.update — registered through the same registry modules use |
+| `tools` | Built-in tools: bash, wait, read, write, edit, glob, grep, task.update — registered through the same registry modules use |
 | `module` | The `Module` interface, hook interfaces, `Host` interface, registry, dispatch, isolation |
 | `modules/*` | The modules themselves (§14) |
 | `api` | WebSocket surface, subscriptions, event fan-out |
@@ -714,7 +714,7 @@ type Module interface {
 // fixed between compactions); BeforeRequest may return suffix blocks only.
 type SessionStarter  interface { SessionStart(ctx, Session) ([]Context, error) }    // prefix blocks: skill index, memory index
 type RequestHook     interface { BeforeRequest(ctx, Session) ([]Context, error) }   // suffix blocks for this request only
-type ToolGate        interface { GateTool(ctx, Session, ToolCall) Verdict }         // Allow | Deny{reason} | Ask{prompt, risk}
+type ToolGate        interface { GateTool(ctx, Session, ToolCall) Verdict }         // Allow | Deny{reason} | Ask{prompt, risk} | Halt{reason, summary}
 type ToolProvider    interface { Tools() []Tool }                                   // registered through the same registry as built-ins
 type ToolObserver    interface { ToolResult(ctx, Session, ToolCall, ToolResult) }
 type TurnObserver    interface { TurnEnd(ctx, Session) }
@@ -751,7 +751,7 @@ Modules see the daemon only through `Host`:
 - Hooks run synchronously on the session's goroutine, in registration order. Modules
   are singletons and must be safe across concurrent sessions; per-session state
   belongs in the log, not in the module.
-- Gates are asked in order; `Deny` short-circuits a tool gate, `Ask` is asked once
+- Gates are asked in order; `Deny` or `Halt` short-circuits a tool gate, `Ask` is asked once
   even if several modules return it. Stop gates are all asked (§10.1).
 
 ### 14.4 The boundary is enforced, not just described
@@ -794,6 +794,7 @@ boundary belongs.
 | `guard` | `ToolGate` | bash-guard rules: allow / deny / ask by command pattern, path, and risk tier. Replaces the "unguarded first run" problem: it is always compiled in, and disabling it appends a `notice`. |
 | `verify` | `ToolGate`, `StopGate`, `Reporter` | §10: `require_done_when`, mechanical task checks, open-task veto, goal judge, workspace gate, dirty-tree veto. |
 | `report` | `Reporter` | `files_touched`, `commits`, `tree_dirty`. |
+| `loop` | `ToolGate`, `RequestHook` | Repetition: an identical write or edit gets a notice, then a refusal, then `Halt`; a check failing the same way after edits, or returning the same output while nothing changes, gets a notice and is never refused. See `2026-09-23-loop-module-design.md`. |
 | `memory` | `SessionStarter`, `ToolProvider`, `CompactionHook`, `SessionEnder`; later `RequestHook` for automatic recall | §11. |
 
 Nothing here is a "default." These are the modules. Each has a config section and an

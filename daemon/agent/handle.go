@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	"github.com/corporealshift/nabu/daemon/module"
 	"github.com/corporealshift/nabu/daemon/session"
@@ -34,6 +35,11 @@ type sessionHandle struct {
 	// prompt appended after the summarised range but before the summary landed
 	// would reach neither the summary nor any later request.
 	compactMu sync.Mutex
+
+	// halted carries a tool gate's Halt from the call it refused to the turn
+	// that made the call, which then stops the session. It is a signal
+	// consumed at once, not state: the refusal and the stop are both logged.
+	halted atomic.Pointer[string]
 }
 
 func (h *sessionHandle) ID() string                  { return h.s.ID() }
