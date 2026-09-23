@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -43,7 +42,7 @@ func renderEvent(ev protocol.Event) []string {
 		if json.Unmarshal(ev.Data, &d) != nil {
 			return nil
 		}
-		return renderMessage(d, ev.Timestamp)
+		return renderMessage(d)
 
 	case protocol.EventToolCall:
 		var d protocol.ToolCallData
@@ -173,37 +172,39 @@ func renderEvent(ev protocol.Event) []string {
 }
 
 // renderMessage renders a user or assistant turn.
-func renderMessage(d protocol.MessageData, at time.Time) []string {
+func renderMessage(d protocol.MessageData) []string {
 	body := strings.TrimSpace(d.Content)
 	if body == "" && !d.Interrupted {
 		return nil
 	}
 	var out []string
-	timestamp := ""
-	if !at.IsZero() {
-		timestamp = dim.Render(at.Local().Format("Jan 2 15:04")) + " "
-	}
 	if d.Role == "user" {
-		for i, l := range strings.Split(body, "\n") {
-			prefix := ""
-			if i == 0 {
-				prefix = timestamp
-			}
-			out = append(out, prefix+userStyle.Render("› "+l))
+		for _, l := range strings.Split(body, "\n") {
+			out = append(out, userStyle.Render("› "+l))
 		}
 		return out
 	}
-	for i, l := range strings.Split(body, "\n") {
-		prefix := ""
-		if i == 0 {
-			prefix = timestamp
-		}
-		out = append(out, prefix+l)
+	if body != "" {
+		out = strings.Split(body, "\n")
 	}
 	if d.Interrupted {
 		out = append(out, dim.Render("(interrupted)"))
 	}
 	return out
+}
+
+// promptStamp is when a prompt was sent, to set beside it. Only prompts carry
+// one: they are where a reader looks for when something was asked, and a time
+// on every line is noise.
+func promptStamp(ev protocol.Event) string {
+	if ev.Type != protocol.EventMessage || ev.Timestamp.IsZero() {
+		return ""
+	}
+	var d protocol.MessageData
+	if json.Unmarshal(ev.Data, &d) != nil || d.Role != "user" {
+		return ""
+	}
+	return ev.Timestamp.Local().Format("Jan 2 15:04")
 }
 
 // renderReport renders the run report, which is what a caller checks instead

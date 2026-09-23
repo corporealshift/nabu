@@ -31,18 +31,19 @@ func thinkingLine(content string, expanded bool) string {
 
 func words(s string) int { return len(strings.Fields(s)) }
 
-// rememberThought records where a thought was written so the toggle can rewrite
-// that slot in place, and returns the line to write there.
-func (m *model) rememberThought(ev protocol.Event) string {
+// rememberThought writes a thought as a block of its own, and records where so
+// the toggle can rewrite that slot in place.
+func (m *model) rememberThought(ev protocol.Event) {
 	var d protocol.ThinkingData
 	if unmarshal(ev, &d) != nil || strings.TrimSpace(d.Content) == "" {
-		return ""
+		return
 	}
 	if m.thoughts == nil {
 		m.thoughts = map[int]string{}
 	}
+	m.startBlock()
 	m.thoughts[len(m.transcript)] = d.Content
-	return thinkingLine(d.Content, m.showThinking)
+	m.transcript = append(m.transcript, entry{text: thinkingLine(d.Content, m.showThinking)})
 }
 
 // toggleThinking shows or hides every thought at once. The transcript is a
@@ -51,7 +52,7 @@ func (m *model) toggleThinking() {
 	m.showThinking = !m.showThinking
 	for at, content := range m.thoughts {
 		if at < len(m.transcript) {
-			m.transcript[at] = thinkingLine(content, m.showThinking)
+			m.transcript[at] = entry{text: thinkingLine(content, m.showThinking)}
 		}
 	}
 	// Entries already wrapped just changed in place.

@@ -108,8 +108,17 @@ func TestMessageTimestampAndIdleAge(t *testing.T) {
 	// only on a machine that happens to run in UTC.
 	defer func(was *time.Location) { time.Local = was }(time.Local)
 	time.Local = time.FixedZone("EDT", -4*60*60)
-	if got := renderEvent(ev); len(got) != 1 || !strings.Contains(got[0], "Sep 15 20:00") {
-		t.Errorf("rendered message = %q, want timestamp", got)
+	if got := promptStamp(ev); got != "Sep 15 20:00" {
+		t.Errorf("prompt stamp = %q, want Sep 15 20:00", got)
+	}
+	if got := renderEvent(ev); len(got) != 1 || strings.Contains(got[0], "Sep") {
+		t.Errorf("rendered message = %q, want the stamp beside it, not in it", got)
+	}
+	reply := event("e2", protocol.EventMessage,
+		protocol.MessageData{Role: "assistant", Content: "hi"})
+	reply.Timestamp = ev.Timestamp
+	if got := promptStamp(reply); got != "" {
+		t.Errorf("a reply carries no stamp, got %q", got)
 	}
 	if got := idleAge(time.Unix(0, 0), time.Unix(5*60, 0)); got != "5 minutes ago" {
 		t.Errorf("idle age = %q, want 5 minutes ago", got)

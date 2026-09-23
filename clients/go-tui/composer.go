@@ -101,20 +101,56 @@ func (m model) viewportHeight() int {
 	return h
 }
 
-// wrapAll breaks rendered transcript lines to the width they will be read in.
+// wrapAll breaks transcript entries to the width they will be read in.
 //
 // It happens here rather than when an event is rendered, because the width is
 // not known then and changes when the terminal does. A line is stored once and
 // wrapped afresh every draw.
-func wrapAll(lines []string, width int) []string {
-	if width < 2 {
-		return lines
-	}
-	out := make([]string, 0, len(lines))
-	for _, line := range lines {
-		out = append(out, wrapStyled(line, width)...)
+func wrapAll(entries []entry, width int) []string {
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, wrapEntry(e, width)...)
 	}
 	return out
+}
+
+// margin keeps the transcript off the terminal's edge.
+const margin = "  "
+
+// minAsideWidth is the narrowest pane an aside is kept on. Below it a
+// timestamp would take the room the prompt needs.
+const minAsideWidth = 40
+
+// wrapEntry wraps one entry inside the margin, and sets its aside at the right
+// edge of the first line. The text wraps short of the aside, so the two never
+// collide.
+func wrapEntry(e entry, width int) []string {
+	if e.text == "" {
+		return []string{""}
+	}
+	aside := e.aside
+	if width < minAsideWidth {
+		aside = ""
+	}
+	room := width - len(margin)
+	if aside != "" {
+		room -= visibleWidth(aside) + 2
+	}
+	var lines []string
+	for _, w := range wrapStyled(e.text, max(room, 1)) {
+		// An expanded thought is one entry holding several lines.
+		lines = append(lines, strings.Split(w, "\n")...)
+	}
+	for i := range lines {
+		if lines[i] != "" {
+			lines[i] = margin + lines[i]
+		}
+	}
+	if aside != "" {
+		gap := width - visibleWidth(lines[0]) - visibleWidth(aside)
+		lines[0] += strings.Repeat(" ", max(gap, 2)) + dim.Render(aside)
+	}
+	return lines
 }
 
 // wrapStyled wraps one line that already carries its styling. lipgloss counts

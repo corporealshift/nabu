@@ -15,13 +15,7 @@ import (
 // cache existed. The cache must never show anything else.
 func freshBody(m model) string {
 	width := m.transcriptWidth()
-	lines := wrapAll(m.transcript, width)
-	if m.showThinking && m.thinkingNow != "" {
-		lines = append(lines, wrapAll(strings.Split(thinkingLine(m.thinkingNow, true), "\n"), width)...)
-	}
-	if m.streaming != "" {
-		lines = append(lines, wrapAll(strings.Split(m.streaming, "\n"), width)...)
-	}
+	lines := wrapAll(append(append([]entry{}, m.transcript...), m.preview()...), width)
 	return strings.Join(lines, "\n")
 }
 
