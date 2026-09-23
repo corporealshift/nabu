@@ -82,4 +82,25 @@ class TaskCardTest {
 
         assertEquals(tasks, overlay(tasks, setOf("t1")))
     }
+
+    /**
+     * Folded, the card is one line (issue 75), so that line has to carry what
+     * is worth knowing: how far through, and what is being done now.
+     */
+    @Test
+    fun `the folded line says how far through and what is under way`() {
+        fun t(id: String, title: String, status: String) =
+            Task(id = id, title = title, status = status)
+
+        assertEquals(
+            "Tasks  1/3  ·  port the engine",
+            taskSummary(listOf(t("a", "read", "done"), t("b", "port the engine", "in_progress"), t("c", "test", "pending"))),
+        )
+        assertEquals(
+            "with nothing in progress, the next open task stands in",
+            "Tasks  1/2  ·  test",
+            taskSummary(listOf(t("a", "read", "done"), t("c", "test", "pending"))),
+        )
+        assertEquals("Tasks  2/2", taskSummary(listOf(t("a", "read", "done"), t("b", "ship", "cancelled"))))
+    }
 }

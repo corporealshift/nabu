@@ -103,6 +103,10 @@ type model struct {
 	tasks []protocol.Task
 	goal  *protocol.GoalData
 
+	// hideTasks folds the task pane away, for the reader who wants the width
+	// (issue 75). The status line still counts them.
+	hideTasks bool
+
 	// composer
 	composing bool
 	input     string
@@ -334,9 +338,10 @@ const (
 	minWideTerminal = 100
 )
 
-// showTasks reports whether there is both something to show and room to show it.
+// showTasks reports whether there is something to show, room to show it, and
+// the reader has not put it away.
 func (m model) showTasks() bool {
-	return len(m.tasks) > 0 && m.width >= minWideTerminal
+	return len(m.tasks) > 0 && m.width >= minWideTerminal && !m.hideTasks
 }
 
 // transcriptWidth is what the transcript gets once the task pane has its share.
@@ -419,6 +424,11 @@ func (m *model) refresh() {
 	if !m.ready {
 		return
 	}
+	// Whether the task pane shows can change with any event, and the
+	// transcript's width with it. Without this the first task list drew the
+	// pane beside a transcript still as wide as the terminal. Laid out first,
+	// so the wrap below is to the width that will be drawn.
+	m.relayout()
 	m.updateWrap()
 	atBottom := m.viewport.AtBottom()
 	m.viewport.SetLines(m.screenLines())

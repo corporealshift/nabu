@@ -86,6 +86,11 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     fun watchEvents(id: String) = repo.watchEvents(id)
     fun watchPending(id: String) = repo.watchPending(id)
 
+    /** Folds or unfolds the task card, remembered across sessions and restarts. */
+    fun setTasksCollapsed(collapsed: Boolean) {
+        viewModelScope.launch { settingsStore.saveTasksCollapsed(collapsed) }
+    }
+
     private val feeds = HashMap<String, StateFlow<TranscriptView>>()
 
     /**
