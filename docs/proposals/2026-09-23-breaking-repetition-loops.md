@@ -117,7 +117,7 @@ clear-results runs every turn and stubs tool output older than four turns. Sessi
 times. What the clears were stubbing, one per turn: the CI failure log, then **the result of
 the previous identical edit**, `old text not found` (events 2338 and 2343). The record that
 this exact edit had already failed was the thing being removed, so the model tried it again.
-One session, so worth measuring rather than acting on. It also argues for B1: a loop notice
+One session, so worth measuring rather than acting on. It also argues for B's notice: it
 carries that record forward in a form clearing does not remove.
 
 ## 4. Options
@@ -140,27 +140,67 @@ Cheap, local, and it removes three of the five shapes at the source.
 
 ### B. A `loop` module: notice, then intervene (policy, no spec change)
 
-It watches for **the same call with the same result** within the last few calls. That's the
-strongest signal in the logs, and nearly free to compute. Near-duplicate reasoning between
-turns (word-shingle overlap ≥ 0.5) is a second signal, but noisier.
+**Repeating a call is not, by itself, a loop.** Re-running the build after an edit is how a fix
+is checked, and polling CI is how a run is waited on. A detector that treats those as loops
+derails the work it is meant to protect. The logs show how common the legitimate case is.
+Runs of one identical call made 3+ times, split by whether the result ever changed
+(`loops/watching.py`):
 
-It escalates:
+| | result changed along the way | result never changed |
+|---|---|---|
+| **observing** (build, test, read, status, `gh`) | **54**: check, fix, check again | 27 |
+| **mutating** (`write`, `edit`) | 4 | **10**: the 32× `error.rs`, the 21× `lib.rs` |
 
-1. **Name the repetition**, as a suffix context event (so request = f(log) holds):
-   for example *"`write error.rs` has run 4 times with the same content and the same result.
-   The file has not changed since the first. The last build failed with `cannot find module or
-   crate breezeway_server` in `routes/auth.rs`. Doing the same thing again will not change it."*
-   **It must carry facts, and change every time.** A fixed nudge is one more thing to copy.
-   The facts come from the log: the repeated call, the count, and the latest *differing*
-   result (usually the last build or test output).
-2. **Refuse the next identical call** with a ToolGate `Deny`: "this exact call ran 4 times
-   with the same result; take a different step". A denial is new information. In the
-   32-write loop it would have landed on write 5.
-3. **Suggest a way out:** run the check (`verify.command`), read the file that actually
-   failed, or `claude.ask` (already a tool) for a second opinion.
-4. **Give up visibly:** after a few rounds, move the session to `blocked` with a notice saying
-   why. The phone and the TUI already show that, so Kyle finds out in minutes, not after
-   an evening of writes.
+Most repeated *observing* calls were working as intended, and even some of the 27 "never
+changed" ones were waiting: `gh run view` polled 4 times across 48 seconds while CI ran. The
+repeated *writes and edits* are where the damage is. Writing identical content cannot be
+waiting for anything.
+
+So the module sorts a repeat into one of three cases, and only one of them is treated as a
+loop:
+
+| case | what it looks like | response |
+|---|---|---|
+| **identical change** | the same `write` or `edit`, same arguments, same result | a loop: notice, then deny |
+| **change not landing** | the same check, same failure, with edits between that did not move it | information only, never deny |
+| **watching** | the same observing call, same result, nothing changed in between | at most a hint, at a high threshold |
+
+1. **Identical change.** On the third identical `write`/`edit` with the same result, add a notice
+   as a suffix context event, so request = f(log) holds. It names the repetition with facts from
+   the log. For example: *"`write error.rs` has run 3 times with the same content. The file
+   has not changed since the first. The last build failed with `cannot find module or crate
+   breezeway_server` in `routes/auth.rs`."* **The notice must carry facts and change every
+   time.** A fixed nudge is one more thing to copy. On the next identical call, refuse it with
+   a ToolGate `Deny`, because the refusal is new information. With A1 in place (`write` saying
+   "unchanged"), the second identical write already tells the model this, and this case is
+   the backstop.
+2. **Change not landing.** The same build or test returns the same failure after edits. The
+   model is doing the right thing: the edits aren't reaching the problem. Say that, without
+   refusing anything: *"the last 3 edits (to `lib.rs`, `error.rs`, `lib.rs`) did not change
+   this error; it points at `routes/auth.rs`."* Never deny a check: a check is how the model
+   finds out whether it's done.
+3. **Watching.** The same observing call and result, nothing mutating in between. This is
+   polling, or re-reading a file that has not changed. Neither is harmful for a while, so the
+   threshold is high (5+ repeats). The response is a hint, never a refusal: *"this has
+   returned the same output 5 times over 2 minutes; if you're waiting on something, `wait`
+   (below) can poll for you."* Explicit waiting is never counted at all: a command that
+   `sleep`s or `--watch`es, or a status query where only the time differs.
+
+**Give the model a proper way to wait.** Most polling is the model calling the same thing
+until it changes, one turn at a time. A `wait {command, until, interval, timeout}` tool would
+poll inside the daemon and return once when the output changes, matches a pattern, or times
+out. That's one call instead of ten, and ten turns of context saved. It also means an
+identical observing call made again and again is much more likely to be a loop, because
+real waiting has somewhere better to go.
+
+**Escalating visibly** applies to identical changes only. After a denial is ignored a couple
+of times, the session moves to `blocked` with a notice saying why. The phone and the TUI
+already show that, so Kyle finds out in minutes, not after an evening of writes. A change
+that isn't landing, or a watch, never blocks the session.
+
+**Thresholds are configurable** (`modules.loop.*`) and the module can be turned off. Every
+notice and denial is a logged event, so the tally scripts in §6 can count false positives:
+for example, a denial followed by the user saying "no, keep going".
 
 ### C. Say which messages are the harness (spec: §6.4 veto text)
 
@@ -202,10 +242,11 @@ if A and B are not enough.
 
 ## 5. Recommendation
 
-**Build A and B1–B2 first.** They need no protocol change, they attack the shared cause (no
-new information), and the logs let us check them directly. Replaying the three loop sessions'
-tool calls through the new `write` and the loop detector shows where each loop would have
-been broken.
+**Build A, and B's identical-change case, first.** They need no protocol change, they attack
+the shared cause (no new information), and they touch only the case that is never
+legitimate. Replay every repeated run in the logs through the detector before shipping: the
+32× and 21× writes must be caught, and none of the 54 observing runs whose result changed may
+be. Then add B's other two cases, which only inform, and the `wait` tool.
 
 Then **D1** (a config pass-through), so Kyle can try the general preset without code changes,
 and **C**, because it's one line.
@@ -224,13 +265,15 @@ Hold **E** and **F** until A and B have been running for a week, then re-run the
   - `repeats.py <session>`: every stretch of the same call with the same result;
   - `by_fill.py`: the fill-level tally in §3;
   - `answering.py`: the "who was the model answering" tally;
-  - `show.py <session> <from> <to>`: print a stretch of a log, as in §1 and §2.
+  - `show.py <session> <from> <to>`: print a stretch of a log, as in §1 and §2;
+  - `watching.py`: repeated calls split into watching and stuck, observing and mutating (§4 B).
 
 ## 7. Not proposed
 
 - **A fixed "you are looping, stop" message.** The model already says that to itself every turn.
-- **Killing the session on the first repeat.** Some repeats are legitimate: re-running a build
-  after an edit is how a fix is checked. The trigger is the same call *and* the same result.
+- **Treating any repeated call as a loop.** Most repeated checks are the model working: 54 of
+  81 repeated observing runs saw their result change. Checks are never denied, and polling is
+  only hinted at, at a high threshold (§4 B).
 - **A global repetition penalty as the new default** without measuring it on code: see D.
 
 ## Sources
