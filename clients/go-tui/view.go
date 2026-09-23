@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/corporealshift/nabu/clients/goclient"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -119,18 +120,18 @@ func (m model) picker() string {
 		title, empty, help = "Archived sessions", "nothing archived",
 			"↑↓ move · enter restore and attach · tab back · esc cancel"
 	}
+	from, to := m.pickerWindow()
+	if to-from < len(m.sessions) {
+		title += fmt.Sprintf(" (%d–%d of %d)", from+1, to, len(m.sessions))
+	}
 	b.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n\n")
 	if len(m.sessions) == 0 {
 		b.WriteString(dim.Render(empty))
 	}
-	for i, s := range m.sessions {
-		line := shortID(s.SessionID) + "  " + s.State + "  " + truncate(s.Workspace, 48)
-		if i == m.cursorAt {
-			b.WriteString(badgeOK.Render("› " + line))
-		} else {
-			b.WriteString(dim.Render("  " + line))
-		}
-		b.WriteString("\n")
+	width := m.pickerWidth()
+	now := time.Now()
+	for i := from; i < to; i++ {
+		b.WriteString(pickerRow(m.sessions[i], i == m.cursorAt, width, now))
 	}
 	b.WriteString("\n" + dim.Render(help))
 
@@ -139,6 +140,64 @@ func (m model) picker() string {
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 	}
 	return box
+}
+
+// pickerRow is one session as the phone's list shows it (issue 101): what was
+// last asked, since several sessions share a workspace and an id tells nobody
+// anything, then the project, state and how long it has sat idle.
+func pickerRow(s goclient.SessionSummary, selected bool, width int, now time.Time) string {
+	lead := "  "
+	if selected {
+		lead = "› "
+	}
+	prompt := strings.Join(strings.Fields(s.LastPrompt), " ")
+	var first string
+	switch {
+	case prompt == "":
+		first = dim.Render(lead + "nothing asked yet")
+	case selected:
+		first = badgeOK.Render(lead + truncate(prompt, width-2))
+	default:
+		first = lead + truncate(prompt, width-2)
+	}
+
+	meta := projectName(s.Workspace)
+	if meta == "" {
+		meta = shortID(s.SessionID)
+	}
+	meta += " · " + s.State
+	if s.State == string(protocol.StateIdle) {
+		if age := idleAge(s.UpdatedAt, now); age != "" {
+			meta += " · " + age
+		}
+	}
+	return first + "\n" + dim.Render("    "+truncate(meta, width-4)) + "\n"
+}
+
+// projectName is the last element of a workspace path, whichever separator
+// the daemon's platform uses.
+func projectName(workspace string) string {
+	w := strings.TrimRight(workspace, `/\`)
+	if i := strings.LastIndexAny(w, `/\`); i >= 0 {
+		return w[i+1:]
+	}
+	return w
+}
+
+// pickerWidth is how much of a row the box has room for.
+func (m model) pickerWidth() int {
+	return max(20, min(72, m.width-8))
+}
+
+// pickerWindow is the range of sessions that fits on screen, moved to keep
+// the cursor in it. Two lines a row, less the title, help and border.
+func (m model) pickerWindow() (from, to int) {
+	rows := max(1, (m.height-8)/2)
+	if len(m.sessions) <= rows {
+		return 0, len(m.sessions)
+	}
+	from = max(0, m.cursorAt-rows+1)
+	return from, from + rows
 }
 
 // status is the one line that says what is happening: connection, session

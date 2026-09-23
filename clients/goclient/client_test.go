@@ -141,6 +141,19 @@ func TestListAndState(t *testing.T) {
 	if len(sessions) != 1 || sessions[0].SessionID != s.ID() {
 		t.Fatalf("sessions: %+v", sessions)
 	}
+	if sessions[0].UpdatedAt.IsZero() {
+		t.Error("a summary should say when the session last changed")
+	}
+
+	if _, err := s.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "fix the build"}); err != nil {
+		t.Fatal(err)
+	}
+	if sessions, err = c.List(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if sessions[0].LastPrompt != "fix the build" {
+		t.Errorf("last prompt: got %q", sessions[0].LastPrompt)
+	}
 
 	st, err := c.State(ctx, s.ID())
 	if err != nil {
