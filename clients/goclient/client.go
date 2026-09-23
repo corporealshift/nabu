@@ -339,9 +339,11 @@ func (c *Client) State(ctx context.Context, sessionID string) (protocol.State, e
 
 // SessionSummary is one row of nabu.session.list.
 type SessionSummary struct {
-	SessionID string `json:"session_id"`
-	Workspace string `json:"workspace"`
-	State     string `json:"state"`
+	SessionID  string    `json:"session_id"`
+	Workspace  string    `json:"workspace"`
+	State      string    `json:"state"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	LastPrompt string    `json:"last_prompt,omitempty"`
 }
 
 // List fetches the sessions the daemon knows about.

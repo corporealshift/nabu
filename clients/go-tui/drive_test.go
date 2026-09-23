@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -331,6 +332,60 @@ func TestEmptyPickerSaysSo(t *testing.T) {
 	m, _ = send(m, sessionsMsg{sessions: nil})
 	if !strings.Contains(m.View(), "no sessions") {
 		t.Error("an empty list should say so rather than show an empty box")
+	}
+}
+
+// A row of ids and states told nobody which session was which (issue 101).
+// Like the phone, the picker leads with what was last asked, then the project.
+func TestPickerShowsWhatEachSessionIsAbout(t *testing.T) {
+	m := sized(t, nil)
+	m, _ = send(m, sessionsMsg{sessions: []goclient.SessionSummary{
+		{SessionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", State: "idle", Workspace: `C:\code\nabu`,
+			LastPrompt: "fix the flaky\nattach test", UpdatedAt: time.Now().Add(-3 * time.Hour)},
+		{SessionID: "01BRZ3NDEKTSV4RRFFQ69G5FAV", State: "running", Workspace: "/home/k/scratch"},
+	}})
+	view := stripANSI(m.View())
+
+	for _, want := range []string{
+		"fix the flaky attach test", // one line, however it was typed
+		"nabu · idle · 3 hours ago",
+		"nothing asked yet",
+		"scratch · running",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("picker should show %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "FAV") || strings.Contains(view, `C:\code`) {
+		t.Errorf("ids and full paths are noise when there is a name:\n%s", view)
+	}
+}
+
+// Two lines a session fills a terminal fast; the cursor must stay on screen.
+func TestPickerScrollsToKeepTheCursorInView(t *testing.T) {
+	m := sized(t, nil)
+	var sessions []goclient.SessionSummary
+	for i := range 30 {
+		sessions = append(sessions, goclient.SessionSummary{
+			SessionID: fmt.Sprintf("s%02d", i), State: "idle", LastPrompt: fmt.Sprintf("prompt %02d", i),
+		})
+	}
+	m, _ = send(m, sessionsMsg{sessions: sessions})
+	for range 29 {
+		m, _ = send(m, tea.KeyMsg{Type: tea.KeyDown})
+	}
+	view := stripANSI(m.View())
+	if !strings.Contains(view, "› prompt 29") {
+		t.Errorf("the selected session should be on screen:\n%s", view)
+	}
+	if strings.Contains(view, "prompt 00") {
+		t.Errorf("the top of a long list should scroll away:\n%s", view)
+	}
+	if !strings.Contains(view, "of 30") {
+		t.Errorf("a scrolled list should say how much there is:\n%s", view)
+	}
+	if lines := strings.Count(view, "\n") + 1; lines > 24 {
+		t.Errorf("the picker overflows the terminal: %d lines", lines)
 	}
 }
 

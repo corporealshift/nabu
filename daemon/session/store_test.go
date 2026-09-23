@@ -1,6 +1,7 @@
 package session
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -72,6 +73,28 @@ func TestListAndRecover(t *testing.T) {
 	ev := b.Events()
 	if ev[len(ev)-2].Type != protocol.EventNotice {
 		t.Fatal("recovery must append a notice before the state change")
+	}
+}
+
+// Sessions in one workspace look alike in a list; what was last asked is what
+// tells them apart (issue 101).
+func TestSummaryCarriesTheLastPrompt(t *testing.T) {
+	st := newStore(t)
+	s, _ := st.Create("C:/w", "w-1", opts, 0)
+	if got := s.Summary().LastPrompt; got != "" {
+		t.Fatalf("nothing asked yet: got %q", got)
+	}
+
+	s.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "first"})
+	s.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "  second\n"})
+	s.Append(protocol.EventMessage, protocol.MessageData{Role: "assistant", Content: "a reply"})
+	if got := s.Summary().LastPrompt; got != "second" {
+		t.Errorf("last prompt: got %q, want %q", got, "second")
+	}
+
+	s.Append(protocol.EventMessage, protocol.MessageData{Role: "user", Content: strings.Repeat("é", 300)})
+	if got := []rune(s.Summary().LastPrompt); len(got) != lastPromptRunes {
+		t.Errorf("a long prompt should be cut to %d runes, got %d", lastPromptRunes, len(got))
 	}
 }
 

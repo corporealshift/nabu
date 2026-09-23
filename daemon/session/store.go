@@ -157,9 +157,16 @@ type Summary struct {
 	Goal         *protocol.GoalData    `json:"goal,omitempty"`
 	TasksTotal   int                   `json:"tasks_total"`
 	TasksDone    int                   `json:"tasks_done"`
+	// LastPrompt is the start of the last thing the human asked. Several
+	// sessions share a workspace, and this is what tells them apart in a list.
+	LastPrompt string `json:"last_prompt,omitempty"`
 	// Archived is set in an archived listing (spec 7.19).
 	Archived bool `json:"archived,omitempty"`
 }
+
+// lastPromptRunes bounds LastPrompt. A list is a line per session; a pasted
+// log as a prompt should not ride along in every listing.
+const lastPromptRunes = 200
 
 // Summary projects the session for listings.
 func (s *Session) Summary() Summary {
@@ -170,7 +177,28 @@ func (s *Session) Summary() Summary {
 		SessionID: s.id, Workspace: path, WorkspaceKey: key, State: st.State,
 		EventCount: len(ev), CreatedAt: ev[0].Timestamp, UpdatedAt: ev[len(ev)-1].Timestamp,
 		Goal: st.Goal, TasksTotal: len(st.Tasks), TasksDone: st.DoneTasks(),
+		LastPrompt: lastPrompt(ev),
 	}
+}
+
+// lastPrompt is the most recent user message, trimmed and cut to
+// lastPromptRunes. Empty when nothing has been asked.
+func lastPrompt(ev []protocol.Event) string {
+	for i := len(ev) - 1; i >= 0; i-- {
+		if ev[i].Type != protocol.EventMessage {
+			continue
+		}
+		var d protocol.MessageData
+		if json.Unmarshal(ev[i].Data, &d) != nil || d.Role != "user" {
+			continue
+		}
+		text := []rune(strings.TrimSpace(d.Content))
+		if len(text) > lastPromptRunes {
+			text = text[:lastPromptRunes]
+		}
+		return string(text)
+	}
+	return ""
 }
 
 // List returns every session on disk, oldest first. Corrupt logs are skipped

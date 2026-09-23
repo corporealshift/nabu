@@ -390,7 +390,12 @@ wherever shown.
 ### 7.2 `nabu.session.list {archived?}` → `{sessions: [SessionSummary]}`
 
 `SessionSummary = {session_id, workspace, workspace_key, state, event_count,
-created_at, updated_at, goal?: {condition, state}, tasks?: {total, done}, archived?}`.
+created_at, updated_at, goal?: {condition, state}, tasks?: {total, done}, last_prompt?,
+archived?}`.
+
+`last_prompt` is the content of the session's most recent `user` `message`, trimmed and
+cut to at most 200 characters; absent when nothing has been asked. Sessions in one
+workspace are otherwise hard to tell apart in a list.
 
 Lists the sessions in use. With `archived: true` it lists the archive instead (§7.19),
 and each summary carries `archived: true`. A client that mirrors sessions SHOULD drop
