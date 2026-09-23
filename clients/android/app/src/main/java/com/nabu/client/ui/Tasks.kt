@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,34 +49,76 @@ private fun withClosed(tasks: List<Task>, done: Set<String>) =
     tasks.map { if (it.id in done && it.status !in CLOSED) it.copy(status = "done") else it }
 
 /**
+ * Whether the task card is folded, and how to change that. Provided once at the
+ * top of the app rather than threaded through every screen between: the choice
+ * is the reader's, and it holds for every session until they change it.
+ */
+data class TaskCardFold(val collapsed: Boolean = false, val onToggle: () -> Unit = {})
+
+val LocalTaskCardFold = staticCompositionLocalOf { TaskCardFold() }
+
+/**
+ * The card's one line: how far through, and what is under way now. Folded,
+ * this is all that shows, so it has to say the thing worth knowing.
+ */
+fun taskSummary(tasks: List<Task>): String {
+    val closed = tasks.count { it.status in CLOSED }
+    val now = tasks.firstOrNull { it.status == "in_progress" }
+        ?: tasks.firstOrNull { it.status !in CLOSED }
+    return if (now == null) "Tasks  $closed/${tasks.size}"
+    else "Tasks  $closed/${tasks.size}  ·  ${now.title}"
+}
+
+/**
  * The task card. Tapping a task completes it, because typing a status on a
  * phone is not something anyone does twice.
+ *
+ * Tapping the header folds it to one line (issue 75): a long list took up much
+ * of the screen, above the composer, on every session.
  */
 @Composable
 fun TaskCard(tasks: List<Task>, onDone: (String) -> Unit) {
     if (tasks.isEmpty()) return
     val c = NabuTheme.colors
-    val closed = tasks.count { it.status in CLOSED }
+    val fold = LocalTaskCardFold.current
 
     Column(
         Modifier
             .fillMaxWidth()
             .background(c.surface, RoundedCornerShape(12.dp))
-            .padding(12.dp),
+            .padding(horizontal = 12.dp, vertical = if (fold.collapsed) 8.dp else 12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(
-            "Tasks  $closed/${tasks.size}",
-            style = MaterialTheme.typography.labelMedium,
-            color = c.muted,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(bottom = 4.dp),
-        )
-        Column(
-            Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClickLabel = if (fold.collapsed) "Show tasks" else "Hide tasks") { fold.onToggle() }
+                .padding(bottom = if (fold.collapsed) 0.dp else 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            tasks.forEach { TaskRow(it, onDone) }
+            Text(
+                if (fold.collapsed) taskSummary(tasks) else "Tasks  ${tasks.count { it.status in CLOSED }}/${tasks.size}",
+                style = MaterialTheme.typography.labelMedium,
+                color = c.muted,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                if (fold.collapsed) "Show" else "Hide",
+                style = MaterialTheme.typography.labelMedium,
+                color = c.accent,
+            )
+        }
+        if (!fold.collapsed) {
+            Column(
+                Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                tasks.forEach { TaskRow(it, onDone) }
+            }
         }
     }
 }

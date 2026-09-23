@@ -232,6 +232,15 @@ the phone. A page can run its own scripts but cannot reach the network at all, s
 model was steered into writing cannot call home or talk to the daemon. On by default; turn it
 off with `{ "modules": { "artifact": { "enabled": false } } }`.
 
+### How much work a session was
+
+`/stats` in the terminal UI, or Stats in a session's top bar on the phone, shows turns,
+prompts, time spent working, tokens in and out, how the context grew turn by turn and
+where compaction cut it back, which tools were used and how often they failed, the files
+read over and over (a first sign of going round in circles), and tokens per day across
+every session. `nabu stats <id>` prints the same as JSON for your own analysis, and
+`nabu stats` prints the days.
+
 ### Asking a question
 
 Ask the agent something ("what's the status here?", "why did it stop?") and it answers

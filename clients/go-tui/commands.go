@@ -31,6 +31,7 @@ const (
 	actClearGoal
 	actAttach
 	actListSessions
+	actStats
 )
 
 // commandResult is what a line of composer input means: something to do, or
@@ -47,7 +48,8 @@ type commandResult struct {
 
 const helpText = "commands: /goal <text> set a goal · /goal clear it · " +
 	"/compact summarise the history now · /stop end the session · " +
-	"/open <name> open a page the agent made · /sessions switch · /help this list"
+	"/stats how much work this session was · /open <name> open a page the agent made · " +
+	"/sessions switch · /help this list"
 
 // parseCommand turns a line of input into what should happen. Text without a
 // leading slash is a prompt, verbatim.
@@ -84,6 +86,8 @@ func parseCommand(line string) commandResult {
 			return commandResult{note: "/open needs the name of a page — o opens the newest"}
 		}
 		return commandResult{open: rest}
+	case "/stats":
+		return commandResult{act: &action{kind: actStats}}
 	case "/help":
 		return commandResult{note: helpText}
 	default:

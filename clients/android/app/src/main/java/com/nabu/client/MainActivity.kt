@@ -20,6 +20,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import com.nabu.client.ui.theme.Mode
 import com.nabu.client.ui.theme.NabuTheme
 import com.nabu.client.ui.theme.Scheme
+import com.nabu.client.ui.LocalTaskCardFold
+import com.nabu.client.ui.TaskCardFold
 import com.nabu.client.ui.overlay
 import com.nabu.client.ui.projectName
 import androidx.lifecycle.Lifecycle
@@ -33,6 +35,7 @@ import com.nabu.client.ui.ArtifactScreen
 import com.nabu.client.ui.AskSheet
 import com.nabu.client.ui.Line
 import com.nabu.client.ui.LocalOpenArtifact
+import com.nabu.client.ui.StatsScreen
 import com.nabu.client.ui.PermissionSheet
 import com.nabu.client.ui.BrowseScreen
 import com.nabu.client.ui.SessionListScreen
@@ -55,6 +58,7 @@ private sealed interface Screen {
     data object Browse : Screen
     data class Transcript(val id: String) : Screen
     data class Artifact(val sessionId: String, val line: Line.Artifact) : Screen
+    data class Stats(val id: String) : Screen
 }
 
 @Composable
@@ -70,7 +74,11 @@ private fun App(vm: NabuViewModel = viewModel()) {
 
     NabuTheme(scheme = chosen?.scheme ?: Scheme.Verdigris, dark = dark) {
         Surface(color = NabuTheme.colors.background) {
-            Screens(vm = vm, systemDark = systemDark)
+            val collapsed = chosen?.tasksCollapsed ?: false
+            val fold = TaskCardFold(collapsed = collapsed, onToggle = { vm.setTasksCollapsed(!collapsed) })
+            CompositionLocalProvider(LocalTaskCardFold provides fold) {
+                Screens(vm = vm, systemDark = systemDark)
+            }
         }
     }
 }
@@ -125,6 +133,11 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
             onAppearance = { sc, md -> vm.setAppearance(sc, md) },
             onSave = { vm.save(it); screen = Screen.Sessions },
         )
+
+        is Screen.Stats -> {
+            val stats by vm.stats.collectAsState()
+            StatsScreen(state = stats, onBack = { screen = Screen.Transcript(s.id) })
+        }
 
         is Screen.Browse -> {
             val browse by vm.browse.collectAsState()
@@ -189,6 +202,7 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
                 onResume = { vm.resumeSession(s.id) },
                 onInterrupt = { vm.interruptSession(s.id) },
                 onCompact = { vm.compactSession(s.id) },
+                onStats = { vm.loadStats(s.id); screen = Screen.Stats(s.id) },
                 onRetryBlocked = { vm.retryBlocked(it) },
                 onDiscardBlocked = { vm.discardBlocked(it) },
                 onBack = { screen = Screen.Sessions },

@@ -32,6 +32,9 @@ func (m model) View() string {
 	if m.picking {
 		return m.picker()
 	}
+	if m.stats != nil {
+		return m.statsPanel()
+	}
 
 	main := m.viewport.View()
 	if m.showTasks() {
@@ -77,6 +80,17 @@ func (m model) taskPane() string {
 		PaddingLeft(1).
 		Height(m.viewport.Height).
 		Render(b.String())
+}
+
+// doneTasks counts the tasks that are finished, however they finished.
+func doneTasks(tasks []protocol.Task) int {
+	n := 0
+	for _, t := range tasks {
+		if t.Status == protocol.TaskDone || t.Status == protocol.TaskCancelled {
+			n++
+		}
+	}
+	return n
 }
 
 // taskLine marks a task by status. The marks differ in shape, not only colour,
@@ -154,6 +168,10 @@ func (m model) status() string {
 	}
 	if g := m.goalBadge(); g != "" {
 		parts = append(parts, g)
+	}
+	if len(m.tasks) > 0 && !m.showTasks() {
+		// The pane is put away or has no room; the count still says how far.
+		parts = append(parts, dim.Render(fmt.Sprintf("tasks %d/%d", doneTasks(m.tasks), len(m.tasks))))
 	}
 
 	if c := m.contextBadge(); c != "" {
@@ -250,9 +268,9 @@ func (m model) help() string {
 		return dim.Render("enter send · esc cancel · /help for commands")
 	}
 	if terminal(m.state) {
-		return dim.Render("q quit · i type · s sessions · t thinking · g/G top/bottom — the session has ended")
+		return dim.Render("q quit · i type · s sessions · t thinking · p tasks · g/G top/bottom — the session has ended")
 	}
-	help := "q quit (the run continues) · i type · s sessions · t thinking · ctrl+x interrupt"
+	help := "q quit (the run continues) · i type · s sessions · t thinking · p tasks · ctrl+x interrupt"
 	if m.lastArtifact != "" {
 		help += " · o open page"
 	}

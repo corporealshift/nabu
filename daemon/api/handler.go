@@ -11,6 +11,7 @@ import (
 
 	"github.com/corporealshift/nabu/daemon/agent"
 	"github.com/corporealshift/nabu/daemon/session"
+	"github.com/corporealshift/nabu/daemon/stats"
 	"github.com/corporealshift/nabu/daemon/workspace"
 	"github.com/corporealshift/nabu/protocol"
 )
@@ -68,6 +69,8 @@ func NewHandler(m *agent.Manager, st *session.Store, log *slog.Logger) *Handler 
 	h.register("nabu.session.create", h.handleSessionCreate)
 	h.register("nabu.session.events_after", h.handleSessionEventsAfter)
 	h.register("nabu.session.state", h.handleSessionState)
+	h.register("nabu.session.stats", h.handleSessionStats)
+	h.register("nabu.usage", h.handleUsage)
 	h.register("nabu.session.subscribe", h.handleSessionSubscribe)
 	h.register("nabu.session.unsubscribe", h.handleSessionUnsubscribe)
 	h.registerMutators()
@@ -379,6 +382,58 @@ func (h *Handler) handleSessionState(_ context.Context, _ *connState, params jso
 		return nil, rpcErr
 	}
 	return s.State(), nil
+}
+
+// handleSessionStats implements nabu.session.stats (spec 7.21).
+func (h *Handler) handleSessionStats(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
+	var p struct {
+		SessionID string `json:"session_id"`
+	}
+	if rpcErr := decodeParams(params, &p); rpcErr != nil {
+		return nil, rpcErr
+	}
+	s, rpcErr := h.getSession(p.SessionID)
+	if rpcErr != nil {
+		return nil, rpcErr
+	}
+	return stats.Of(s.ID(), s.Events()), nil
+}
+
+// Usage history is a chart of days: the default fills a phone's width, and the
+// cap keeps one call from reading the whole of every log for nothing.
+const (
+	defaultUsageDays = 14
+	maxUsageDays     = 90
+)
+
+// handleUsage implements nabu.usage (spec 7.22): tokens and turns per day,
+// across every session the daemon lists.
+func (h *Handler) handleUsage(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
+	var p struct {
+		Days int `json:"days"`
+	}
+	if rpcErr := decodeParams(params, &p); rpcErr != nil {
+		return nil, rpcErr
+	}
+	if p.Days <= 0 {
+		p.Days = defaultUsageDays
+	}
+	if p.Days > maxUsageDays {
+		p.Days = maxUsageDays
+	}
+	sums, err := h.store.List()
+	if err != nil && len(sums) == 0 {
+		return nil, protocol.NewRPCError(protocol.CodeInternalError, err.Error())
+	}
+	var logs [][]protocol.Event
+	for _, sum := range sums {
+		if s, err := h.store.Get(sum.SessionID); err == nil {
+			logs = append(logs, s.Events())
+		}
+	}
+	now := time.Now()
+	first := now.AddDate(0, 0, -(p.Days - 1))
+	return map[string]any{"days": stats.Usage(logs, first, now, time.Local)}, nil
 }
 
 // BrowseRoots bound what nabu.workspace.browse may list. Empty falls back to

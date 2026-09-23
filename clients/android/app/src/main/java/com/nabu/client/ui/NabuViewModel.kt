@@ -86,6 +86,11 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     fun watchEvents(id: String) = repo.watchEvents(id)
     fun watchPending(id: String) = repo.watchPending(id)
 
+    /** Folds or unfolds the task card, remembered across sessions and restarts. */
+    fun setTasksCollapsed(collapsed: Boolean) {
+        viewModelScope.launch { settingsStore.saveTasksCollapsed(collapsed) }
+    }
+
     private val feeds = HashMap<String, StateFlow<TranscriptView>>()
 
     /**
@@ -482,6 +487,27 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
                 .onSuccess { _error.value = null }
                 .onFailure { _error.value = compactFailure(it) }
             _compacting.value = false
+        }
+    }
+
+    // ------------------------------------------------------------- stats
+
+    private val _stats = MutableStateFlow<StatsState>(StatsState())
+
+    /** The stats screen's numbers (issue 38). */
+    val stats: StateFlow<StatsState> = _stats.asStateFlow()
+
+    /** Asks the daemon for a session's numbers, and the days around them. */
+    fun loadStats(sessionId: String) {
+        _stats.value = StatsState(sessionId = sessionId, loading = true)
+        viewModelScope.launch {
+            val c = client ?: run {
+                _stats.value = StatsState(sessionId, error = "not connected")
+                return@launch
+            }
+            runCatching { repo.stats(c, sessionId) to runCatching { repo.usage(c, 14) }.getOrDefault(emptyList()) }
+                .onSuccess { (s, days) -> _stats.value = StatsState(sessionId, session = s, days = days) }
+                .onFailure { _stats.value = StatsState(sessionId, error = it.message ?: "could not load the stats") }
         }
     }
 

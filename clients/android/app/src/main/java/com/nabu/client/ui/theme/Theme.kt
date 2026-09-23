@@ -37,6 +37,12 @@ data class NabuColors(
     val markStroke: Color,
     val markShadow: Color,
     val dark: Boolean,
+    /**
+     * The series color for charts. Validated against the chart surface in its
+     * own mode (lightness band, chroma floor, 3:1 contrast); an accent that is
+     * fine for a button can read as gray as a line.
+     */
+    val chart: Color = accent,
 )
 
 private val VerdigrisDark = NabuColors(
@@ -47,6 +53,7 @@ private val VerdigrisDark = NabuColors(
     muted = Color(0xFF849689),
     line = Color(0xFF2A382F),
     accent = Color(0xFF5EA88C),
+    chart = Color(0xFF34A27B),
     onAccent = Color(0xFF0D120F),
     danger = Color(0xFFE0917A),
     code = Color(0xFF0D120F),
@@ -64,6 +71,7 @@ private val VerdigrisLight = NabuColors(
     muted = Color(0xFF5F6B62),
     line = Color(0xFFD5DDD2),
     accent = Color(0xFF2F7A62),
+    chart = Color(0xFF12805E),
     onAccent = Color(0xFFF3F5F1),
     danger = Color(0xFFA8442A),
     code = Color(0xFFE0E7DE),
