@@ -18,11 +18,11 @@ func thinkingLine(content string, expanded bool) string {
 		return ""
 	}
 	if !expanded {
-		return dim.Render(fmt.Sprintf("~ thought (%d words) · t to show", words(content)))
+		return dim.Render(fmt.Sprintf("~ thought (%d words)", words(content)))
 	}
 
 	var b strings.Builder
-	b.WriteString(dim.Render("~ thought · t to hide"))
+	b.WriteString(dim.Render("~ thought"))
 	for _, line := range strings.Split(content, "\n") {
 		b.WriteString("\n" + dim.Render("  "+line))
 	}

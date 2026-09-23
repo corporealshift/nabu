@@ -30,7 +30,7 @@ func TestBlocksAreSeparatedAndResultsSitUnderTheirCalls(t *testing.T) {
 	want := []string{
 		"› fix it",
 		"",
-		"~ thought (2 words) · t to show",
+		"~ thought (2 words)",
 		"",
 		"→ bash",
 		"  ok",
@@ -103,5 +103,56 @@ func TestNarrowPaneDropsTheStamp(t *testing.T) {
 	got := wrapEntry(entry{text: "› hello", aside: "Sep 23 15:01"}, minAsideWidth-1)
 	if len(got) != 1 || strings.Contains(got[0], "Sep") {
 		t.Errorf("wrapped = %q, want the prompt alone", got)
+	}
+}
+
+// Running and idle are the beat of every turn, and the status line shows them.
+// The transcript keeps only the changes someone would want to find later.
+func TestOnlyStateChangesWorthReadingAreShown(t *testing.T) {
+	st := func(s protocol.SessionState) *protocol.SessionState { return &s }
+	tests := []struct {
+		name  string
+		d     protocol.StateChangeData
+		shown bool
+	}{
+		{"a prompt starts a turn", protocol.StateChangeData{From: st(protocol.StateIdle), To: protocol.StateRunning, Reason: "prompt"}, false},
+		{"a turn ends", protocol.StateChangeData{From: st(protocol.StateRunning), To: protocol.StateIdle, Reason: "turn_complete"}, false},
+		{"the first change", protocol.StateChangeData{To: protocol.StateRunning, Reason: "prompt"}, false},
+		{"an interruption", protocol.StateChangeData{From: st(protocol.StateRunning), To: protocol.StateIdle, Reason: "interrupted"}, true},
+		{"a shutdown", protocol.StateChangeData{From: st(protocol.StateRunning), To: protocol.StatePaused, Reason: "daemon_shutdown"}, true},
+		{"a resume", protocol.StateChangeData{From: st(protocol.StatePaused), To: protocol.StateRunning, Reason: "resumed"}, true},
+		{"blocked", protocol.StateChangeData{From: st(protocol.StateRunning), To: protocol.StateBlocked, Reason: "loop"}, true},
+		{"completed", protocol.StateChangeData{From: st(protocol.StateRunning), To: protocol.StateCompleted}, true},
+		{"error", protocol.StateChangeData{From: st(protocol.StateRunning), To: protocol.StateError}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := renderEvent(event("e1", protocol.EventStateChange, tt.d))
+			if shown := len(got) > 0; shown != tt.shown {
+				t.Errorf("shown = %v, want %v (%q)", shown, tt.shown, got)
+			}
+		})
+	}
+}
+
+// The report is one line whose mark says how the run ended.
+func TestReportLine(t *testing.T) {
+	dirty := true
+	tests := []struct {
+		d    protocol.ReportData
+		want string
+	}{
+		{protocol.ReportData{ExitStatus: protocol.StateCompleted,
+			Tasks: protocol.ReportTasks{Done: 3, Total: 3}, FilesTouched: []string{"a.go"}},
+			"✓ completed · tasks 3/3 · files 1"},
+		{protocol.ReportData{ExitStatus: protocol.StateBlocked, TreeDirty: &dirty},
+			"! blocked · tree dirty"},
+		{protocol.ReportData{ExitStatus: protocol.StatePaused}, "! paused"},
+		{protocol.ReportData{ExitStatus: protocol.StateError}, "✗ error"},
+	}
+	for _, tt := range tests {
+		if got := stripANSI(renderReport(tt.d)); got != tt.want {
+			t.Errorf("report = %q, want %q", got, tt.want)
+		}
 	}
 }

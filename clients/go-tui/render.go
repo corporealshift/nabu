@@ -79,7 +79,7 @@ func renderEvent(ev protocol.Event) []string {
 
 	case protocol.EventStateChange:
 		var d protocol.StateChangeData
-		if json.Unmarshal(ev.Data, &d) != nil {
+		if json.Unmarshal(ev.Data, &d) != nil || routine(d) {
 			return nil
 		}
 		from := ""
@@ -171,6 +171,17 @@ func renderEvent(ev protocol.Event) []string {
 	}
 }
 
+// routine reports a change between running and idle, the beat of every turn.
+// The status line already says which it is, and a pair of these after each
+// turn buried the conversation (issue 106). An interruption is not routine:
+// someone asked for it, and the transcript records that it happened.
+func routine(d protocol.StateChangeData) bool {
+	beat := func(s protocol.SessionState) bool {
+		return s == protocol.StateRunning || s == protocol.StateIdle
+	}
+	return beat(d.To) && (d.From == nil || beat(*d.From)) && d.Reason != "interrupted"
+}
+
 // renderMessage renders a user or assistant turn.
 func renderMessage(d protocol.MessageData) []string {
 	body := strings.TrimSpace(d.Content)
@@ -209,26 +220,31 @@ func promptStamp(ev protocol.Event) string {
 
 // renderReport renders the run report, which is what a caller checks instead
 // of trusting the model's account of what happened.
+//
+// The mark says how it ended, in the task pane's shapes: done, stopped short,
+// or failed.
 func renderReport(d protocol.ReportData) string {
-	var b strings.Builder
-	b.WriteString("report: " + string(d.ExitStatus))
+	mark, style := "!", warnStyle
+	switch d.ExitStatus {
+	case protocol.StateCompleted:
+		mark, style = "✓", okStyle
+	case protocol.StateError:
+		mark, style = "✗", errStyle
+	}
+	parts := []string{mark + " " + string(d.ExitStatus)}
 	if d.Tasks.Total > 0 {
-		fmt.Fprintf(&b, "  tasks %d/%d", d.Tasks.Done, d.Tasks.Total)
+		parts = append(parts, fmt.Sprintf("tasks %d/%d", d.Tasks.Done, d.Tasks.Total))
 	}
 	if n := len(d.FilesTouched); n > 0 {
-		fmt.Fprintf(&b, "  files %d", n)
+		parts = append(parts, fmt.Sprintf("files %d", n))
 	}
 	if n := len(d.Commits); n > 0 {
-		fmt.Fprintf(&b, "  commits %d", n)
+		parts = append(parts, fmt.Sprintf("commits %d", n))
 	}
 	if d.TreeDirty != nil && *d.TreeDirty {
-		b.WriteString("  tree dirty")
+		parts = append(parts, "tree dirty")
 	}
-	style := okStyle
-	if d.ExitStatus != protocol.StateCompleted {
-		style = warnStyle
-	}
-	return style.Render(b.String())
+	return style.Render(strings.Join(parts, " · "))
 }
 
 // firstArg pulls a short identifier out of a tool call's arguments, so a line
