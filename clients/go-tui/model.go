@@ -30,8 +30,9 @@ type prompt struct {
 type model struct {
 	sessionID string
 
-	// transcript is the rendered log, one line per entry.
-	transcript []string
+	// transcript is the rendered log, one line per entry, with a blank entry
+	// between blocks.
+	transcript []entry
 	viewport   pane
 	ready      bool
 
@@ -120,6 +121,9 @@ type model struct {
 	// stats is the /stats panel on screen, or nil.
 	stats *statsView
 
+	// showKeys is the ? panel: every key.
+	showKeys bool
+
 	// picker
 	picking  bool
 	sessions []goclient.SessionSummary
@@ -157,6 +161,29 @@ func newModel(sessionID string, actions chan<- action) model {
 	m.viewport = newPane(defaultWidth, defaultHeight-2)
 	m.ready = true
 	return m
+}
+
+// entry is one transcript line. aside is set right-aligned beside it, which can
+// only be done once the width is known: a prompt's timestamp.
+type entry struct {
+	text, aside string
+}
+
+// plain makes entries of lines that carry nothing beside them.
+func plain(lines []string) []entry {
+	out := make([]entry, len(lines))
+	for i, l := range lines {
+		out[i] = entry{text: l}
+	}
+	return out
+}
+
+// startBlock separates what is about to be added from what came before, so a
+// turn, a tool call and a note each stand on their own.
+func (m *model) startBlock() {
+	if len(m.transcript) > 0 {
+		m.transcript = append(m.transcript, entry{})
+	}
 }
 
 // appendEvent renders an event into the transcript and advances the cursor.
@@ -230,12 +257,21 @@ func (m *model) appendEventWithoutRefresh(ev protocol.Event) {
 	// The thinking event supersedes the stream it was assembled from.
 	if ev.Type == protocol.EventThinking {
 		m.thinkingNow, m.thinkingTurn = "", ""
-		if line := m.rememberThought(ev); line != "" {
-			m.transcript = append(m.transcript, line)
-		}
+		m.rememberThought(ev)
 		return
 	}
-	m.transcript = append(m.transcript, renderEvent(ev)...)
+	lines := renderEvent(ev)
+	if len(lines) == 0 {
+		return
+	}
+	// A result sits under its call: the daemon runs calls one at a time, so
+	// the call is what came just before it.
+	if ev.Type != protocol.EventToolResult {
+		m.startBlock()
+	}
+	entries := plain(lines)
+	entries[0].aside = promptStamp(ev)
+	m.transcript = append(m.transcript, entries...)
 }
 
 // setState records a state change and starts or stops the turn clock. The
@@ -298,7 +334,8 @@ func (m *model) reset(sessionID string) {
 // note adds a line that did not come from the log: a connection change, or a
 // local error. The daemon never sees these.
 func (m *model) note(line string) {
-	m.transcript = append(m.transcript, dim.Render(line))
+	m.startBlock()
+	m.transcript = append(m.transcript, entry{text: dim.Render(line)})
 	m.refresh()
 }
 
@@ -352,6 +389,10 @@ func (m *model) dropPrompt(requestID string) bool {
 const (
 	taskPaneWidth   = 34
 	minWideTerminal = 100
+	taskPanePad     = 2
+	// taskTitleRoom is what a title gets once the margin, border, padding and
+	// the mark take their share, with a column left for truncate's ellipsis.
+	taskTitleRoom = taskPaneWidth - 2 - taskPanePad - 2 - 1
 )
 
 // showTasks reports whether there is something to show, room to show it, and
@@ -384,28 +425,29 @@ func (m model) screenLines() []string {
 	if m.wrappedWidth != width || from > len(m.transcript) {
 		cached, from = nil, 0
 	}
-	var tail []string
-	for _, entry := range m.transcript[from:] {
-		tail = append(tail, splitLines(wrapStyled(entry, width))...)
-	}
-	if m.showThinking && m.thinkingNow != "" {
-		tail = append(tail, wrapAll(strings.Split(thinkingLine(m.thinkingNow, true), "\n"), width)...)
-	}
-	if m.streaming != "" {
-		tail = append(tail, wrapAll(strings.Split(m.streaming, "\n"), width)...)
-	}
+	tail := wrapAll(m.transcript[from:], width)
+	tail = append(tail, wrapAll(m.preview(), width)...)
 	// A fresh slice every time: models are values, and appending to a backing
 	// array another copy still reads would rewrite that copy's screen.
 	out := make([]string, 0, len(cached)+len(tail))
 	return append(append(out, cached...), tail...)
 }
 
-// splitLines flattens wrapped output, some of which holds several lines in one
-// element: an expanded thought is one transcript entry.
-func splitLines(wrapped []string) []string {
-	var out []string
-	for _, w := range wrapped {
-		out = append(out, strings.Split(w, "\n")...)
+// preview is what is arriving but not yet logged: reasoning, when thinking is
+// shown, then the reply. Each is a block of its own, as it will be once logged.
+func (m model) preview() []entry {
+	var out []entry
+	add := func(text string) {
+		if len(m.transcript) > 0 || len(out) > 0 {
+			out = append(out, entry{})
+		}
+		out = append(out, plain(strings.Split(text, "\n"))...)
+	}
+	if m.showThinking && m.thinkingNow != "" {
+		add(thinkingLine(m.thinkingNow, true))
+	}
+	if m.streaming != "" {
+		add(m.streaming)
 	}
 	return out
 }
@@ -422,9 +464,7 @@ func (m *model) updateWrap() {
 	}
 	next := make([]string, len(m.wrapped), len(m.wrapped)+2*(len(m.transcript)-m.wrappedN))
 	copy(next, m.wrapped)
-	for _, entry := range m.transcript[m.wrappedN:] {
-		next = append(next, splitLines(wrapStyled(entry, width))...)
-	}
+	next = append(next, wrapAll(m.transcript[m.wrappedN:], width)...)
 	m.wrapped, m.wrappedN = next, len(m.transcript)
 }
 

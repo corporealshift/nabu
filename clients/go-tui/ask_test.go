@@ -40,7 +40,7 @@ func TestAQuestionIsShown(t *testing.T) {
 
 func TestAQuestionKeepsTheTranscriptVisible(t *testing.T) {
 	m := sized(t, nil)
-	m.transcript = []string{"the implementation has two viable designs"}
+	m.transcript = []entry{{text: "the implementation has two viable designs"}}
 	m.refresh()
 	m = asked(m, "which design do you want?", "the simple one", "the fast one")
 

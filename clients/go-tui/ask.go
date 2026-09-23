@@ -38,8 +38,13 @@ const (
 // fits the screen: when it cannot, the question is cut, never the choices or
 // the answer line, since those are what the person has to reach.
 func (m model) askPanel() string {
-	return overlayBox.Render(strings.Join(m.askLines(), "\n"))
+	return askBox.Render(strings.Join(m.askLines(), "\n"))
 }
+
+// askBox is the overlay's frame without its vertical padding: the panel
+// shares the screen with the transcript, and every row it adds is one the
+// transcript loses.
+var askBox = overlayBox.Padding(0, 2)
 
 // askLines is the panel's content, fitted to the room there is.
 func (m model) askLines() []string {
@@ -74,7 +79,8 @@ func (m model) askLines() []string {
 	}
 	tail = append(tail, "", userStyle.Render("› ")+q.typed+badgeOK.Render("▌"), "", dim.Render(help))
 
-	// Leave the status and help lines, and one row of transcript.
+	// Leave the gap above the panel, the status line, and one row of
+	// transcript.
 	room := m.height - 3 - askBoxHeightChrome
 	if spare := room - len(head) - len(tail); spare < len(body) {
 		if spare < 1 {

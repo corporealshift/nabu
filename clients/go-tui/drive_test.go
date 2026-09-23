@@ -33,23 +33,6 @@ func typeIn(m model, text string) model {
 	return m
 }
 
-// stripANSI removes styling so a test can assert on the text itself.
-func stripANSI(s string) string {
-	var b strings.Builder
-	inEscape := false
-	for _, r := range s {
-		switch {
-		case r == 0x1b:
-			inEscape = true
-		case inEscape && (r == 'm' || r == 'K'):
-			inEscape = false
-		case !inEscape:
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
 // ---------------------------------------------------------------------------
 // The working indicator
 

@@ -1,6 +1,9 @@
 package tui
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // action is something the human asked for that needs the network. Update is
 // pure, so it produces one of these and the connection goroutine carries it
@@ -49,11 +52,32 @@ type commandResult struct {
 	open string
 }
 
-const helpText = "commands: /goal <text> set a goal · /goal clear it · " +
-	"/compact summarise the history now · /stop end the session · " +
-	"/archive put this session away · /stats how much work this session was · " +
-	"/open <name> open a page the agent made · " +
-	"/sessions switch · /help this list"
+// commands is every / command, for /help.
+var commands = []struct{ name, what string }{
+	{"/goal <text>", "set a goal"},
+	{"/goal", "clear it"},
+	{"/compact", "summarise the history now"},
+	{"/stop", "end the session"},
+	{"/archive", "put this session away"},
+	{"/stats", "how much work this session was"},
+	{"/open <name>", "open a page the agent made"},
+	{"/sessions", "switch"},
+	{"/help", "this list"},
+}
+
+// helpText lists the commands one to a line, names aligned: run together on
+// one line they wrapped into a paragraph nobody could scan (issue 106).
+var helpText = func() string {
+	width := 0
+	for _, c := range commands {
+		width = max(width, len(c.name))
+	}
+	lines := []string{"commands"}
+	for _, c := range commands {
+		lines = append(lines, fmt.Sprintf("  %-*s  %s", width, c.name, c.what))
+	}
+	return strings.Join(lines, "\n")
+}()
 
 // parseCommand turns a line of input into what should happen. Text without a
 // leading slash is a prompt, verbatim.
@@ -97,6 +121,6 @@ func parseCommand(line string) commandResult {
 	case "/help":
 		return commandResult{note: helpText}
 	default:
-		return commandResult{note: "unknown command " + name + " — " + helpText}
+		return commandResult{note: "unknown command " + name + "\n" + helpText}
 	}
 }

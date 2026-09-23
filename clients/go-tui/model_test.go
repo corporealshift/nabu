@@ -314,8 +314,8 @@ func TestQuitDoesNotEndTheRun(t *testing.T) {
 	if !m.quitting {
 		t.Error("the model should know it is quitting")
 	}
-	if !strings.Contains(m.help(), "the run continues") {
-		t.Error("the help should say quitting does not stop the run")
+	if !strings.Contains(stripANSI(m.keysPanel()), "the run continues") {
+		t.Error("the keys should say quitting does not stop the run")
 	}
 }
 
@@ -342,7 +342,7 @@ func TestTerminalStateChangesTheHelp(t *testing.T) {
 	to := protocol.StateCompleted
 	m, _ = send(m, eventMsg{ev: event("e1", protocol.EventStateChange,
 		protocol.StateChangeData{To: to})})
-	if !strings.Contains(m.help(), "ended") {
+	if !strings.Contains(m.statusHints(), "ended") {
 		t.Error("a finished session should say so")
 	}
 }

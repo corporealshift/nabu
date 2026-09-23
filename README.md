@@ -324,6 +324,7 @@ if one isn't running, and opens the terminal UI.
 | `y` / `n` | Answer a permission prompt |
 | `ctrl+x` | Interrupt the current turn |
 | `g` / `G` | Jump to the top or bottom of the transcript |
+| `?` | List every key |
 | `q` | Quit, leaving the run going |
 
 When the agent asks you something, the question takes the screen: a number picks one of

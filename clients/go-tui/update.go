@@ -176,6 +176,15 @@ func (m model) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.stats = nil
 		}
 		return m, nil
+	case m.showKeys:
+		switch msg.String() {
+		case "ctrl+c":
+			m.quitting = true
+			return m, tea.Quit
+		case "esc", "q", "?":
+			m.showKeys = false
+		}
+		return m, nil
 	case m.picking:
 		return m.onPickerKey(msg)
 	case m.composing:
@@ -341,6 +350,9 @@ func (m model) onTranscriptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "t":
 		m.toggleThinking()
+		return m, nil
+	case "?":
+		m.showKeys = true
 		return m, nil
 	case "o":
 		if m.lastArtifact == "" {
