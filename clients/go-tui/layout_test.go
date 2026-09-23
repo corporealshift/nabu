@@ -291,3 +291,57 @@ func TestALongTaskTitleFitsThePane(t *testing.T) {
 		t.Errorf("the task line is %d wide, the pane holds %d", w, room)
 	}
 }
+
+// A long line runs on under its text, not back at the margin, so a wrapped
+// command or result stays inside its block.
+func TestWrappedLinesHangUnderTheirText(t *testing.T) {
+	m := sized(t, nil)
+	m.appendEvents([]protocol.Event{
+		event("e1", protocol.EventToolCall, protocol.ToolCallData{Tool: "bash",
+			Arguments: []byte(`{"command":"` + strings.Repeat("git add -A ", 12) + `"}`)}),
+		event("e2", protocol.EventToolResult, protocol.ToolResultData{Status: "ok",
+			Content: strings.Repeat("warning: LF will be replaced by CRLF ", 4)}),
+	})
+	lines := strings.Split(stripANSI(m.body()), "\n")
+	var call, result []string
+	for _, l := range lines {
+		switch {
+		case strings.HasPrefix(l, "  → "):
+			call = append(call, l)
+		case strings.HasPrefix(l, "    warning"):
+			result = append(result, l)
+		case len(result) > 0:
+			result = append(result, l)
+		case len(call) > 0:
+			call = append(call, l)
+		}
+	}
+	if len(call) < 2 || len(result) < 2 {
+		t.Fatalf("both should wrap:\n%s", strings.Join(lines, "\n"))
+	}
+	for _, l := range call[1:] {
+		if !strings.HasPrefix(l, "    ") || strings.HasPrefix(l, "     ") {
+			t.Errorf("a call's continuation should hang at column 4: %q", l)
+		}
+	}
+	for _, l := range result[1:] {
+		if !strings.HasPrefix(l, "    ") || strings.HasPrefix(l, "     ") {
+			t.Errorf("a result's continuation should stay at its indent: %q", l)
+		}
+	}
+}
+
+// A result that is one long word, a line of JSON, used to wrap whole and leave
+// its indent alone on a line that looked like a gap between call and result.
+func TestAnUnbrokenResultStaysUnderItsCall(t *testing.T) {
+	m := sized(t, nil)
+	m.appendEvents([]protocol.Event{
+		event("e1", protocol.EventToolCall, protocol.ToolCallData{Tool: "gh"}),
+		event("e2", protocol.EventToolResult, protocol.ToolResultData{Status: "ok",
+			Content: `{"additions":5674,` + strings.Repeat(`"author":"x",`, 20) + `}`}),
+	})
+	lines := strings.Split(stripANSI(m.body()), "\n")
+	if len(lines) < 2 || !strings.HasPrefix(lines[1], `    {"additions"`) {
+		t.Errorf("the result should start on the line under its call:\n%s", strings.Join(lines, "\n"))
+	}
+}

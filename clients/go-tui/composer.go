@@ -150,9 +150,10 @@ func wrapEntry(e entry, width int) []string {
 		room -= visibleWidth(aside) + 2
 	}
 	var lines []string
-	for _, w := range wrapStyled(e.text, max(room, 1)) {
-		// An expanded thought is one entry holding several lines.
-		lines = append(lines, strings.Split(w, "\n")...)
+	// An expanded thought is one entry holding several lines, and each wraps
+	// on its own.
+	for _, line := range strings.Split(e.text, "\n") {
+		lines = append(lines, wrapHanging(line, max(room, 1))...)
 	}
 	for i := range lines {
 		if lines[i] != "" {
@@ -164,6 +165,59 @@ func wrapEntry(e entry, width int) []string {
 		lines[0] += strings.Repeat(" ", max(gap, 2)) + dim.Render(aside)
 	}
 	return lines
+}
+
+// wrapHanging wraps a line so what it runs onto sits under its text rather
+// than back at the margin: a long command stays inside its call's block, and
+// a result's second line stays under its first.
+func wrapHanging(line string, width int) []string {
+	indent := hang(line)
+	if indent > width/2 {
+		indent = 0 // a hang that deep leaves no room for the text
+	}
+	out := wrapStyled(line, max(width-indent, 1))
+	first := 1
+	if len(out) > 1 && strings.TrimSpace(stripANSI(out[0])) == "" {
+		// One long unbroken word after the indent, a line of JSON say, wraps
+		// whole and leaves the indent alone on a line that reads as a gap.
+		out, first = out[1:], 0
+	}
+	for i := first; i < len(out); i++ {
+		out[i] = strings.Repeat(" ", indent) + out[i]
+	}
+	return out
+}
+
+// hangMarks lead a line and its text hangs after them: the transcript's own
+// glyphs, and a markdown list's bullets.
+const hangMarks = "→›~✓!✗▣-*•"
+
+// hang is how far a line's continuation is indented: its leading spaces, and
+// the mark and space after them if it has one.
+func hang(line string) int {
+	s := stripANSI(line)
+	n := len(s) - len(strings.TrimLeft(s, " "))
+	if rest := []rune(s[n:]); len(rest) > 1 && rest[1] == ' ' && strings.ContainsRune(hangMarks, rest[0]) {
+		n += 2
+	}
+	return n
+}
+
+// stripANSI removes styling, leaving the text as it reads.
+func stripANSI(s string) string {
+	var b strings.Builder
+	inEscape := false
+	for _, r := range s {
+		switch {
+		case r == 0x1b:
+			inEscape = true
+		case inEscape && (r == 'm' || r == 'K'):
+			inEscape = false
+		case !inEscape:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // wrapStyled wraps one line that already carries its styling. lipgloss counts
