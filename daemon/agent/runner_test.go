@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/corporealshift/nabu/daemon/module"
 	"github.com/corporealshift/nabu/daemon/provider"
 	"github.com/corporealshift/nabu/protocol"
 )
@@ -295,5 +296,65 @@ func TestAnOrdinaryTurnSaysNothingAboutRecovery(t *testing.T) {
 			strings.Contains(protocol.MustData[protocol.NoticeData](e).Message, "into its reasoning") {
 			t.Fatal("a clean turn must not report a recovery")
 		}
+	}
+}
+
+// halter halts on a write to stuck.txt.
+type halter struct{}
+
+func (halter) Name() string                          { return "halter" }
+func (halter) Init(module.Host, module.Config) error { return nil }
+func (halter) GateTool(_ context.Context, _ module.Session, c protocol.ToolCallData) module.Verdict {
+	if c.Tool == "write" && strings.Contains(string(c.Arguments), "stuck.txt") {
+		return module.Verdict{Decision: module.Halt, Reason: "refused again", Summary: "halter: same write refused twice"}
+	}
+	return module.Verdict{Decision: module.Allow}
+}
+
+// A Halt refuses the call, skips the rest of the batch, and leaves the session
+// blocked with the gate's reason, so the person finds it waiting for them.
+func TestAHaltRefusesTheCallAndBlocksTheSession(t *testing.T) {
+	h := newHarness(t, []module.Module{halter{}}, []provider.Response{
+		{ToolCalls: []provider.ToolCall{
+			{ID: "c1", Name: "write", Arguments: json.RawMessage(`{"path":"stuck.txt","content":"x"}`)},
+			{ID: "c2", Name: "write", Arguments: json.RawMessage(`{"path":"after.txt","content":"x"}`)},
+		}},
+		{Content: "a turn that must not be taken"},
+	})
+	s := h.create(t)
+	if _, err := h.m.Prompt(context.Background(), s.ID(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	h.m.WaitIdle(s.ID())
+
+	if st := s.State(); st.State != protocol.StateBlocked {
+		t.Fatalf("state = %s, want blocked", st.State)
+	}
+	if len(h.fake.Calls) != 1 {
+		t.Fatalf("no further turn may be taken after a halt, made %d requests", len(h.fake.Calls))
+	}
+	for _, name := range []string{"stuck.txt", "after.txt"} {
+		if _, err := os.Stat(filepath.Join(h.dir, name)); err == nil {
+			t.Fatalf("%s must not have been written", name)
+		}
+	}
+	var refused, notice, change bool
+	for _, e := range s.Events() {
+		switch e.Type {
+		case protocol.EventToolResult:
+			d := protocol.MustData[protocol.ToolResultData](e)
+			refused = refused || (d.CallID == "c1" && d.Status == "error" && d.Content == "denied: refused again")
+			if d.CallID == "c2" {
+				t.Fatal("the rest of the batch must not run")
+			}
+		case protocol.EventNotice:
+			notice = notice || protocol.MustData[protocol.NoticeData](e).Message == "stopping: halter: same write refused twice"
+		case protocol.EventStateChange:
+			d := protocol.MustData[protocol.StateChangeData](e)
+			change = change || (d.To == protocol.StateBlocked && d.Reason == "halter: same write refused twice")
+		}
+	}
+	if !refused || !notice || !change {
+		t.Fatalf("refused=%v notice=%v blocked-with-reason=%v", refused, notice, change)
 	}
 }

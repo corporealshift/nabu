@@ -250,7 +250,7 @@ func (r *Registry) GateTool(ctx context.Context, s Session, call protocol.ToolCa
 			continue
 		}
 		switch v.Decision {
-		case Deny:
+		case Deny, Halt:
 			return v
 		case Ask:
 			if final.Decision == Allow {

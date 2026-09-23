@@ -129,18 +129,23 @@ const (
 	Deny
 	// Ask defers to the attached clients via permission.request.
 	Ask
+	// Halt refuses the call as Deny does, then stops the session as blocked:
+	// the loop takes no further turn, and the person finds a session waiting
+	// for them rather than one still running. It is for a gate that has seen
+	// its refusals ignored; Summary is the one line recorded as the reason.
+	Halt
 )
 
 // Verdict is what a ToolGate returns.
 type Verdict struct {
 	Decision Decision
-	Reason   string // required for Deny; shown to the model
-	Summary  string // for Ask: one line describing the action to the human
+	Reason   string // required for Deny and Halt; shown to the model
+	Summary  string // for Ask: one line describing the action; for Halt: why the session stopped
 	Risk     string // for Ask: "low" | "medium" | "high"
 }
 
 // ToolGate decides whether a tool call may run. Gates are asked in
-// registration order; the first Deny short-circuits; any Ask (absent a Deny)
+// registration order; the first Deny or Halt short-circuits; any Ask (absent a Deny)
 // results in one permission request.
 type ToolGate interface {
 	GateTool(ctx context.Context, s Session, call protocol.ToolCallData) Verdict

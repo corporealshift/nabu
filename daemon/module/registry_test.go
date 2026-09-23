@@ -206,6 +206,14 @@ func TestToolGateDenyShortCircuitsAskAggregates(t *testing.T) {
 	if v.Decision != Ask || v.Summary != "first ask" {
 		t.Fatalf("want first ask, got %+v", v)
 	}
+	r3 := NewRegistry([]Module{
+		gate{base{"a"}, Verdict{Decision: Halt, Reason: "refused again", Summary: "stopped"}},
+		gate{base{"b"}, Verdict{Decision: Deny, Reason: "later"}},
+	}, quiet())
+	v = r3.GateTool(context.Background(), s, protocol.ToolCallData{Tool: "write"})
+	if v.Decision != Halt || v.Summary != "stopped" {
+		t.Fatalf("a halt short-circuits like a deny, got %+v", v)
+	}
 }
 
 func TestBeforeRequestDropsPrefixBlocks(t *testing.T) {

@@ -709,6 +709,13 @@ func (m *Manager) executeTool(ctx context.Context, h *sessionHandle, call protoc
 	switch v.Decision {
 	case module.Deny:
 		return fail(protocol.ToolErrorDenied, "denied: "+v.Reason)
+	case module.Halt:
+		why := v.Summary
+		if why == "" {
+			why = "a tool gate stopped the session"
+		}
+		h.halted.Store(&why)
+		return fail(protocol.ToolErrorDenied, "denied: "+v.Reason)
 	case module.Ask:
 		if h.State().Options.PermissionMode != protocol.PermissionBypass {
 			if m.deps.Asker == nil {
