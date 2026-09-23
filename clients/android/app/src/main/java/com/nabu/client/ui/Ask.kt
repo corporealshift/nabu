@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.nabu.client.net.AskRequest
+import com.nabu.client.ui.markdown.MarkdownText
 import com.nabu.client.ui.theme.NabuTheme
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -75,7 +76,10 @@ fun AskSheet(
                 Modifier.heightIn(max = 420.dp).verticalScroll(scroll),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(request.question, style = MaterialTheme.typography.bodyLarge, color = c.ink)
+                // The model writes markdown: a numbered list of options, bold
+                // labels. As plain text it read as one block with asterisks in
+                // it, which is how a question became hard to answer (issue 70).
+                MarkdownText(request.question)
 
                 for (choice in request.choices) {
                     ChoiceRow(choice, onPick = { onAnswer(choice) })

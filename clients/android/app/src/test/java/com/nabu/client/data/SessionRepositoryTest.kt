@@ -165,6 +165,31 @@ class SessionRepositoryTest {
         assertEquals(2, db.events().count("S1"))
     }
 
+    /**
+     * The daemon subscribes before it answers a catch-up, so an event can come
+     * both ways. The pushed copy must not land a second time, out of order.
+     */
+    @Test
+    fun `a pushed event the catch-up already brought is not mirrored again`() = runBlocking {
+        repo.apply("S1", listOf(event("E1"), event("E2")), synced = true)
+
+        repo.record(com.nabu.client.net.Incoming.Event(com.nabu.client.net.SessionEvent("S1", event("E2"))))
+        repo.record(com.nabu.client.net.Incoming.Event(com.nabu.client.net.SessionEvent("S1", event("E3"))))
+
+        val rows = db.events().all("S1")
+        assertEquals(listOf("E1", "E2", "E3"), rows.map { it.id })
+        assertEquals(listOf(1L, 2L, 3L), rows.map { it.ordinal })
+    }
+
+    /** A screen reads what follows the last row it has, not the whole log again. */
+    @Test
+    fun `rows after an ordinal are the ones that follow it`() = runBlocking {
+        repo.apply("S1", listOf(event("E1"), event("E2"), event("E3")), synced = true)
+
+        assertEquals(listOf("E2", "E3"), repo.rowsAfter("S1", 1).map { it.id })
+        assertEquals(3L, db.events().lastOrdinal("S1"))
+    }
+
     /** A prompt exists locally before any send, which is the outbox's point. */
     @Test
     fun `queueing a prompt writes it before sending`() = runBlocking {

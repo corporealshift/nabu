@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 
 	"github.com/corporealshift/nabu/daemon/agent"
 	"github.com/corporealshift/nabu/daemon/module"
@@ -601,6 +602,120 @@ func TestCompactIsRefusedWhileTheSessionIsRunning(t *testing.T) {
 
 	close(block)
 	hn.m.WaitIdle(id)
+}
+
+// dialHello opens a real websocket to the handler and completes the hello.
+// Everything after it is read by a goroutine into the returned channel, which
+// is what lets the test ping: a websocket answers control frames only while
+// someone is reading.
+func dialHello(t *testing.T, hn *harness) (*websocket.Conn, <-chan map[string]any) {
+	t.Helper()
+	url := startServer(t, hn.h, &Config{})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	t.Cleanup(cancel)
+	c, _, err := websocket.Dial(ctx, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.CloseNow() })
+	hello := map[string]any{"jsonrpc": "2.0", "id": 0, "method": "nabu.hello", "params": map[string]any{
+		"client": "test", "client_version": "0", "protocol_version": protocol.Version}}
+	if err := wsjson.Write(ctx, c, hello); err != nil {
+		t.Fatal(err)
+	}
+	var reply map[string]any
+	if err := wsjson.Read(ctx, c, &reply); err != nil {
+		t.Fatal(err)
+	}
+	in := make(chan map[string]any, 16)
+	go func() {
+		for {
+			var m map[string]any
+			if err := wsjson.Read(context.Background(), c, &m); err != nil {
+				close(in)
+				return
+			}
+			in <- m
+		}
+	}()
+	return c, in
+}
+
+// replies collects responses by id, so a test can wait for them in any order.
+type replies struct {
+	in  <-chan map[string]any
+	got map[float64]map[string]any
+}
+
+// of waits for the response carrying id, keeping any others that arrive first.
+func (r *replies) of(t *testing.T, id float64) map[string]any {
+	t.Helper()
+	timeout := time.After(5 * time.Second)
+	for r.got[id] == nil {
+		select {
+		case m, ok := <-r.in:
+			if !ok {
+				t.Fatalf("connection closed waiting for reply %v", id)
+			}
+			if n, isReply := m["id"].(float64); isReply {
+				r.got[n] = m
+			}
+		case <-timeout:
+			t.Fatalf("no reply to %v", id)
+		}
+	}
+	return r.got[id]
+}
+
+// A compaction is minutes on a local model. The daemon used to run each call
+// on the connection's read loop, and a websocket answers pings only while it
+// is read — so a phone's keepalive went unanswered and it dropped the
+// connection one ping interval into the summary (issue 87).
+func TestTheConnectionStaysAnsweredWhileACompactionRuns(t *testing.T) {
+	hn := newHarness(t)
+	hn.fake.Script = []provider.Response{{Content: "done"}}
+	id := hn.mustCreate(t)
+	if _, err := hn.m.Prompt(context.Background(), id, "go"); err != nil {
+		t.Fatal(err)
+	}
+	hn.m.WaitIdle(id)
+	hn.fake.BlockOn = make(chan struct{}) // the summariser never answers
+	summariser := hn.fake.CallCount()
+
+	c, in := dialHello(t, hn)
+	rs := &replies{in: in, got: map[float64]map[string]any{}}
+	ctx := context.Background()
+	if err := wsjson.Write(ctx, c, map[string]any{"jsonrpc": "2.0", "id": 1,
+		"method": "nabu.session.compact", "params": map[string]any{"session_id": id}}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; hn.fake.CallCount() == summariser; i++ {
+		if i > 2500 {
+			t.Fatal("the summariser was never called")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	pctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := c.Ping(pctx); err != nil {
+		t.Fatalf("ping unanswered while compacting: %v", err)
+	}
+
+	// Interrupt is how a person gets out of a compaction, so it is answered
+	// now rather than queued behind the call it exists to end.
+	if err := wsjson.Write(ctx, c, map[string]any{"jsonrpc": "2.0", "id": 2,
+		"method": "nabu.session.interrupt", "params": map[string]any{"session_id": id}}); err != nil {
+		t.Fatal(err)
+	}
+	if r := rs.of(t, 2); r["error"] != nil {
+		t.Fatalf("interrupt: %v", r["error"])
+	}
+	r := rs.of(t, 1)
+	e, _ := r["error"].(map[string]any)
+	if e == nil || e["code"] != float64(protocol.CodeInvalidTransition) {
+		t.Fatalf("an interrupted compaction should say so: %v", r)
+	}
 }
 
 // Spec 7.21-7.22 (issue 38): how much work a session was, and per day.

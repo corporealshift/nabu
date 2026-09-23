@@ -225,6 +225,15 @@ func (m *Module) BeforeStop(ctx context.Context, s module.Session, info module.S
 		return module.StopVerdict{Allow: true}
 	}
 
+	// A question, answered, is a finished turn. Sending the agent back to open
+	// tasks or a tree it did not touch this turn is how "what's the status?"
+	// became a reason to resume work, and "commit them" a reason to commit to
+	// main (issue 76). Once the turn has changed something, it is work again
+	// and every check below applies.
+	if answeredOnly(s) {
+		return module.StopVerdict{Allow: true}
+	}
+
 	if reason := openTaskVeto(info.Tasks); reason != "" {
 		return module.StopVerdict{Reason: reason}
 	}
@@ -665,4 +674,14 @@ func tail(s string, n int) string {
 		return s
 	}
 	return "…" + s[len(s)-n:]
+}
+
+// answeredOnly reports whether this turn asked a question and changed nothing
+// while answering it.
+func answeredOnly(s module.Session) bool {
+	log, err := s.Events(nil)
+	if err != nil {
+		return false
+	}
+	return module.QuestionTurn(log, s.State()) && !module.ChangedSinceUser(log)
 }

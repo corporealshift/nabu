@@ -32,6 +32,11 @@ fun contextUsed(rows: List<EventRow>): Float? {
         }
     }
 
+    return contextFraction(window, lastInput)
+}
+
+/** Usage over window, or null when either is unknown. */
+internal fun contextFraction(window: Int, lastInput: Int): Float? {
     if (window <= 0 || lastInput <= 0) return null
     return lastInput.toFloat() / window.toFloat()
 }
