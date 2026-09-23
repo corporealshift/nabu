@@ -535,6 +535,8 @@ private fun BlockedPrompts(
 @Composable
 private fun LineView(line: Line) {
     when (line) {
+        is Line.Artifact -> ArtifactLine(line)
+
         is Line.Gap -> Card(
             colors = CardDefaults.cardColors(containerColor = NabuTheme.colors.surface),
             modifier = Modifier.fillMaxWidth(),

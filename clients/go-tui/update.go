@@ -247,6 +247,8 @@ func (m model) submit() (tea.Model, tea.Cmd) {
 		return m, nil
 	case res.openPicker:
 		return m, m.emit(action{kind: actListSessions})
+	case res.open != "":
+		return m.openNamed(res.open)
 	case res.act == nil:
 		return m, nil
 	}
@@ -277,6 +279,12 @@ func (m model) onTranscriptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "t":
 		m.toggleThinking()
 		return m, nil
+	case "o":
+		if m.lastArtifact == "" {
+			m.note("the agent has not made a page in this session")
+			return m, nil
+		}
+		return m.openNamed(m.lastArtifact)
 	case "s":
 		return m, m.emit(action{kind: actListSessions})
 	case "ctrl+x":
@@ -298,6 +306,16 @@ func (m model) onTranscriptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
+}
+
+// openNamed opens the latest version of a page the agent made.
+func (m model) openNamed(name string) (tea.Model, tea.Cmd) {
+	a, ok := m.artifacts[name]
+	if !ok {
+		m.note("no page called " + name + " in this session")
+		return m, nil
+	}
+	return m, openArtifact(m.sessionID, a)
 }
 
 // answerQuestion edits the answer, and sends it when it is finished. Every

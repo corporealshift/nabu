@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -30,7 +31,10 @@ import com.nabu.client.data.EventRow
 import com.nabu.client.data.OutboxRow
 import com.nabu.client.ui.Connection
 import com.nabu.client.ui.NabuViewModel
+import com.nabu.client.ui.ArtifactScreen
 import com.nabu.client.ui.AskSheet
+import com.nabu.client.ui.Line
+import com.nabu.client.ui.LocalOpenArtifact
 import com.nabu.client.ui.PermissionSheet
 import com.nabu.client.ui.BrowseScreen
 import com.nabu.client.ui.SessionListScreen
@@ -52,6 +56,7 @@ private sealed interface Screen {
     data object Settings : Screen
     data object Browse : Screen
     data class Transcript(val id: String) : Screen
+    data class Artifact(val sessionId: String, val line: Line.Artifact) : Screen
 }
 
 @Composable
@@ -145,7 +150,11 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
             onNewSession = { vm.startBrowsing(); screen = Screen.Browse },
         )
 
-        is Screen.Transcript -> {
+        is Screen.Artifact -> ArtifactScreen(s.line, onBack = { screen = Screen.Transcript(s.sessionId) })
+
+        is Screen.Transcript -> CompositionLocalProvider(
+            LocalOpenArtifact provides { line -> screen = Screen.Artifact(s.id, line) },
+        ) {
             val row by vm.watchSession(s.id).collectAsState(initial = null)
             val events by vm.watchEvents(s.id).collectAsState(initial = emptyList<EventRow>())
             val pending by vm.watchPending(s.id).collectAsState(initial = emptyList<OutboxRow>())

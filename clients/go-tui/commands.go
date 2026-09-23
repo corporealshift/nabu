@@ -41,11 +41,13 @@ type commandResult struct {
 	note string
 	// openPicker asks the view for the session list.
 	openPicker bool
+	// open names a page the agent made, to open.
+	open string
 }
 
 const helpText = "commands: /goal <text> set a goal · /goal clear it · " +
 	"/compact summarise the history now · /stop end the session · " +
-	"/sessions switch · /help this list"
+	"/open <name> open a page the agent made · /sessions switch · /help this list"
 
 // parseCommand turns a line of input into what should happen. Text without a
 // leading slash is a prompt, verbatim.
@@ -77,6 +79,11 @@ func parseCommand(line string) commandResult {
 		return commandResult{act: &action{kind: actCompact}}
 	case "/sessions":
 		return commandResult{openPicker: true}
+	case "/open":
+		if rest == "" {
+			return commandResult{note: "/open needs the name of a page — o opens the newest"}
+		}
+		return commandResult{open: rest}
 	case "/help":
 		return commandResult{note: helpText}
 	default:
