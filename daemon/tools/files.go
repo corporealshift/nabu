@@ -105,6 +105,12 @@ func (b *Builtins) writeTool() module.Tool {
 			if err != nil {
 				return "", err
 			}
+			// Saying so when nothing changed is new information: an identical
+			// rewrite that reports "wrote N bytes" looks like progress, and the
+			// model can repeat it indefinitely.
+			if cur, err := os.ReadFile(p); err == nil && string(cur) == a.Content {
+				return fmt.Sprintf("unchanged: %s already has exactly this content (%d bytes)", rel(s, p), len(a.Content)), nil
+			}
 			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 				return "", osFail(err)
 			}
@@ -148,12 +154,18 @@ func (b *Builtins) editTool() module.Tool {
 			n := strings.Count(text, a.Old)
 			switch {
 			case n == 0:
+				if hint := missedEdit(text, a.Old, a.New); hint != "" {
+					return "", module.Fail(protocol.ToolErrorNotFound, "old text not found in %s; %s", rel(s, p), hint)
+				}
 				return "", module.Fail(protocol.ToolErrorNotFound, "old text not found in %s", rel(s, p))
 			case n > 1 && !a.ReplaceAll:
 				return "", module.Fail(protocol.ToolErrorInvalidArgs, "old text occurs %d times in %s; make it unique or set replace_all", n, rel(s, p))
 			}
 			if !a.ReplaceAll {
 				n = 1
+			}
+			if a.Old == a.New {
+				return fmt.Sprintf("unchanged: old and new are identical, so %s was not modified", rel(s, p)), nil
 			}
 			text = strings.Replace(text, a.Old, a.New, n)
 			if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
