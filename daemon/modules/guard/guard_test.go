@@ -266,6 +266,7 @@ func TestDefaultRulesAskAboutTheDangerousThings(t *testing.T) {
 		}{
 			{"destructive bash", bashCall("rm -rf /"), "destructive"},
 			{"privilege escalation", bashCall("sudo reboot"), "destructive"},
+			{"destructive wait", call("wait", map[string]any{"command": "rm -rf /"}), "destructive"},
 			{"write outside the workspace", call("write", map[string]any{"path": "/etc/passwd"}), "outside"},
 			{"read outside the workspace", call("read", map[string]any{"path": "/etc/shadow"}), "outside"},
 		} {
@@ -671,5 +672,23 @@ func TestInspectReadsTheOpArgument(t *testing.T) {
 	}
 	if info.tier != TierMedium {
 		t.Errorf("tier = %v, want medium", info.tier)
+	}
+}
+
+// wait runs a shell command, so a rule written for bash covers it too.
+func TestWaitIsJudgedAsTheCommandItRuns(t *testing.T) {
+	m := &Module{}
+	if err := m.Init(nil, module.Config{"rules": []any{
+		map[string]any{"verdict": "deny", "reason": "no deploys", "match": map[string]any{"tool": "bash", "command_pattern": "deploy"}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	s := fakeSession{workspace: t.TempDir(), mode: protocol.PermissionAuto}
+	v := m.GateTool(context.Background(), s, call("wait", map[string]any{"command": "./deploy.sh --watch"}))
+	if v.Decision != module.Deny {
+		t.Fatalf("a bash rule must cover the same command run through wait, got %+v", v)
+	}
+	if v := m.GateTool(context.Background(), s, call("wait", map[string]any{"command": "gh run view 42"})); v.Decision != module.Allow {
+		t.Fatalf("an ordinary wait goes through in auto mode, got %+v", v)
 	}
 }

@@ -238,6 +238,11 @@ type toolArgs struct {
 // not an error: the call is classified by tool name alone.
 func inspect(s module.Session, call protocol.ToolCallData) callInfo {
 	info := callInfo{tool: call.Tool, inWorkspace: true}
+	// wait runs its command through the same shell, repeatedly. It is judged
+	// as that command, by every rule written for bash, so it is no way around them.
+	if info.tool == "wait" {
+		info.tool = "bash"
+	}
 	if s != nil {
 		info.workspace = s.Workspace().Path
 	}

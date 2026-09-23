@@ -51,7 +51,7 @@ func (b *Builtins) Init(_ module.Host, cfg module.Config) error {
 
 // Tools implements module.ToolProvider.
 func (b *Builtins) Tools() []module.Tool {
-	tools := []module.Tool{b.readTool(), b.writeTool(), b.editTool(), b.globTool(), b.grepTool(), b.bashTool()}
+	tools := []module.Tool{b.readTool(), b.writeTool(), b.editTool(), b.globTool(), b.grepTool(), b.bashTool(), b.waitTool()}
 	if b.Tasks != nil {
 		tools = append(tools, b.taskTool())
 	}

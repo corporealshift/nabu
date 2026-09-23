@@ -67,41 +67,48 @@ func (b *Builtins) bashTool() module.Tool {
 			if a.TimeoutSeconds > 0 {
 				timeout = time.Duration(a.TimeoutSeconds) * time.Second
 			}
-			cctx, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
-			sh, flag, err := b.shellCommand()
-			if err != nil {
-				return "", module.FailWith(protocol.ToolErrorNotFound, err)
-			}
-			cmd := exec.CommandContext(cctx, sh, flag, a.Command)
-			cmd.Dir = s.Workspace().Path
-			// On a timeout the shell is killed, but a grandchild it spawned
-			// (sleep, a server) inherits the output pipes and can hold them
-			// open. WaitDelay bounds how long Wait blocks on that, so a
-			// timeout costs a second rather than the grandchild's lifetime.
-			// Killing the whole process tree needs a job object: P1b.
-			cmd.WaitDelay = time.Second
-			var buf bytes.Buffer
-			cmd.Stdout = &buf
-			cmd.Stderr = &buf
-			runErr := cmd.Run()
-			out := truncate(buf.String(), b.maxOutput())
-			// The bracketed note stays in the output: it is what a reader sees,
-			// and the structured kind beside it is what the model branches on.
-			if cctx.Err() == context.DeadlineExceeded {
-				out += fmt.Sprintf("\n[timed out after %s]", timeout)
-				return out, module.Fail(protocol.ToolErrorTimeout, "command timed out after %s", timeout)
-			}
-			var exitErr *exec.ExitError
-			if errors.As(runErr, &exitErr) {
-				out += fmt.Sprintf("\n[exit status %d]", exitErr.ExitCode())
-				return out, module.Exited(exitErr.ExitCode(), "exit status %d", exitErr.ExitCode())
-			}
-			if runErr != nil {
-				// The shell never ran: not found, not executable, no fork.
-				return out, module.FailWith(protocol.ToolErrorIO, runErr)
-			}
-			return out, nil
+			return b.runShell(ctx, s, a.Command, timeout)
 		},
 	}
+}
+
+// runShell runs one command in the workspace with a timeout. It returns the
+// combined output, with a bracketed note for a timeout or a non-zero exit,
+// and the classified error for either.
+func (b *Builtins) runShell(ctx context.Context, s module.Session, command string, timeout time.Duration) (string, error) {
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	sh, flag, err := b.shellCommand()
+	if err != nil {
+		return "", module.FailWith(protocol.ToolErrorNotFound, err)
+	}
+	cmd := exec.CommandContext(cctx, sh, flag, command)
+	cmd.Dir = s.Workspace().Path
+	// On a timeout the shell is killed, but a grandchild it spawned
+	// (sleep, a server) inherits the output pipes and can hold them
+	// open. WaitDelay bounds how long Wait blocks on that, so a
+	// timeout costs a second rather than the grandchild's lifetime.
+	// Killing the whole process tree needs a job object: P1b.
+	cmd.WaitDelay = time.Second
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	runErr := cmd.Run()
+	out := truncate(buf.String(), b.maxOutput())
+	// The bracketed note stays in the output: it is what a reader sees,
+	// and the structured kind beside it is what the model branches on.
+	if cctx.Err() == context.DeadlineExceeded {
+		out += fmt.Sprintf("\n[timed out after %s]", timeout)
+		return out, module.Fail(protocol.ToolErrorTimeout, "command timed out after %s", timeout)
+	}
+	var exitErr *exec.ExitError
+	if errors.As(runErr, &exitErr) {
+		out += fmt.Sprintf("\n[exit status %d]", exitErr.ExitCode())
+		return out, module.Exited(exitErr.ExitCode(), "exit status %d", exitErr.ExitCode())
+	}
+	if runErr != nil {
+		// The shell never ran: not found, not executable, no fork.
+		return out, module.FailWith(protocol.ToolErrorIO, runErr)
+	}
+	return out, nil
 }

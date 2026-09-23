@@ -110,7 +110,7 @@ func TestTaskUpdateToolRendersList(t *testing.T) {
 	if _, err := run(t, b, fakeSession{t.TempDir()}, "task.update", `{"tasks":[]}`); err == nil {
 		t.Fatal("empty list must be rejected: use cancelled/done statuses instead")
 	}
-	if len((&Builtins{}).Tools()) != 6 {
+	if len((&Builtins{}).Tools()) != 7 {
 		t.Fatal("without a TaskStore the task tool must not be offered")
 	}
 }
