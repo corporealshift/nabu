@@ -46,6 +46,7 @@ daemon/
   api/                    WebSocket JSON-RPC surface, fan-out, deltas, client requests
   notify/                 FCM
   workspace/              workspace key, trust, permission plumbing
+  stats/                  how much work a session was, derived from its log
 cmd/nabu/                 the single binary (daemon + CLI subcommands)
 clients/                  go-tui/ android/ rust-gui/
 docs/specs/               design specs: what was decided, and what was rejected

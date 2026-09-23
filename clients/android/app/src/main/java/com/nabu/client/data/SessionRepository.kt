@@ -225,6 +225,22 @@ class SessionRepository(
         })
     }
 
+    /** How much work a session was (spec 7.21). Asked, never mirrored: it is cheap to ask again. */
+    suspend fun stats(client: DaemonClient, sessionId: String): com.nabu.client.protocol.SessionStats {
+        val result = client.callOrThrow("nabu.session.stats", buildJsonObject {
+            put("session_id", sessionId)
+        })
+        return NabuJson.decodeFromJsonElement(com.nabu.client.protocol.SessionStats.serializer(), result)
+    }
+
+    /** Tokens and turns per day across sessions (spec 7.22). */
+    suspend fun usage(client: DaemonClient, days: Int): List<com.nabu.client.protocol.UsageDay> {
+        val result = client.callOrThrow("nabu.usage", buildJsonObject { put("days", days) })
+        return result.jsonObject["days"]?.jsonArray
+            ?.map { NabuJson.decodeFromJsonElement(com.nabu.client.protocol.UsageDay.serializer(), it) }
+            ?: emptyList()
+    }
+
     suspend fun resumeSession(client: DaemonClient, sessionId: String) {
         client.callOrThrow("nabu.session.resume", buildJsonObject {
             put("session_id", sessionId)

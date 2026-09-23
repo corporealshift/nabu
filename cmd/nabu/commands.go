@@ -466,6 +466,45 @@ func cmdResume(args []string, stdout, stderr io.Writer) int {
 		func(w io.Writer, id string) { fmt.Fprintf(w, "resumed %s\n", id) })
 }
 
+// cmdStats prints a session's numbers, or tokens per day across sessions, as
+// indented JSON: the shape is the spec's (7.21, 7.22), so it can be piped
+// straight into whatever does the analysis.
+func cmdStats(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("stats", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	root := rootFlag(fs)
+	days := fs.Int("days", 14, "days of history, without a session id")
+	if err := fs.Parse(args); err != nil {
+		return exitUsage
+	}
+	dir, err := resolveRoot(*root)
+	if err != nil {
+		fmt.Fprintf(stderr, "nabu: %v\n", err)
+		return exitError
+	}
+	ctx := context.Background()
+	c, err := connect(ctx, dir, stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "nabu: %v\n", err)
+		return exitError
+	}
+	defer c.Close()
+
+	var out any
+	if id := fs.Arg(0); id != "" {
+		out, err = c.Stats(ctx, id)
+	} else {
+		out, err = c.Usage(ctx, *days)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "nabu: %v\n", err)
+		return exitError
+	}
+	raw, _ := json.MarshalIndent(out, "", "  ")
+	fmt.Fprintf(stdout, "%s\n", raw)
+	return exitOK
+}
+
 // simpleSessionCommand runs a method that takes a session id and returns
 // nothing interesting.
 func simpleSessionCommand(name, method string, args []string, stdout, stderr io.Writer, done func(io.Writer, string)) int {

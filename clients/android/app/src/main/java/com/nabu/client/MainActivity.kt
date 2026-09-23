@@ -32,6 +32,7 @@ import com.nabu.client.data.OutboxRow
 import com.nabu.client.ui.Connection
 import com.nabu.client.ui.NabuViewModel
 import com.nabu.client.ui.AskSheet
+import com.nabu.client.ui.StatsScreen
 import com.nabu.client.ui.PermissionSheet
 import com.nabu.client.ui.BrowseScreen
 import com.nabu.client.ui.SessionListScreen
@@ -53,6 +54,7 @@ private sealed interface Screen {
     data object Settings : Screen
     data object Browse : Screen
     data class Transcript(val id: String) : Screen
+    data class Stats(val id: String) : Screen
 }
 
 @Composable
@@ -128,6 +130,11 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
             onSave = { vm.save(it); screen = Screen.Sessions },
         )
 
+        is Screen.Stats -> {
+            val stats by vm.stats.collectAsState()
+            StatsScreen(state = stats, onBack = { screen = Screen.Transcript(s.id) })
+        }
+
         is Screen.Browse -> {
             val browse by vm.browse.collectAsState()
             BrowseScreen(
@@ -187,6 +194,7 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
                 onResume = { vm.resumeSession(s.id) },
                 onInterrupt = { vm.interruptSession(s.id) },
                 onCompact = { vm.compactSession(s.id) },
+                onStats = { vm.loadStats(s.id); screen = Screen.Stats(s.id) },
                 onRetryBlocked = { vm.retryBlocked(it) },
                 onDiscardBlocked = { vm.discardBlocked(it) },
                 onBack = { screen = Screen.Sessions },
