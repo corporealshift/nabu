@@ -71,10 +71,14 @@ func Run(ctx context.Context, opts Options) error {
 	return err
 }
 
+// sender is where the connection goroutine delivers what it hears: the running
+// program, or a recorder in a test.
+type sender interface{ Send(tea.Msg) }
+
 // connectLoop keeps a connection up for the life of the program. On a drop it
 // reconnects with backoff and replays from the cursor, so closing a laptop lid
 // costs the gap and nothing else.
-func connectLoop(ctx context.Context, p *tea.Program, addr, token, sessionID string, actions chan action) {
+func connectLoop(ctx context.Context, p sender, addr, token, sessionID string, actions chan action) {
 	var wait retry
 	var cursor string
 
@@ -130,7 +134,7 @@ func (r *retry) connected() { r.next = 0 }
 
 // attach dials, catches up, subscribes and pumps. It returns the session to
 // switch to, if the human picked a different one, and the reason it ended.
-func attach(ctx context.Context, p *tea.Program, addr, token, sessionID string, cursor *string, actions chan action, onConnected func()) (string, error) {
+func attach(ctx context.Context, p sender, addr, token, sessionID string, cursor *string, actions chan action, onConnected func()) (string, error) {
 	dctx, cancel := context.WithTimeout(ctx, goclient.DialTimeout)
 	c, err := goclient.Dial(dctx, addr, token, "nabu-tui", version)
 	cancel()
@@ -172,17 +176,18 @@ func attach(ctx context.Context, p *tea.Program, addr, token, sessionID string, 
 				return
 			case a := <-actions:
 				if next := perform(connCtx, c, p, a); next != "" {
-					select {
-					case switchTo <- next:
-					default:
-					}
+					// Ending the connection is what wakes the stream. Waiting
+					// for the next message instead left a switch away from an
+					// idle session pending forever (issue 102).
+					switchTo <- next
+					stop()
 					return
 				}
 			}
 		}
 	}()
 
-	err = c.Stream(ctx, func(msg goclient.Message) bool {
+	err = c.Stream(connCtx, func(msg goclient.Message) bool {
 		switch msg.Method {
 		case "nabu.session.event":
 			if ev, ok := goclient.ParseEvent(msg); ok {
@@ -206,15 +211,7 @@ func attach(ctx context.Context, p *tea.Program, addr, token, sessionID string, 
 				p.Send(promptMsg{p: prompt{id: msg.ID, req: req}})
 			}
 		}
-		// A session switch ends this connection so the loop can start the next.
-		select {
-		case next := <-switchTo:
-			c.Close() // unblock the read
-			switchTo <- next
-			return false
-		default:
-			return true
-		}
+		return true
 	})
 
 	select {
@@ -227,7 +224,7 @@ func attach(ctx context.Context, p *tea.Program, addr, token, sessionID string, 
 
 // perform carries out one action against the daemon. It returns a session id
 // when the action was a switch, which ends the current connection.
-func perform(ctx context.Context, c *goclient.Client, p *tea.Program, a action) string {
+func perform(ctx context.Context, c *goclient.Client, p sender, a action) string {
 	var err error
 	switch a.kind {
 	case actAnswer:
