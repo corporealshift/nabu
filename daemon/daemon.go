@@ -103,6 +103,8 @@ type Daemon struct {
 	// and os.Exit would otherwise kill it mid-cleanup.
 	shutdownOnce sync.Once
 	shutdownDone chan struct{}
+	// stopSweep ends the archive sweep.
+	stopSweep chan struct{}
 }
 
 // New builds a Daemon over root without binding anything yet.
@@ -300,6 +302,10 @@ func (d *Daemon) Listen() error {
 	for _, id := range paused {
 		d.log.Info("session was interrupted and is paused", "session", id)
 	}
+	if after, on := d.cfg.Daemon.ArchiveAfter(); on {
+		d.stopSweep = make(chan struct{})
+		go d.sweep(after, d.stopSweep)
+	}
 	// A bind beyond loopback with no token refuses every remote client, which
 	// is the safe behaviour but a confusing one to discover from the far end.
 	if !bindIsLoopback(d.cfg.Daemon.Bind) && d.cfg.Daemon.Token == "" {
@@ -309,6 +315,27 @@ func (d *Daemon) Listen() error {
 	}
 	d.log.Info("daemon listening", "addr", ln.Addr().String(), "root", d.root)
 	return nil
+}
+
+// sweepEvery is how often the archive sweep looks. Idleness is counted in
+// days, so an hour late is nothing.
+const sweepEvery = time.Hour
+
+// sweep archives sessions left untouched for after, once at start and then
+// every sweepEvery, until stop closes.
+func (d *Daemon) sweep(after time.Duration, stop <-chan struct{}) {
+	t := time.NewTicker(sweepEvery)
+	defer t.Stop()
+	for {
+		for _, id := range d.mgr.ArchiveIdle(context.Background(), time.Now(), after) {
+			d.log.Info("archived an idle session", "session", id)
+		}
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+		}
+	}
 }
 
 // Paused lists sessions that were interrupted by a previous shutdown.
@@ -347,6 +374,10 @@ func (d *Daemon) Serve() error {
 // and port files. Nothing is lost: the log holds every event up to the stop.
 func (d *Daemon) Shutdown(ctx context.Context) error {
 	defer d.shutdownOnce.Do(func() { close(d.shutdownDone) })
+	if d.stopSweep != nil {
+		close(d.stopSweep)
+		d.stopSweep = nil
+	}
 	var errs []error
 	if err := d.api.Shutdown(ctx); err != nil {
 		errs = append(errs, err)

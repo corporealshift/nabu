@@ -31,6 +31,9 @@ const (
 	actClearGoal
 	actAttach
 	actListSessions
+	actListArchived
+	actArchive
+	actRestore
 	actStats
 )
 
@@ -48,7 +51,8 @@ type commandResult struct {
 
 const helpText = "commands: /goal <text> set a goal · /goal clear it · " +
 	"/compact summarise the history now · /stop end the session · " +
-	"/stats how much work this session was · /open <name> open a page the agent made · " +
+	"/archive put this session away · /stats how much work this session was · " +
+	"/open <name> open a page the agent made · " +
 	"/sessions switch · /help this list"
 
 // parseCommand turns a line of input into what should happen. Text without a
@@ -79,6 +83,8 @@ func parseCommand(line string) commandResult {
 		return commandResult{act: &action{kind: actStop}}
 	case "/compact":
 		return commandResult{act: &action{kind: actCompact}}
+	case "/archive":
+		return commandResult{act: &action{kind: actArchive}}
 	case "/sessions":
 		return commandResult{openPicker: true}
 	case "/open":

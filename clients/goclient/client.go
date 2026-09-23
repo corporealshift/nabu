@@ -353,6 +353,15 @@ func (c *Client) List(ctx context.Context) ([]SessionSummary, error) {
 	return out.Sessions, err
 }
 
+// ListArchived fetches the archived sessions (spec 7.19).
+func (c *Client) ListArchived(ctx context.Context) ([]SessionSummary, error) {
+	var out struct {
+		Sessions []SessionSummary `json:"sessions"`
+	}
+	err := c.CallInto(ctx, "nabu.session.list", map[string]any{"archived": true}, &out)
+	return out.Sessions, err
+}
+
 // PermissionRequest is the payload of nabu.rpc.permission.request.
 type PermissionRequest struct {
 	SessionID string `json:"session_id"`

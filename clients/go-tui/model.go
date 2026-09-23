@@ -124,6 +124,9 @@ type model struct {
 	picking  bool
 	sessions []goclient.SessionSummary
 	cursorAt int
+	// pickingArchived is the picker showing the archive rather than the
+	// sessions in use.
+	pickingArchived bool
 
 	width, height int
 	quitting      bool
