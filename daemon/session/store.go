@@ -316,3 +316,31 @@ func (st *Store) ListArchived() ([]Summary, error) {
 	sort.Slice(out, func(i, j int) bool { return out[i].SessionID > out[j].SessionID })
 	return out, errors.Join(errs...)
 }
+
+// ArchivedLogs reads every archived session's events, for anything that has to
+// count history the active list no longer shows. Each is closed after reading.
+func (st *Store) ArchivedLogs() ([][]protocol.Event, error) {
+	entries, err := os.ReadDir(st.archiveDir())
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out [][]protocol.Event
+	var errs []error
+	for _, ent := range entries {
+		name := ent.Name()
+		if ent.IsDir() || !strings.HasSuffix(name, ".jsonl") {
+			continue
+		}
+		s, err := load(strings.TrimSuffix(name, ".jsonl"), filepath.Join(st.archiveDir(), name))
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		out = append(out, s.Events())
+		_ = s.Close()
+	}
+	return out, errors.Join(errs...)
+}

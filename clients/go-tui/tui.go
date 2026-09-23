@@ -292,6 +292,14 @@ func perform(ctx context.Context, c *goclient.Client, p *tea.Program, a action) 
 		if _, err = c.Call(ctx, "nabu.session.restore", map[string]any{"session_id": a.sessionID}); err == nil {
 			return a.sessionID
 		}
+	case actStats:
+		var v statsView
+		if v.session, err = c.Stats(ctx, a.sessionID); err == nil {
+			// The days are a nicety: a daemon that cannot say still shows
+			// the session.
+			v.days, _ = c.Usage(ctx, 14)
+			p.Send(statsMsg{view: v})
+		}
 	case actAttach:
 		return a.sessionID
 	}

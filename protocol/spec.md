@@ -579,6 +579,38 @@ Brings an archived session back, appending an `info` `notice`, which also restar
 idle clock. An unknown id is `nabu_session_not_found`; restoring a session that is not
 archived does nothing.
 
+### 7.21 `nabu.session.stats {session_id}` → `SessionStats`
+
+How much work a session was, derived from its log alone:
+
+```jsonc
+{"session_id": "…", "turns": 41, "prompts": 6,
+ "tokens": {"input": 1840000, "output": 21000, "cached": 0,
+            "peak_context": 118000, "context_window": 256000},
+ "per_turn": [{"at": "…", "input": 12000, "output": 300}],
+ "tools": [{"tool": "read", "calls": 60, "errors": 2}],
+ "compactions": {"summarize": 1, "clear_results": 2},
+ "vetoes": 3, "interruptions": 1,
+ "started_at": "…", "last_event_at": "…", "working_seconds": 5400,
+ "rereads": [{"path": "engine.rs", "reads": 7}]}
+```
+
+`turns` counts assistant messages; `prompts` user messages. `tokens.input` is every
+request's input summed, so it is what was processed: each request carries the
+conversation again. `peak_context` is the largest single request. `per_turn` lists turns
+that reported usage, in order. `tools` is ordered by calls. `working_seconds` is time spent
+`running`, counting no more than 15 minutes for any silence (a daemon stopped
+with the session still marked running is not work). `rereads` lists files read three times or more, most first; it is a signal worth
+a look, not a verdict. Arrays are always present, possibly empty.
+
+Not normative in the way §5 is: clients ask for it rather than computing it.
+
+### 7.22 `nabu.usage {days?}` → `{days: [{date, turns, input, output}]}`
+
+Turns and tokens per calendar day in the daemon's time zone, across every session,
+archived ones included (§7.19), oldest day first. Every day in the range is present, a quiet
+one as zeros. `days` defaults to 14 and is capped at 90.
+
 ## 8. Error codes
 
 | Code | Name | Meaning |

@@ -13,6 +13,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
+	"github.com/corporealshift/nabu/daemon/stats"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -488,4 +489,20 @@ func mustJSON(v any) json.RawMessage {
 		return json.RawMessage(`null`)
 	}
 	return raw
+}
+
+// Stats fetches how much work a session was (spec 7.21).
+func (c *Client) Stats(ctx context.Context, sessionID string) (stats.Session, error) {
+	var out stats.Session
+	err := c.CallInto(ctx, "nabu.session.stats", map[string]any{"session_id": sessionID}, &out)
+	return out, err
+}
+
+// Usage fetches turns and tokens per day across sessions (spec 7.22).
+func (c *Client) Usage(ctx context.Context, days int) ([]stats.Day, error) {
+	var out struct {
+		Days []stats.Day `json:"days"`
+	}
+	err := c.CallInto(ctx, "nabu.usage", map[string]any{"days": days}, &out)
+	return out.Days, err
 }

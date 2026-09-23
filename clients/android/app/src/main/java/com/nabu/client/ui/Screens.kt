@@ -314,6 +314,7 @@ fun TranscriptScreen(
     onResume: () -> Unit,
     onInterrupt: () -> Unit,
     onCompact: () -> Unit,
+    onStats: () -> Unit = {},
     onRetryBlocked: (String) -> Unit,
     onDiscardBlocked: (String) -> Unit,
     onBack: () -> Unit,
@@ -343,6 +344,9 @@ fun TranscriptScreen(
                 actions = {
                     ContextBadge(view.contextUsed)
                     CompactButton(compacting, onCompact)
+                    TextButton(onClick = onStats) {
+                        Text("Stats", style = MaterialTheme.typography.labelMedium, color = NabuTheme.colors.accent)
+                    }
                 },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
             )

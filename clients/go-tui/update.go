@@ -123,6 +123,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case statsMsg:
+		v := msg.view
+		m.stats = &v
+		return m, nil
+
 	case sessionsMsg:
 		m.sessions = msg.sessions
 		m.pickingArchived = msg.archived
@@ -162,6 +167,15 @@ func (m model) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.onPromptKey(msg)
 	case m.asking != nil:
 		return m.answerQuestion(msg)
+	case m.stats != nil:
+		switch msg.String() {
+		case "ctrl+c":
+			m.quitting = true
+			return m, tea.Quit
+		case "esc", "q", "enter":
+			m.stats = nil
+		}
+		return m, nil
 	case m.picking:
 		return m.onPickerKey(msg)
 	case m.composing:
@@ -325,6 +339,11 @@ func (m model) onTranscriptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "t":
 		m.toggleThinking()
+		return m, nil
+	case "p":
+		m.hideTasks = !m.hideTasks
+		m.relayout()
+		m.refresh()
 		return m, nil
 	case "s":
 		return m, m.emit(action{kind: actListSessions})

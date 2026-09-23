@@ -84,6 +84,8 @@ var Methods = []string{
 	"nabu.session.compact",
 	"nabu.session.archive",
 	"nabu.session.restore",
+	"nabu.session.stats",
+	"nabu.usage",
 	"nabu.session.event",
 	"nabu.session.delta",
 	"nabu.session.thinking",

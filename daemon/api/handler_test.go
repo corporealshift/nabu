@@ -751,3 +751,71 @@ func TestTheConnectionStaysAnsweredWhileACompactionRuns(t *testing.T) {
 		t.Fatalf("an interrupted compaction should say so: %v", r)
 	}
 }
+
+// Spec 7.21-7.22 (issue 38): how much work a session was, and per day.
+func TestStatsAndUsageOverRPC(t *testing.T) {
+	hn := newHarness(t)
+	hn.fake.Script = []provider.Response{{Content: "done", Usage: protocol.Usage{InputTokens: 120, OutputTokens: 7}}}
+	id := hn.mustCreate(t)
+	if _, err := hn.m.Prompt(context.Background(), id, "go"); err != nil {
+		t.Fatal(err)
+	}
+	hn.m.WaitIdle(id)
+
+	var s struct {
+		Turns   int `json:"turns"`
+		Prompts int `json:"prompts"`
+		Tokens  struct {
+			Input  int `json:"input"`
+			Output int `json:"output"`
+		} `json:"tokens"`
+		PerTurn []any `json:"per_turn"`
+	}
+	result(t, hn.call(t, 2, "nabu.session.stats", map[string]any{"session_id": id}), &s)
+	if s.Turns != 1 || s.Prompts != 1 || s.Tokens.Input != 120 || s.Tokens.Output != 7 || len(s.PerTurn) != 1 {
+		t.Fatalf("stats = %+v", s)
+	}
+
+	var u struct {
+		Days []struct {
+			Date  string `json:"date"`
+			Turns int    `json:"turns"`
+			Input int    `json:"input"`
+		} `json:"days"`
+	}
+	result(t, hn.call(t, 3, "nabu.usage", map[string]any{"days": 3}), &u)
+	if len(u.Days) != 3 {
+		t.Fatalf("want 3 days, got %+v", u.Days)
+	}
+	if today := u.Days[2]; today.Turns != 1 || today.Input != 120 {
+		t.Errorf("today = %+v", today)
+	}
+
+	resp := hn.call(t, 4, "nabu.session.stats", map[string]any{"session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
+	if resp == nil || resp.Error == nil || resp.Error.Code != protocol.CodeSessionNotFound {
+		t.Fatalf("stats for an unknown session: %+v", resp)
+	}
+}
+
+// Archiving a session does not take its work out of the history: it happened.
+func TestUsageCountsArchivedSessions(t *testing.T) {
+	hn := newHarness(t)
+	hn.fake.Script = []provider.Response{{Content: "done", Usage: protocol.Usage{InputTokens: 120, OutputTokens: 7}}}
+	id := hn.mustCreate(t)
+	if _, err := hn.m.Prompt(context.Background(), id, "go"); err != nil {
+		t.Fatal(err)
+	}
+	hn.m.WaitIdle(id)
+	result(t, hn.call(t, 2, "nabu.session.archive", map[string]any{"session_id": id}), &struct{}{})
+
+	var u struct {
+		Days []struct {
+			Turns int `json:"turns"`
+			Input int `json:"input"`
+		} `json:"days"`
+	}
+	result(t, hn.call(t, 3, "nabu.usage", map[string]any{"days": 1}), &u)
+	if len(u.Days) != 1 || u.Days[0].Turns != 1 || u.Days[0].Input != 120 {
+		t.Fatalf("an archived session's turn is missing from today: %+v", u.Days)
+	}
+}
