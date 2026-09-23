@@ -223,6 +223,20 @@ paying for a walk on every request.
 
 It never interrupts a turn: changes that land mid-turn appear in the next request.
 
+### Cleaning up sessions
+
+A session nothing has happened in for three days is archived: it leaves the list, the
+daemon stops loading it at start, and the phone stops mirroring it. Nothing in it is
+deleted. Archive one yourself with `nabu archive <id>`, `/archive` in the terminal UI, or a
+long press in the phone's list, and bring one back with `nabu restore <id>`, `tab` in the
+terminal UI's session picker, or Archived on the phone. A running session is never archived.
+
+To change the wait, or turn it off with 0:
+
+```json
+{ "daemon": { "archive_after_days": 7 } }
+```
+
 ### How much work a session was
 
 `/stats` in the terminal UI, or Stats in a session's top bar on the phone, shows turns,

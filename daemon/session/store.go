@@ -157,6 +157,8 @@ type Summary struct {
 	Goal         *protocol.GoalData    `json:"goal,omitempty"`
 	TasksTotal   int                   `json:"tasks_total"`
 	TasksDone    int                   `json:"tasks_done"`
+	// Archived is set in an archived listing (spec 7.19).
+	Archived bool `json:"archived,omitempty"`
 }
 
 // Summary projects the session for listings.
@@ -229,4 +231,116 @@ func (st *Store) RecoverInterrupted() ([]string, error) {
 		paused = append(paused, sm.SessionID)
 	}
 	return paused, err
+}
+
+// archiveDir is where archived logs live: <root>/sessions/archive/.
+func (st *Store) archiveDir() string { return filepath.Join(st.root, "archive") }
+
+// Archive moves a session's log out of the active directory.
+//
+// Nothing in the log changes; it is only no longer listed, loaded at start, or
+// mirrored by clients. The session is closed first, since an open file cannot
+// be moved on Windows, and every subscription to it ends.
+func (st *Store) Archive(id string) error {
+	if protocol.ValidateULID(id) != nil {
+		return ErrNotFound
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	from := filepath.Join(st.root, id+".jsonl")
+	to := filepath.Join(st.archiveDir(), id+".jsonl")
+	if _, err := os.Stat(from); errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(to); err == nil {
+			return nil // already archived
+		}
+		return ErrNotFound
+	}
+	if s, ok := st.open[id]; ok {
+		if err := s.Close(); err != nil {
+			return err
+		}
+		delete(st.open, id)
+	}
+	if err := os.MkdirAll(st.archiveDir(), 0o755); err != nil {
+		return err
+	}
+	return os.Rename(from, to)
+}
+
+// Restore moves an archived session's log back, so it lists and loads again.
+func (st *Store) Restore(id string) error {
+	if protocol.ValidateULID(id) != nil {
+		return ErrNotFound
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	from := filepath.Join(st.archiveDir(), id+".jsonl")
+	to := filepath.Join(st.root, id+".jsonl")
+	if _, err := os.Stat(from); errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(to); err == nil {
+			return nil // not archived
+		}
+		return ErrNotFound
+	}
+	return os.Rename(from, to)
+}
+
+// ListArchived summarises every archived session, newest first. Each is read
+// and closed again: an archived session is looked at, not kept open.
+func (st *Store) ListArchived() ([]Summary, error) {
+	entries, err := os.ReadDir(st.archiveDir())
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []Summary
+	var errs []error
+	for _, ent := range entries {
+		name := ent.Name()
+		if ent.IsDir() || !strings.HasSuffix(name, ".jsonl") {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".jsonl")
+		s, err := load(id, filepath.Join(st.archiveDir(), name))
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		sum := s.Summary()
+		sum.Archived = true
+		_ = s.Close()
+		out = append(out, sum)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].SessionID > out[j].SessionID })
+	return out, errors.Join(errs...)
+}
+
+// ArchivedLogs reads every archived session's events, for anything that has to
+// count history the active list no longer shows. Each is closed after reading.
+func (st *Store) ArchivedLogs() ([][]protocol.Event, error) {
+	entries, err := os.ReadDir(st.archiveDir())
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out [][]protocol.Event
+	var errs []error
+	for _, ent := range entries {
+		name := ent.Name()
+		if ent.IsDir() || !strings.HasSuffix(name, ".jsonl") {
+			continue
+		}
+		s, err := load(strings.TrimSuffix(name, ".jsonl"), filepath.Join(st.archiveDir(), name))
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		out = append(out, s.Events())
+		_ = s.Close()
+	}
+	return out, errors.Join(errs...)
 }

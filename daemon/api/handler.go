@@ -280,8 +280,19 @@ func (h *Handler) getSession(id string) (*session.Session, *protocol.RPCError) {
 }
 
 // handleSessionList implements nabu.session.list (spec 7.2).
-func (h *Handler) handleSessionList(context.Context, *connState, json.RawMessage) (any, *protocol.RPCError) {
-	summaries, err := h.store.List()
+func (h *Handler) handleSessionList(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
+	var p struct {
+		// Archived lists the archive instead (spec 7.19).
+		Archived bool `json:"archived"`
+	}
+	if rpcErr := decodeParams(params, &p); rpcErr != nil {
+		return nil, rpcErr
+	}
+	list := h.store.List
+	if p.Archived {
+		list = h.store.ListArchived
+	}
+	summaries, err := list()
 	if err != nil {
 		return nil, protocol.NewRPCError(protocol.CodeInternalError, err.Error())
 	}
@@ -407,7 +418,7 @@ const (
 )
 
 // handleUsage implements nabu.usage (spec 7.22): tokens and turns per day,
-// across every session the daemon lists.
+// across every session, archived ones included.
 func (h *Handler) handleUsage(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		Days int `json:"days"`
@@ -430,6 +441,11 @@ func (h *Handler) handleUsage(_ context.Context, _ *connState, params json.RawMe
 		if s, err := h.store.Get(sum.SessionID); err == nil {
 			logs = append(logs, s.Events())
 		}
+	}
+	// Archived sessions still happened: a session archived after three idle
+	// days would otherwise vanish from the days it was busy.
+	if archived, err := h.store.ArchivedLogs(); err == nil {
+		logs = append(logs, archived...)
 	}
 	now := time.Now()
 	first := now.AddDate(0, 0, -(p.Days - 1))

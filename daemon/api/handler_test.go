@@ -604,6 +604,40 @@ func TestCompactIsRefusedWhileTheSessionIsRunning(t *testing.T) {
 	hn.m.WaitIdle(id)
 }
 
+// Spec 7.19-7.20. Archived sessions leave the list and come back on request.
+func TestArchiveAndRestoreOverRPC(t *testing.T) {
+	hn := newHarness(t)
+	id := hn.mustCreate(t)
+
+	result(t, hn.call(t, 2, "nabu.session.archive", map[string]any{"session_id": id}), &struct{}{})
+
+	var active, archived struct {
+		Sessions []struct {
+			SessionID string `json:"session_id"`
+			Archived  bool   `json:"archived"`
+		} `json:"sessions"`
+	}
+	result(t, hn.call(t, 3, "nabu.session.list", nil), &active)
+	if len(active.Sessions) != 0 {
+		t.Fatalf("an archived session is still listed: %+v", active.Sessions)
+	}
+	result(t, hn.call(t, 4, "nabu.session.list", map[string]any{"archived": true}), &archived)
+	if len(archived.Sessions) != 1 || archived.Sessions[0].SessionID != id || !archived.Sessions[0].Archived {
+		t.Fatalf("archived list = %+v", archived.Sessions)
+	}
+
+	result(t, hn.call(t, 5, "nabu.session.restore", map[string]any{"session_id": id}), &struct{}{})
+	result(t, hn.call(t, 6, "nabu.session.list", nil), &active)
+	if len(active.Sessions) != 1 {
+		t.Fatalf("a restored session should list again: %+v", active.Sessions)
+	}
+
+	resp := hn.call(t, 7, "nabu.session.restore", map[string]any{"session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
+	if resp == nil || resp.Error == nil || resp.Error.Code != protocol.CodeSessionNotFound {
+		t.Fatalf("restoring an unknown session: %+v", resp)
+	}
+}
+
 // dialHello opens a real websocket to the handler and completes the hello.
 // Everything after it is read by a goroutine into the returned channel, which
 // is what lets the test ping: a websocket answers control frames only while
@@ -760,5 +794,28 @@ func TestStatsAndUsageOverRPC(t *testing.T) {
 	resp := hn.call(t, 4, "nabu.session.stats", map[string]any{"session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
 	if resp == nil || resp.Error == nil || resp.Error.Code != protocol.CodeSessionNotFound {
 		t.Fatalf("stats for an unknown session: %+v", resp)
+	}
+}
+
+// Archiving a session does not take its work out of the history: it happened.
+func TestUsageCountsArchivedSessions(t *testing.T) {
+	hn := newHarness(t)
+	hn.fake.Script = []provider.Response{{Content: "done", Usage: protocol.Usage{InputTokens: 120, OutputTokens: 7}}}
+	id := hn.mustCreate(t)
+	if _, err := hn.m.Prompt(context.Background(), id, "go"); err != nil {
+		t.Fatal(err)
+	}
+	hn.m.WaitIdle(id)
+	result(t, hn.call(t, 2, "nabu.session.archive", map[string]any{"session_id": id}), &struct{}{})
+
+	var u struct {
+		Days []struct {
+			Turns int `json:"turns"`
+			Input int `json:"input"`
+		} `json:"days"`
+	}
+	result(t, hn.call(t, 3, "nabu.usage", map[string]any{"days": 1}), &u)
+	if len(u.Days) != 1 || u.Days[0].Turns != 1 || u.Days[0].Input != 120 {
+		t.Fatalf("an archived session's turn is missing from today: %+v", u.Days)
 	}
 }

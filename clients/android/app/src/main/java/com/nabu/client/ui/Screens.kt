@@ -9,6 +9,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -139,7 +140,7 @@ fun SettingsScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SessionListScreen(
     sessions: List<SessionCard>,
@@ -148,7 +149,17 @@ fun SessionListScreen(
     onOpen: (String) -> Unit,
     onSettings: () -> Unit,
     onNewSession: () -> Unit,
+    onArchive: (String) -> Unit = {},
+    onArchived: () -> Unit = {},
 ) {
+    var archiving by remember { mutableStateOf<SessionCard?>(null) }
+    archiving?.let { card ->
+        ArchiveDialog(
+            title = card.prompt.ifBlank { projectName(card.row.workspace.ifBlank { card.row.id }) },
+            onArchive = { onArchive(card.row.id); archiving = null },
+            onDismiss = { archiving = null },
+        )
+    }
     Scaffold(containerColor = NabuTheme.colors.background, floatingActionButton = {
         // Only when connected: starting a session needs the daemon, and a
         // button that cannot work is worse than no button.
@@ -173,6 +184,7 @@ fun SessionListScreen(
                     color = NabuTheme.colors.muted,
                     modifier = Modifier.padding(end = 12.dp),
                 )
+                TextButton(onClick = onArchived) { Text("Archived") }
                 TextButton(onClick = onSettings) { Text("Settings") }
             },
         )
@@ -233,7 +245,12 @@ fun SessionListScreen(
                 val s = card.row
                 Card(
                     colors = CardDefaults.cardColors(containerColor = NabuTheme.colors.surface),
-                    modifier = Modifier.fillMaxWidth().clickable { onOpen(s.id) },
+                    // Held to archive (issue 56): the list is where sessions pile up.
+                    modifier = Modifier.fillMaxWidth().combinedClickable(
+                        onClick = { onOpen(s.id) },
+                        onLongClick = { archiving = card },
+                        onLongClickLabel = "Archive",
+                    ),
                 ) {
                     Column(
                         Modifier.padding(14.dp),

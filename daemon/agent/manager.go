@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/corporealshift/nabu/daemon/module"
 	"github.com/corporealshift/nabu/daemon/provider"
@@ -787,4 +788,77 @@ func (m *Manager) dataDir(name string) (string, error) {
 	}
 	d := filepath.Join(m.deps.Root, name)
 	return d, os.MkdirAll(d, 0o755)
+}
+
+// ---------------------------------------------------------------- archiving
+
+// Archive puts a session away (issue 56): it stops being listed, loaded at
+// start, or mirrored, and its log is kept whole. Refused while it runs, since
+// archiving closes the log under a turn still writing to it.
+func (m *Manager) Archive(ctx context.Context, id, why string) error {
+	h, err := m.handle(id)
+	if err != nil {
+		return err
+	}
+	// A summary being written holds this; archiving meanwhile would close the
+	// log under it. It also keeps a turn from starting between the check below
+	// and the move.
+	h.compactMu.Lock()
+	defer h.compactMu.Unlock()
+	m.mu.Lock()
+	rs := m.rt[id]
+	if (rs != nil && rs.running) || h.State().State == protocol.StateRunning {
+		m.mu.Unlock()
+		return protocol.NewRPCError(protocol.CodeInvalidTransition,
+			"session is running; interrupt or stop it before archiving")
+	}
+	// Recorded before it moves, so the log says why it went.
+	if _, err := h.s.Append(protocol.EventNotice, protocol.NoticeData{
+		Source: "daemon", Level: "info", Message: "archived: " + why}); err != nil {
+		m.mu.Unlock()
+		return err
+	}
+	delete(m.rt, id)
+	m.mu.Unlock()
+	m.deps.Modules.ForgetSession(id)
+	return m.deps.Store.Archive(id)
+}
+
+// Restore brings an archived session back.
+func (m *Manager) Restore(ctx context.Context, id string) error {
+	if err := m.deps.Store.Restore(id); err != nil {
+		return err
+	}
+	h, err := m.handle(id)
+	if err != nil {
+		return err
+	}
+	// Also moves its last activity to now, so the idle sweep does not put it
+	// straight back.
+	_, err = h.s.Append(protocol.EventNotice, protocol.NoticeData{
+		Source: "daemon", Level: "info", Message: "restored from the archive"})
+	return err
+}
+
+// ArchiveIdle archives every session not running whose last event is older
+// than after, and returns their ids.
+func (m *Manager) ArchiveIdle(ctx context.Context, now time.Time, after time.Duration) []string {
+	sums, err := m.deps.Store.List()
+	if err != nil {
+		m.log.Warn("archive sweep: listing sessions", "error", err)
+	}
+	var out []string
+	for _, s := range sums {
+		if s.State == protocol.StateRunning || now.Sub(s.UpdatedAt) < after {
+			continue
+		}
+		days := int(after.Hours() / 24)
+		why := fmt.Sprintf("untouched for %s", plural(days, "day"))
+		if err := m.Archive(ctx, s.SessionID, why); err != nil {
+			m.log.Warn("archive sweep", "session", s.SessionID, "error", err)
+			continue
+		}
+		out = append(out, s.SessionID)
+	}
+	return out
 }

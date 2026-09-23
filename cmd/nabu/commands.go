@@ -466,6 +466,16 @@ func cmdResume(args []string, stdout, stderr io.Writer) int {
 		func(w io.Writer, id string) { fmt.Fprintf(w, "resumed %s\n", id) })
 }
 
+func cmdArchive(args []string, stdout, stderr io.Writer) int {
+	return simpleSessionCommand("archive", "nabu.session.archive", args, stdout, stderr,
+		func(w io.Writer, id string) { fmt.Fprintf(w, "archived %s\n", id) })
+}
+
+func cmdRestore(args []string, stdout, stderr io.Writer) int {
+	return simpleSessionCommand("restore", "nabu.session.restore", args, stdout, stderr,
+		func(w io.Writer, id string) { fmt.Fprintf(w, "restored %s\n", id) })
+}
+
 // cmdStats prints a session's numbers, or tokens per day across sessions, as
 // indented JSON: the shape is the spec's (7.21, 7.22), so it can be piped
 // straight into whatever does the analysis.

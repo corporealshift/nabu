@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadEmptyJSON(t *testing.T) {
@@ -494,5 +495,25 @@ func TestAnUnsetContextWindowIsZero(t *testing.T) {
 	}
 	if got := cfg.Providers["local"].ContextWindow; got != 0 {
 		t.Errorf("context_window = %d, want 0 for unset", got)
+	}
+}
+
+func TestArchiveAfter(t *testing.T) {
+	n := func(v int) *int { return &v }
+	cases := []struct {
+		name string
+		days *int
+		want time.Duration
+		on   bool
+	}{
+		{"unset takes the default", nil, DefaultArchiveAfterDays * 24 * time.Hour, true},
+		{"zero turns it off", n(0), 0, false},
+		{"a week", n(7), 7 * 24 * time.Hour, true},
+	}
+	for _, tc := range cases {
+		got, on := DaemonConfig{ArchiveAfterDays: tc.days}.ArchiveAfter()
+		if got != tc.want || on != tc.on {
+			t.Errorf("%s: got %v %v, want %v %v", tc.name, got, on, tc.want, tc.on)
+		}
 	}
 }
