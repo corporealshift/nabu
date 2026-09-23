@@ -17,10 +17,12 @@ var (
 	badgeWarn = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
 	badgeErr  = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
 
+	// overlayBox frames what takes the whole screen: the picker, a permission
+	// prompt, /stats and the keys. There is room, so it breathes.
 	overlayBox = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("3")).
-			Padding(0, 2)
+			Padding(1, 3)
 )
 
 func (m model) View() string {
@@ -138,6 +140,9 @@ func (m model) picker() string {
 	width := m.pickerWidth()
 	now := time.Now()
 	for i := from; i < to; i++ {
+		if i > from {
+			b.WriteString("\n")
+		}
 		b.WriteString(pickerRow(m.sessions[i], i == m.cursorAt, width, now))
 	}
 	b.WriteString("\n" + dim.Render(help))
@@ -163,9 +168,9 @@ func pickerRow(s goclient.SessionSummary, selected bool, width int, now time.Tim
 	case prompt == "":
 		first = dim.Render(lead + "nothing asked yet")
 	case selected:
-		first = badgeOK.Render(lead + truncate(prompt, width-2))
+		first = badgeOK.Render(lead + truncate(prompt, width-3))
 	default:
-		first = lead + truncate(prompt, width-2)
+		first = lead + truncate(prompt, width-3)
 	}
 
 	meta := projectName(s.Workspace)
@@ -178,7 +183,7 @@ func pickerRow(s goclient.SessionSummary, selected bool, width int, now time.Tim
 			meta += " · " + age
 		}
 	}
-	return first + "\n" + dim.Render("    "+truncate(meta, width-4)) + "\n"
+	return first + "\n" + dim.Render("    "+truncate(meta, width-5)) + "\n"
 }
 
 // projectName is the last element of a workspace path, whichever separator
@@ -197,9 +202,11 @@ func (m model) pickerWidth() int {
 }
 
 // pickerWindow is the range of sessions that fits on screen, moved to keep
-// the cursor in it. Two lines a row, less the title, help and border.
+// the cursor in it. Three lines a row, two and a gap, less what is around
+// them: title and gap, gap and help, and two rows each of border and padding.
+// The last row's gap is the one before the help, so that is 3n+7 in all.
 func (m model) pickerWindow() (from, to int) {
-	rows := max(1, (m.height-8)/2)
+	rows := max(1, (m.height-7)/3)
 	if len(m.sessions) <= rows {
 		return 0, len(m.sessions)
 	}
@@ -292,27 +299,21 @@ var keys = []struct{ key, what string }{
 	{"q", "quit — the run continues"},
 }
 
-// keysPanel lists every key and command, and the full session id, which the
-// status line no longer carries.
+// keysPanel lists every key, and the full session id, which the status line
+// no longer carries. The commands are /help's: both lists together are taller
+// than an 80×24 terminal.
 func (m model) keysPanel() string {
-	label := lipgloss.NewStyle().Bold(true)
-	keyWidth, cmdWidth := 0, 0
+	keyWidth := 0
 	for _, k := range keys {
 		keyWidth = max(keyWidth, visibleWidth(k.key))
 	}
-	for _, c := range commands {
-		cmdWidth = max(cmdWidth, visibleWidth(c.name))
-	}
 
 	var b strings.Builder
-	b.WriteString(label.Render("Keys") + "\n\n")
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Keys") + "\n\n")
 	for _, k := range keys {
 		b.WriteString(toolStyle.Render(fmt.Sprintf("%-*s", keyWidth, k.key)) + "   " + k.what + "\n")
 	}
-	b.WriteString("\n" + label.Render("Commands") + "\n\n")
-	for _, c := range commands {
-		b.WriteString(toolStyle.Render(fmt.Sprintf("%-*s", cmdWidth, c.name)) + "   " + c.what + "\n")
-	}
+	b.WriteString("\n" + fmt.Sprintf("%-*s", keyWidth, "/help") + "   " + "the commands, typed after i" + "\n")
 	if m.sessionID != "" {
 		b.WriteString("\n" + dim.Render("session "+m.sessionID) + "\n")
 	}

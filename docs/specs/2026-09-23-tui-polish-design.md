@@ -82,9 +82,12 @@ Use Claude Code's spacing and layout, with the glyphs the TUI already uses: `›
 
   When both sides do not fit, the right side goes. The status is what matters.
 - **`?` keys panel.** A full-screen overlay, like `/stats`. It lists every transcript
-  key (the ones the help line has today, plus scrolling), the `/` commands, and the
-  full session id. `?`, `esc` or `q` closes it. It stands in for the help line that
-  used to wrap.
+  key (the ones the help line has today, plus scrolling), points to `/help` for the
+  commands, and shows the full session id. `?`, `esc` or `q` closes it. It stands in
+  for the help line that used to wrap. The commands are left out because keys and
+  commands together, in the padded overlay, come to about 30 rows, taller than an
+  80×24 terminal. Instead, `/help` prints the commands one per line, with the names
+  aligned, rather than as one run-on line.
 
 ### Overlays
 

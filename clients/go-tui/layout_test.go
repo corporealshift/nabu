@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/corporealshift/nabu/clients/goclient"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -185,6 +186,24 @@ func TestTheViewFillsTheTerminalExactly(t *testing.T) {
 			}})})
 			return m
 		}},
+		{"the keys panel", func(m model) model {
+			m, _ = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+			return m
+		}},
+		{"the picker, with more sessions than fit", func(m model) model {
+			var sessions []goclient.SessionSummary
+			for i := 0; i < 20; i++ {
+				sessions = append(sessions, goclient.SessionSummary{
+					SessionID: fmt.Sprintf("S%02d", i), LastPrompt: long(i), Workspace: `C:\work\nabu`, State: "idle"})
+			}
+			m, _ = send(m, sessionsMsg{sessions: sessions})
+			return m
+		}},
+		{"a permission prompt", func(m model) model {
+			m, _ = send(m, promptMsg{p: prompt{id: "r1", req: goclient.PermissionRequest{
+				Tool: "bash", Risk: "high", Summary: "run " + long(1)}}})
+			return m
+		}},
 		{"session ended", func(m model) model {
 			m, _ = send(m, eventMsg{ev: event("s1", protocol.EventStateChange,
 				protocol.StateChangeData{To: protocol.StateCompleted})})
@@ -244,7 +263,7 @@ func TestTheKeysPanel(t *testing.T) {
 	m := sized(t, nil)
 	m, _ = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
 	view := stripANSI(m.View())
-	for _, want := range []string{"ctrl+x", "/compact", m.sessionID} {
+	for _, want := range []string{"ctrl+x", "/help", m.sessionID} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the keys panel should list %q:\n%s", want, view)
 		}
