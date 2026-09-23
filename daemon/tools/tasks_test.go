@@ -125,7 +125,7 @@ func TestMergeKeepsIdsByTitleWhenIdsAreOmitted(t *testing.T) {
 		{Title: "Scaffold", Status: protocol.TaskDone},
 		{Title: " Domain types ", Status: protocol.TaskDone},
 		{ID: "t3", Title: "Engine, renamed", Status: protocol.TaskPending},
-		{Title: "Engine", Status: protocol.TaskPending}, // t3 is claimed explicitly above
+		{Title: "Engine", Status: protocol.TaskPending},   // t3 is claimed explicitly above
 		{Title: "Scaffold", Status: protocol.TaskPending}, // a second task with a reused title
 	}, nil, "model")
 	if err != nil {
