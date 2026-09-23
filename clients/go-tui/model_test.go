@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -350,5 +351,24 @@ func TestViewBeforeSizingDoesNotPanic(t *testing.T) {
 	m := newModel("s", nil)
 	if got := m.View(); got == "" {
 		t.Error("an unsized model should still render something")
+	}
+}
+
+// Issue 69's backoff bug, which the TUI had too: the wait only ever grew, so
+// after a few drops every reconnect sat out the ceiling. A connection that
+// was made starts it over.
+func TestAConnectionStartsTheBackoffOver(t *testing.T) {
+	var r retry
+	var seen []time.Duration
+	for i := 0; i < 8; i++ {
+		seen = append(seen, r.failed())
+	}
+	if seen[0] != minBackoff || seen[len(seen)-1] != maxBackoff {
+		t.Fatalf("waits = %v, want %v doubling to %v", seen, minBackoff, maxBackoff)
+	}
+
+	r.connected()
+	if got := r.failed(); got != minBackoff {
+		t.Fatalf("after a good connection the next wait is %v, want %v", got, minBackoff)
 	}
 }

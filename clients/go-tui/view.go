@@ -51,11 +51,15 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 // Without it a screen that has stopped changing is indistinguishable from a
 // hang, and a local turn can take minutes before its first token.
 func (m model) workingIndicator() string {
-	if !m.working() {
-		return ""
-	}
 	frame := spinnerFrames[m.spinner%len(spinnerFrames)]
-	return badgeWarn.Render(frame + " working " + m.elapsed().String())
+	switch {
+	case m.working():
+		return badgeWarn.Render(frame + " working " + m.elapsed().String())
+	case m.compacting():
+		took := time.Since(m.compactingSince).Truncate(time.Second)
+		return badgeWarn.Render(frame + " summarising " + took.String())
+	}
+	return ""
 }
 
 // taskPane shows what the agent believes it is doing.

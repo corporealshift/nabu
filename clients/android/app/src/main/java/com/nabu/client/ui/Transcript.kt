@@ -87,7 +87,8 @@ fun decode(rows: List<EventRow>): List<Event> = rows.mapNotNull { row ->
     runCatching { NabuJson.decodeFromString(Event.serializer(), row.raw) }.getOrNull()
 }
 
-private fun render(key: String, e: Event): Line? = when (e.type) {
+/** The line one event contributes, or null for an event that is not worth one. */
+internal fun render(key: String, e: Event): Line? = when (e.type) {
     "message" -> e.payload<MessageData>()?.let { d ->
         val text = d.content.trim()
         when {

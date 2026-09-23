@@ -4,8 +4,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/viewport"
-
 	"github.com/corporealshift/nabu/clients/goclient"
 	"github.com/corporealshift/nabu/daemon/modules/artifact"
 	"github.com/corporealshift/nabu/protocol"
@@ -34,8 +32,16 @@ type model struct {
 
 	// transcript is the rendered log, one line per entry.
 	transcript []string
-	viewport   viewport.Model
+	viewport   pane
 	ready      bool
+
+	// wrapped is the transcript broken to wrappedWidth, one screen line per
+	// element, covering the first wrappedN entries. Only entries added since
+	// are wrapped on a refresh: re-wrapping two thousand events for every
+	// streamed token is what made a long session unresponsive (issue 82).
+	wrapped      []string
+	wrappedWidth int
+	wrappedN     int
 
 	// lastEventID is the cursor. A reconnect fetches from here, so a dropped
 	// connection costs nothing but the gap.
@@ -71,6 +77,11 @@ type model struct {
 	turns       int
 	lastError   string
 	lastEventAt time.Time
+
+	// compactingSince is when a requested compaction was sent, and zero when
+	// none is in flight. The session is idle while one runs, so without this
+	// the TUI would say nothing is happening and refuse ctrl+x for minutes.
+	compactingSince time.Time
 
 	// runningSince is when the current turn began, so the working indicator
 	// reports how long the model has actually been thinking rather than how
@@ -133,7 +144,7 @@ func newModel(sessionID string, actions chan<- action) model {
 		width:     defaultWidth,
 		height:    defaultHeight,
 	}
-	m.viewport = viewport.New(defaultWidth, defaultHeight-2)
+	m.viewport = newPane(defaultWidth, defaultHeight-2)
 	m.ready = true
 	return m
 }
@@ -237,6 +248,11 @@ func (m model) working() bool {
 	return m.state == protocol.StateRunning
 }
 
+// compacting reports whether a compaction this client asked for is in flight.
+func (m model) compacting() bool {
+	return !m.compactingSince.IsZero()
+}
+
 // elapsed is how long the current turn has run.
 func (m model) elapsed() time.Duration {
 	if m.runningSince.IsZero() {
@@ -250,6 +266,7 @@ func (m model) elapsed() time.Duration {
 func (m *model) reset(sessionID string) {
 	m.sessionID = sessionID
 	m.transcript = nil
+	m.invalidateWrap()
 	m.lastEventID = ""
 	m.streaming = ""
 	m.turnID = ""
@@ -263,6 +280,7 @@ func (m *model) reset(sessionID string) {
 	m.asking = nil
 	m.state = protocol.StateIdle
 	m.runningSince = time.Time{}
+	m.compactingSince = time.Time{}
 	m.lastEventAt = time.Time{}
 	m.refresh()
 }
@@ -341,28 +359,79 @@ func (m model) transcriptWidth() int {
 
 // body is the transcript plus the live streaming preview.
 func (m model) body() string {
-	// Wrapped here rather than when the event was rendered: the width is not
-	// known then, and it changes when the terminal does.
-	lines := wrapAll(m.transcript, m.transcriptWidth())
-	if m.showThinking && m.thinkingNow != "" {
-		lines = append(append([]string{}, lines...),
-			wrapAll(strings.Split(thinkingLine(m.thinkingNow, true), "\n"), m.transcriptWidth())...)
-	}
-	if m.streaming != "" {
-		lines = append(append([]string{}, lines...),
-			wrapAll(strings.Split(m.streaming, "\n"), m.transcriptWidth())...)
-	}
-	return strings.Join(lines, "\n")
+	return strings.Join(m.screenLines(), "\n")
 }
 
-// refresh puts the current body in the viewport and follows the tail, which is
+// screenLines is the transcript wrapped to the pane, then the live preview.
+//
+// Wrapped here rather than when the event was rendered: the width is not known
+// then, and it changes when the terminal does. What the cache already holds is
+// reused; only entries it has not seen are wrapped.
+func (m model) screenLines() []string {
+	width := m.transcriptWidth()
+	cached, from := m.wrapped, m.wrappedN
+	if m.wrappedWidth != width || from > len(m.transcript) {
+		cached, from = nil, 0
+	}
+	var tail []string
+	for _, entry := range m.transcript[from:] {
+		tail = append(tail, splitLines(wrapStyled(entry, width))...)
+	}
+	if m.showThinking && m.thinkingNow != "" {
+		tail = append(tail, wrapAll(strings.Split(thinkingLine(m.thinkingNow, true), "\n"), width)...)
+	}
+	if m.streaming != "" {
+		tail = append(tail, wrapAll(strings.Split(m.streaming, "\n"), width)...)
+	}
+	// A fresh slice every time: models are values, and appending to a backing
+	// array another copy still reads would rewrite that copy's screen.
+	out := make([]string, 0, len(cached)+len(tail))
+	return append(append(out, cached...), tail...)
+}
+
+// splitLines flattens wrapped output, some of which holds several lines in one
+// element: an expanded thought is one transcript entry.
+func splitLines(wrapped []string) []string {
+	var out []string
+	for _, w := range wrapped {
+		out = append(out, strings.Split(w, "\n")...)
+	}
+	return out
+}
+
+// updateWrap brings the wrap cache up to the current transcript and width.
+func (m *model) updateWrap() {
+	width := m.transcriptWidth()
+	if m.wrappedWidth != width || m.wrappedN > len(m.transcript) {
+		m.invalidateWrap()
+		m.wrappedWidth = width
+	}
+	if m.wrappedN == len(m.transcript) {
+		return
+	}
+	next := make([]string, len(m.wrapped), len(m.wrapped)+2*(len(m.transcript)-m.wrappedN))
+	copy(next, m.wrapped)
+	for _, entry := range m.transcript[m.wrappedN:] {
+		next = append(next, splitLines(wrapStyled(entry, width))...)
+	}
+	m.wrapped, m.wrappedN = next, len(m.transcript)
+}
+
+// invalidateWrap drops the cache, for a change that rewrites entries already
+// wrapped rather than adding new ones.
+func (m *model) invalidateWrap() {
+	m.wrapped, m.wrappedN = nil, 0
+}
+
+// refresh puts the current lines in the pane and follows the tail, which is
 // what a live transcript should do.
 func (m *model) refresh() {
 	if !m.ready {
 		return
 	}
+	m.updateWrap()
 	atBottom := m.viewport.AtBottom()
-	m.viewport.SetContent(m.body())
+	m.viewport.SetLines(m.screenLines())
 	if atBottom {
 		m.viewport.GotoBottom()
 	}

@@ -46,6 +46,9 @@ type (
 	// noteMsg is the same, for something that went right. It is separate from
 	// errMsg so a success does not leave lastError set behind it.
 	noteMsg struct{ text string }
+	// compactedMsg is the end of a requested compaction: the mode that ran,
+	// or why none did.
+	compactedMsg struct{ mode, err string }
 	// tickMsg advances the working indicator.
 	tickMsg time.Time
 )
@@ -98,6 +101,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case askMsg:
 		q := msg.q
 		m.asking = &q
+		// The panel is taller than the composer it replaces.
+		m.relayout()
+		m.refresh()
 		return m, nil
 
 	case resolvedMsg:
@@ -126,6 +132,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case noteMsg:
 		m.note(msg.text)
+		return m, nil
+
+	case compactedMsg:
+		m.compactingSince = time.Time{}
+		if msg.err != "" {
+			m.lastError = msg.err
+			m.note(msg.err)
+		} else {
+			m.note("compacted (" + msg.mode + ")")
+		}
 		return m, nil
 	}
 	return m, nil
@@ -260,8 +276,14 @@ func (m model) submit() (tea.Model, tea.Cmd) {
 		m.note("› " + act.text)
 	case actCompact:
 		// It is a model call and the transcript does not move while it runs,
-		// so without this the client looks like it dropped the command.
-		m.note("compacting the history — this takes a few seconds")
+		// so without this the client looks like it dropped the command. On a
+		// local model it is minutes, not seconds (issue 87).
+		if m.compacting() {
+			m.note("already compacting")
+			return m, nil
+		}
+		m.compactingSince = time.Now()
+		m.note("compacting the history — a model call, so this can take minutes · ctrl+x stops it")
 	}
 	return m, m.emit(act)
 }
@@ -290,7 +312,7 @@ func (m model) onTranscriptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+x":
 		// Deliberately not ctrl+c: quitting and interrupting are opposite
 		// intentions and confusing them is expensive.
-		if !m.working() {
+		if !m.working() && !m.compacting() {
 			m.note("nothing to interrupt — the session is not running")
 			return m, nil
 		}
@@ -336,6 +358,7 @@ func (m model) answerQuestion(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	id := next.asking.id
 	next.asking = nil
+	next.relayout()
 	next.note("answered: " + answer)
 	return next, next.emit(action{kind: actAnswerAsk, id: id, text: answer})
 }

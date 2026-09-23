@@ -18,7 +18,13 @@ type Options struct {
 	// GateTimeout bounds ToolGate and StopGate calls, which may run commands.
 	// Zero means 10 minutes.
 	GateTimeout time.Duration
-	Log         *slog.Logger
+	// CompactionTimeout bounds BeforeCompaction and AfterCompaction. A hook
+	// there may make a model call of its own (the memory curator does), and a
+	// local model reading a long session takes minutes, not the seconds
+	// HookTimeout allows. Zero means 10 minutes, the provider's own per-attempt
+	// limit: a hook allowed less than one model call cannot finish one.
+	CompactionTimeout time.Duration
+	Log               *slog.Logger
 }
 
 // Registry holds the compiled-in modules, dispatches hooks in registration
@@ -41,6 +47,9 @@ func NewRegistry(mods []Module, opts Options) *Registry {
 	}
 	if opts.GateTimeout == 0 {
 		opts.GateTimeout = 10 * time.Minute
+	}
+	if opts.CompactionTimeout == 0 {
+		opts.CompactionTimeout = 10 * time.Minute
 	}
 	if opts.Log == nil {
 		opts.Log = slog.Default()
@@ -299,7 +308,7 @@ func (r *Registry) BeforeCompaction(ctx context.Context, s Session, rg Range) []
 	for _, m := range r.Modules() {
 		if h, ok := m.(CompactionHook); ok {
 			var p []string
-			if r.call(ctx, s, m, "BeforeCompaction", r.opts.HookTimeout, func(c context.Context) { p = h.BeforeCompaction(c, s, rg) }) {
+			if r.call(ctx, s, m, "BeforeCompaction", r.opts.CompactionTimeout, func(c context.Context) { p = h.BeforeCompaction(c, s, rg) }) {
 				out = append(out, p...)
 			}
 		}
@@ -317,7 +326,7 @@ func (r *Registry) AfterCompaction(ctx context.Context, s Session) []SourcedBloc
 		}
 		var blocks []ContextBlock
 		var err error
-		if r.call(ctx, s, m, "AfterCompaction", r.opts.HookTimeout, func(c context.Context) { blocks, err = h.AfterCompaction(c, s) }) {
+		if r.call(ctx, s, m, "AfterCompaction", r.opts.CompactionTimeout, func(c context.Context) { blocks, err = h.AfterCompaction(c, s) }) {
 			if err != nil {
 				r.disable(s, m.Name(), "AfterCompaction", err)
 				continue
