@@ -48,8 +48,14 @@ func (b *Builtins) bashTool() module.Tool {
 	}
 	return module.Tool{
 		Name: "bash",
+		// The two sentences after the first each answer a failure: a model
+		// ran `cd breezeway` five times from inside breezeway, and a PR body
+		// in double quotes lost every `backticked` name to the shell.
 		Description: "Run a shell command in the workspace. Returns combined stdout and stderr; " +
-			"a non-zero exit is reported as [exit status N]. timeout_seconds defaults to the configured limit.",
+			"a non-zero exit is reported as [exit status N]. timeout_seconds defaults to the configured limit. " +
+			"Every call starts in the workspace root, and a cd does not carry over to the next call. " +
+			"Inside double quotes the shell expands backticks and $, so pass long text such as a " +
+			"commit message or PR body through a file or a quoted heredoc (<<'EOF').",
 		Schema: schema(`{"type":"object","required":["command"],"properties":{
 			"command":{"type":"string"},"timeout_seconds":{"type":"integer"}}}`),
 		Run: func(ctx context.Context, s module.Session, raw json.RawMessage) (string, error) {
