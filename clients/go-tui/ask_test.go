@@ -197,3 +197,17 @@ func TestALongQuestionFitsTheScreen(t *testing.T) {
 		}
 	}
 }
+
+// Issue 109: the daemon sends a client what is still open when it subscribes,
+// so a reconnect brings back a question already on screen. Half an answer
+// typed before the drop must survive it.
+func TestAQuestionSentAgainKeepsWhatWasTyped(t *testing.T) {
+	q := question{id: "req-1", req: goclient.AskRequest{RequestID: "req-1", Question: "which?"}}
+	next, _ := sized(t, nil).Update(askMsg{q: q})
+	m := press(t, next.(model), "half an answ")
+
+	next, _ = m.Update(askMsg{q: q})
+	if got := next.(model).asking.typed; got != "half an answ" {
+		t.Errorf("typed answer after the resend: %q", got)
+	}
+}

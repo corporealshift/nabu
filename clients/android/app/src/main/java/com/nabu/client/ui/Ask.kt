@@ -50,6 +50,15 @@ fun canSend(typed: String) = typed.isNotBlank()
 fun offersFreeText(request: AskRequest) = true
 
 /**
+ * Adds a question to those waiting, once. The daemon sends a client every
+ * question still open when it subscribes, so coming back from the background
+ * brings back one already held (issue 109). Questions from different sessions
+ * wait their turn rather than replacing each other.
+ */
+fun withQuestion(waiting: List<AskRequest>, next: AskRequest): List<AskRequest> =
+    if (waiting.any { it.requestId == next.requestId }) waiting else waiting + next
+
+/**
  * A question from the agent.
  *
  * It is not dismissible: the agent is blocked until this is answered, and a

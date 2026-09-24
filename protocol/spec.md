@@ -561,6 +561,14 @@ client's word rather than a model's.
 Sent as JSON-RPC requests (with `id`) to every subscriber of the session. The first
 response wins; later responders receive `nabu_already_resolved`.
 
+A request is also sent to a connection that **subscribes while it is still open**, oldest
+first, as part of §7.6. A phone that wakes from the background and resubscribes is shown
+the question it slept through; a client may be sent a request it already holds, and
+recognises it by `request_id`.
+
+With nobody subscribed, `nabu.rpc.ui.ask` **waits** for someone to subscribe, up to the
+timeout below. `nabu.rpc.permission.request` does not: the gated call is refused at once.
+
 `nabu.rpc.permission.request {session_id, request_id, tool, summary, risk}` →
 `{verdict: "approve" | "deny", reason?}`. `risk` ∈ `low | medium | high`.
 

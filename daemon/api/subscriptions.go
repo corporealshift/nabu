@@ -168,7 +168,7 @@ func (h *Handler) handleSessionSubscribe(_ context.Context, cs *connState, param
 	if cs == nil {
 		return nil, protocol.NewRPCError(protocol.CodeInternalError, "subscribe requires a connection")
 	}
-	if rpcErr := h.subscribe(p.SessionID, cs); rpcErr != nil {
+	if rpcErr := h.subscribeAndCatchUp(p.SessionID, cs); rpcErr != nil {
 		return nil, rpcErr
 	}
 	return map[string]any{"subscribed": true}, nil

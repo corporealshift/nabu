@@ -62,4 +62,22 @@ class AskTest {
         assertTrue(offersFreeText(question()))
         assertTrue(offersFreeText(question("alpha", "beta")))
     }
+
+    /**
+     * Issue 109: the daemon sends every open question again when the phone
+     * subscribes, so waking from the background must not show one twice.
+     */
+    @Test
+    fun `a question sent again is held once`() {
+        val q = question("a", "b")
+        assertEquals(listOf(q), withQuestion(withQuestion(emptyList(), q), q))
+    }
+
+    /** Two sessions asking at once: the second waits, rather than replacing the first. */
+    @Test
+    fun `questions from two sessions both wait`() {
+        val first = question("a")
+        val second = question("b").copy(requestId = "r2", sessionId = "S2")
+        assertEquals(listOf(first, second), withQuestion(withQuestion(emptyList(), first), second))
+    }
 }
