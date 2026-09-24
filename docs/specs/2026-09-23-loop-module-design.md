@@ -77,6 +77,8 @@ names the error the model eventually found by itself, 13 minutes later:
 | `halt_after` | 2 | refusals of one change before trying it again stops the session |
 | `not_landing_after` | 3 | identical failures, with changes between, before a notice |
 | `watch_after` | 5 | identical outputs, nothing changed, before a hint; repeated at every multiple |
+| `stalled_after` | 5 | turns in a row returning nothing new before a notice (`2026-09-24-stopping-sooner-design.md`) |
+| `stalled_halt_after` | 2 | further such turns after that notice before the session stops |
 
 ## 3. Core mechanism: `Halt`
 

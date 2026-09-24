@@ -100,6 +100,62 @@ func TestClassifyCommandRiskTiers(t *testing.T) {
 	}
 }
 
+// A git command that can destroy work or rewrite history is high risk, so auto
+// mode asks. In breezeway, "create the pr" became the first row below and
+// discarded a session's uncommitted work without anyone being asked.
+func TestGitHistoryRewritesAreHighRisk(t *testing.T) {
+	ws := t.TempDir()
+	for _, tc := range []struct {
+		command string
+		want    Tier
+	}{
+		{"git checkout main && git reset --hard HEAD~1 && git checkout -B feat/x && git push -f origin feat/x", TierHigh},
+		{"git reset --hard HEAD~1", TierHigh},
+		{"git -C repo reset --hard", TierHigh},
+		{"git -c core.pager=cat reset --hard", TierHigh},
+		{"git push -f origin feat/x", TierHigh},
+		{"git push --force origin feat/x", TierHigh},
+		{"git push --force-with-lease origin feat/x", TierHigh},
+		{"git push --force-with-lease=main:abc origin main", TierHigh},
+		{"git push origin +feat/x", TierHigh},
+		{"git push -uf origin feat/x", TierHigh},
+		{"git branch -D feat/x", TierHigh},
+		{"git branch -Df feat/x", TierHigh},
+		{"git branch -f feat/x 2bc77dd", TierHigh},
+		{"git branch --force feat/x 2bc77dd", TierHigh},
+		{"git checkout -B feat/x", TierHigh},
+		{"git switch -C feat/x", TierHigh},
+		{"git switch --force-create feat/x", TierHigh},
+		{"git update-ref refs/heads/x 2bc77dd", TierHigh},
+		{"git rebase -i main", TierHigh},
+		{"git filter-branch --tree-filter x", TierHigh},
+		{"git filter-repo --path x", TierHigh},
+		{"git clean -fd", TierHigh},
+		{"git clean -xdf", TierHigh},
+		{"git checkout -- .", TierHigh},
+		{"git checkout HEAD -- main.go", TierHigh},
+		{"git restore main.go", TierHigh},
+		{"git restore --worktree main.go", TierHigh},
+
+		// Ordinary work stays medium: opening a PR needs a push.
+		{"git push origin feat/x", TierMedium},
+		{"git push -u origin feat/x", TierMedium},
+		{"git branch feat/x", TierMedium},
+		{"git branch -d feat/x", TierMedium},
+		{"git checkout feat/x", TierMedium},
+		{"git switch -c feat/x", TierMedium},
+		{"git restore --staged main.go", TierMedium},
+		{"git clean -n", TierMedium},
+		{"git reset HEAD~1", TierMedium},
+		{"git reset --soft HEAD~1", TierMedium},
+		{"git status", TierMedium},
+	} {
+		if got := classifyCommand(tc.command, ws); got != tc.want {
+			t.Errorf("classifyCommand(%q) = %v, want %v", tc.command, got, tc.want)
+		}
+	}
+}
+
 func TestClassifyToolTiers(t *testing.T) {
 	ws := t.TempDir()
 	inside := filepath.Join(ws, "a.txt")
@@ -239,6 +295,8 @@ func TestAutoMode(t *testing.T) {
 		{"deleting inside the workspace is approved", bashCall("rm -rf build"), module.Allow},
 		{"deleting outside the workspace asks", bashCall("rm -rf /etc"), module.Ask},
 		{"privilege escalation asks", bashCall("sudo reboot"), module.Ask},
+		{"a force push asks", bashCall("git push --force origin x"), module.Ask},
+		{"a plain push is approved", bashCall("git push origin x"), module.Allow},
 		{"a path outside the workspace still asks", call("read", map[string]any{"path": "/etc/passwd"}), module.Ask},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

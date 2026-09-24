@@ -407,6 +407,8 @@ func classifyCommand(command, workspace string) Tier {
 		switch {
 		case alwaysDangerous[seg.program]:
 			return TierHigh
+		case seg.program == "git" && rewritesHistory(seg.args):
+			return TierHigh
 		case targetDependent[seg.program]:
 			if escapesWorkspace(seg.args, workspace) {
 				return TierHigh
@@ -422,6 +424,70 @@ func classifyCommand(command, workspace string) Tier {
 		}
 	}
 	return worst
+}
+
+// rewritesHistory reports whether git arguments can destroy work or history:
+// uncommitted changes, untracked files, a branch, or a remote. Most git is
+// ordinary work, and a plain push is how a PR is opened, so the verb and its
+// flags decide rather than the name.
+func rewritesHistory(args []string) bool {
+	// Global options come before the verb; -C and -c take a value.
+	i := 0
+	for i < len(args) && strings.HasPrefix(args[i], "-") {
+		if args[i] == "-C" || args[i] == "-c" {
+			i++
+		}
+		i++
+	}
+	if i >= len(args) {
+		return false
+	}
+	verb, rest := args[i], args[i+1:]
+	has := func(flags ...string) bool {
+		for _, a := range rest {
+			for _, f := range flags {
+				if a == f || strings.HasPrefix(a, f+"=") {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	// short reports whether a short flag appears alone or in a cluster: -fd, -Df.
+	short := func(letters string) bool {
+		for _, a := range rest {
+			if len(a) > 1 && a[0] == '-' && a[1] != '-' && strings.ContainsAny(a[1:], letters) {
+				return true
+			}
+		}
+		return false
+	}
+	switch verb {
+	case "update-ref", "rebase", "filter-branch", "filter-repo":
+		return true
+	case "reset":
+		return has("--hard")
+	case "push":
+		if has("--force", "--force-with-lease") || short("f") {
+			return true
+		}
+		for _, a := range rest {
+			if strings.HasPrefix(a, "+") {
+				return true
+			}
+		}
+	case "branch":
+		return has("--force") || short("Df")
+	case "checkout":
+		return short("B") || has("--")
+	case "switch":
+		return has("-C", "--force-create")
+	case "clean":
+		return has("--force") || short("f")
+	case "restore":
+		return !has("--staged", "-S")
+	}
+	return false
 }
 
 // escapesWorkspace reports whether any argument names a location outside the

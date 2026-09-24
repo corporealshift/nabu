@@ -21,6 +21,13 @@
 //   - watching: the same check, same output, nothing changed in between. A
 //     hint about the wait tool at a high threshold. Never refused.
 //
+// And one more, about turns rather than calls:
+//
+//   - stalled: several turns in a row, of more than one call, in which
+//     nothing came back that had not come back before. A notice that points
+//     at stopping or asking, then the session stops blocked. One call
+//     repeated is watching, and left to that case.
+//
 // Everything is derived from the log since the person's last message, so a
 // word from them starts every count again.
 package loop
@@ -57,18 +64,27 @@ type Module struct {
 	// watchAfter is how many identical outputs of one check, with nothing
 	// changed in between, earn a hint; it repeats at every multiple.
 	watchAfter int
+	// stalledAfter is how many turns in a row returning nothing new earn a
+	// notice.
+	stalledAfter int
+	// stalledHaltAfter is how many more such turns after the notice stop the
+	// session.
+	stalledHaltAfter int
 }
 
 func (m *Module) Name() string { return "loop" }
 
 // Init reads enabled, identical_after (3), halt_after (2),
-// not_landing_after (3) and watch_after (5).
+// not_landing_after (3), watch_after (5), stalled_after (5) and
+// stalled_halt_after (2).
 func (m *Module) Init(_ module.Host, cfg module.Config) error {
 	m.enabled = cfg.Enabled()
 	m.identicalAfter = max(cfg.Int("identical_after", 3), 2)
 	m.haltAfter = max(cfg.Int("halt_after", 2), 1)
 	m.notLandingAfter = max(cfg.Int("not_landing_after", 3), 2)
 	m.watchAfter = max(cfg.Int("watch_after", 5), 2)
+	m.stalledAfter = max(cfg.Int("stalled_after", 5), 2)
+	m.stalledHaltAfter = max(cfg.Int("stalled_halt_after", 2), 1)
 	return nil
 }
 
@@ -92,13 +108,7 @@ type attempt struct {
 
 // history returns the model's tool calls since the person's last message.
 func history(log []protocol.Event) []attempt {
-	start := 0
-	for i := len(log) - 1; i >= 0; i-- {
-		if log[i].Type == protocol.EventMessage && protocol.MustData[protocol.MessageData](log[i]).Role == "user" {
-			start = i + 1
-			break
-		}
-	}
+	start := sincePerson(log)
 	calls := map[string]protocol.ToolCallData{}
 	var out []attempt
 	freshFrom := 0
@@ -138,6 +148,16 @@ func history(log []protocol.Event) []attempt {
 		out[i].fresh = true
 	}
 	return out
+}
+
+// sincePerson is the index of the first event after the person's last message.
+func sincePerson(log []protocol.Event) int {
+	for i := len(log) - 1; i >= 0; i-- {
+		if log[i].Type == protocol.EventMessage && protocol.MustData[protocol.MessageData](log[i]).Role == "user" {
+			return i + 1
+		}
+	}
+	return 0
 }
 
 // mutating names the tools whose identical repetition is a loop: writing the
@@ -238,6 +258,194 @@ func checkStreak(atts []attempt, key string) streak {
 	return st
 }
 
+// ---------------------------------------------------------------- stalls
+
+// turn is one model reply that called tools, and what came back.
+type turn struct {
+	opening string   // the first sentence of its thinking, or of its message
+	keys    []string // its calls, as attempt keys
+	labels  []string
+	results []string // status and content, one per call
+	at      time.Time
+	changed bool // a write or edit in it changed a file
+	stale   bool // nothing changed, and every result had come back in an earlier turn
+	latest  bool // the model's last reply: what the next request is the first to see
+}
+
+// turns returns the model's replies that called tools since the person's
+// last message. A reply with no calls is left out: it neither adds to a stall
+// nor ends one.
+func turns(log []protocol.Event) []turn {
+	calls := map[string]protocol.ToolCallData{}
+	var all []turn
+	thinking := ""
+	for _, e := range log[sincePerson(log):] {
+		switch e.Type {
+		case protocol.EventThinking:
+			if d := protocol.MustData[protocol.ThinkingData](e); d.Source == "model" {
+				thinking = d.Content
+			}
+		case protocol.EventMessage:
+			text := thinking
+			if strings.TrimSpace(text) == "" {
+				text = protocol.MustData[protocol.MessageData](e).Content
+			}
+			all = append(all, turn{opening: firstSentence(text), at: e.Timestamp})
+			thinking = ""
+		case protocol.EventToolCall:
+			if c := protocol.MustData[protocol.ToolCallData](e); c.Source == "model" {
+				calls[c.CallID] = *c
+			}
+		case protocol.EventToolResult:
+			r := protocol.MustData[protocol.ToolResultData](e)
+			c, ok := calls[r.CallID]
+			if !ok || len(all) == 0 {
+				continue
+			}
+			t := &all[len(all)-1]
+			t.keys = append(t.keys, c.Tool+"\x00"+canonical(c.Arguments))
+			t.labels = append(t.labels, label(c))
+			t.results = append(t.results, r.Status+"\x00"+r.Content)
+			// An edit that landed changed the files, however alike its
+			// result reads: that is a change not landing, not a stall.
+			t.changed = t.changed || mutating(c.Tool) && r.Status == "ok" && !strings.HasPrefix(r.Content, "unchanged")
+		}
+	}
+	seen := map[string]bool{}
+	var out []turn
+	for i, t := range all {
+		if len(t.results) == 0 {
+			continue
+		}
+		t.stale = !t.changed
+		for _, r := range t.results {
+			t.stale = t.stale && seen[r]
+		}
+		for _, r := range t.results {
+			seen[r] = true
+		}
+		t.latest = i == len(all)-1
+		out = append(out, t)
+	}
+	return out
+}
+
+// stall is the state of the model's stale turns.
+type stall struct {
+	run     []turn // the stale turns in a row up to the latest
+	counted bool   // run reached stalledAfter with more than one call in it
+	runs    int    // runs counted since the person's last message, this one included
+}
+
+func (m *Module) stalled(ts []turn) stall {
+	var st stall
+	for _, t := range ts {
+		if !t.stale {
+			st.run, st.counted = nil, false
+			continue
+		}
+		st.run = append(st.run, t)
+		if len(st.run) == m.stalledAfter && distinctCalls(st.run) > 1 {
+			st.counted = true
+			st.runs++
+		}
+	}
+	return st
+}
+
+// halts reports why a stall stops the session, or "" if it does not: it went
+// on after its notice, or it is the second since the person spoke.
+func (m *Module) halts(st stall) string {
+	switch {
+	case st.runs >= 2:
+		return "stalled twice since the person's last message"
+	case st.counted && len(st.run) >= m.stalledAfter+m.stalledHaltAfter:
+		return fmt.Sprintf("%d turns in a row returned nothing new", len(st.run))
+	}
+	return ""
+}
+
+func distinctCalls(ts []turn) int {
+	keys := map[string]bool{}
+	for _, t := range ts {
+		for _, k := range t.keys {
+			keys[k] = true
+		}
+	}
+	return len(keys)
+}
+
+// stalledNotice is said once, on the request after the turn that made the run
+// long enough. It quotes what the model keeps doing and keeps saying.
+func (m *Module) stalledNotice(ts []turn) (string, string) {
+	st := m.stalled(ts)
+	if !st.counted || len(st.run) != m.stalledAfter || !st.run[len(st.run)-1].latest {
+		return "", ""
+	}
+	first, last := st.run[0], st.run[len(st.run)-1]
+	text := fmt.Sprintf("[nabu loop notice] Your last %d turns have returned nothing new: every result was one you had already seen since the person's last message, over %s.",
+		len(st.run), since(first.at, last.at))
+
+	// The call made most often, the latest on a tie.
+	count := map[string]int{}
+	top, topLabel, topResult := "", "", ""
+	for _, t := range st.run {
+		for i, k := range t.keys {
+			count[k]++
+			if count[k] >= count[top] {
+				top, topLabel, topResult = k, t.labels[i], t.results[i]
+			}
+		}
+	}
+	_, content, _ := strings.Cut(topResult, "\x00")
+	text += fmt.Sprintf(" `%s` was called %s in them and returned %s each time.", topLabel, plural(count[top], "time", "times"), quote(content))
+
+	openings := map[string]int{}
+	said, n := "", 0
+	for _, t := range st.run {
+		if t.opening == "" {
+			continue
+		}
+		k := normalise(t.opening)
+		openings[k]++
+		if openings[k] >= n {
+			said, n = t.opening, openings[k]
+		}
+	}
+	if n > 1 {
+		text += fmt.Sprintf(" You began %d of those turns with %q.", n, said)
+	}
+	text += " If the request does not fit what you have found, say so and stop, or `ask`."
+	if st.runs >= 2 {
+		text += " This is the second time since the person's last message; the next call will stop the session so they can look."
+	} else {
+		text += fmt.Sprintf(" %s like this will stop the session so the person can look.", plural(m.stalledHaltAfter, "more turn", "more turns"))
+	}
+	return text, fmt.Sprintf("told the model its last %d turns returned nothing new", len(st.run))
+}
+
+// firstSentence is the opening of a reply, clipped.
+func firstSentence(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	for i := 0; i+1 < len(s); i++ {
+		if (s[i] == '.' || s[i] == '!' || s[i] == '?') && s[i+1] == ' ' {
+			s = s[:i+1]
+			break
+		}
+	}
+	return clip(s, 160)
+}
+
+// normalise compares openings that differ only in punctuation, spacing or case.
+func normalise(s string) string {
+	return strings.Join(strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !('a' <= r && r <= 'z' || '0' <= r && r <= '9')
+	}), " ")
+}
+
 // ---------------------------------------------------------------- hooks
 
 // GateTool implements module.ToolGate. Only an identical change is ever
@@ -245,11 +453,23 @@ func checkStreak(atts []attempt, key string) streak {
 // whether it is done.
 func (m *Module) GateTool(_ context.Context, s module.Session, call protocol.ToolCallData) module.Verdict {
 	allow := module.Verdict{Decision: module.Allow}
-	if !m.enabled || s == nil || call.Source != "model" || !mutating(call.Tool) {
+	if !m.enabled || s == nil || call.Source != "model" {
 		return allow
 	}
 	log, err := s.Events(nil)
 	if err != nil {
+		return allow
+	}
+	// A stall stops whatever the model does next: the call is not the
+	// problem, the turns that return nothing new are.
+	if why := m.halts(m.stalled(turns(log))); why != "" {
+		return module.Verdict{
+			Decision: module.Halt,
+			Reason:   refusedPrefix + why + ". The session is stopping so the person can look.",
+			Summary:  "loop: " + why,
+		}
+	}
+	if !mutating(call.Tool) {
 		return allow
 	}
 	atts := history(log)
@@ -294,7 +514,8 @@ func (m *Module) BeforeRequest(_ context.Context, s module.Session) ([]module.Co
 		return nil, nil
 	}
 	atts := history(log)
-	var blocks []module.ContextBlock
+	type said struct{ text, note string }
+	var identical, checks []said
 	seen := map[string]bool{}
 	for i := len(atts) - 1; i >= 0 && atts[i].fresh; i-- {
 		a := atts[i]
@@ -303,19 +524,30 @@ func (m *Module) BeforeRequest(_ context.Context, s module.Session) ([]module.Co
 		}
 		seen[a.key] = true
 		upTo := atts[:i+1]
-		var text, note string
 		switch {
 		case mutating(a.tool):
-			text, note = m.identicalNotice(upTo, a)
+			if text, note := m.identicalNotice(upTo, a); text != "" {
+				identical = append(identical, said{text, note})
+			}
 		case observing(a):
-			text, note = m.checkNotice(upTo, a)
+			if text, note := m.checkNotice(upTo, a); text != "" {
+				checks = append(checks, said{text, note})
+			}
 		}
-		if text == "" {
-			continue
+	}
+	// A stall is said instead of the checks' notices: a hint about wait is
+	// wrong for it. A repeated change is the more specific fact, and said
+	// instead of the stall.
+	if len(identical) == 0 {
+		if text, note := m.stalledNotice(turns(log)); text != "" {
+			checks = []said{{text, note}}
 		}
-		blocks = append(blocks, module.ContextBlock{Slot: "suffix", Content: text})
+	}
+	var blocks []module.ContextBlock
+	for _, n := range append(identical, checks...) {
+		blocks = append(blocks, module.ContextBlock{Slot: "suffix", Content: n.text})
 		// Context is for the model; the person's clients show notices.
-		s.Append(protocol.EventNotice, protocol.NoticeData{Source: "module:loop", Level: "info", Message: note})
+		s.Append(protocol.EventNotice, protocol.NoticeData{Source: "module:loop", Level: "info", Message: n.note})
 	}
 	return blocks, nil
 }

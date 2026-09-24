@@ -82,7 +82,16 @@ type Config struct {
 	// local model that falls into a loop writes until the timeout kills the
 	// call, and the whole turn is lost with it.
 	MaxTokens int
+	// RepeatLimit is how many copies in a row of one passage stop a reply
+	// while it streams. 0 means DefaultRepeatLimit; below 0 turns it off.
+	// How a model degenerates depends on the model, so it is set here.
+	RepeatLimit int
 }
+
+// DefaultRepeatLimit is the copies in a row that stop a reply. The reply that
+// prompted it repeated one paragraph 265 times; eight is past anything
+// ordinary output does with a passage of 40 bytes or more.
+const DefaultRepeatLimit = 8
 
 // DefaultMaxTokens is the reply cap when a provider sets none. The longest
 // reply in the logs that finished on its own was 13,366 tokens, a large file
@@ -101,6 +110,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.MaxTokens == 0 {
 		c.MaxTokens = DefaultMaxTokens
+	}
+	if c.RepeatLimit == 0 {
+		c.RepeatLimit = DefaultRepeatLimit
 	}
 	return c
 }

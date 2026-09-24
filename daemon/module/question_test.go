@@ -65,6 +65,17 @@ func TestChangesWorkspace(t *testing.T) {
 		{"bash sed -i", cmd(`sed -i 's/a/b/' x.go`), true},
 		{"bash rm", cmd(`rm -rf build`), true},
 
+		// Moving a ref changes history.
+		{"bash git branch -D", cmd(`git branch -D x`), true},
+		{"bash git branch -f", cmd(`git branch -f x HEAD`), true},
+		{"bash git branch -m", cmd(`git branch -m old new`), true},
+		{"bash git update-ref", cmd(`git update-ref refs/heads/x HEAD`), true},
+		{"bash git checkout -B", cmd(`git checkout -B x`), true},
+		{"bash git switch -C", cmd(`git switch -C x`), true},
+		{"bash git branch listing", cmd(`git branch`), false},
+		{"bash git branch -a", cmd(`git branch -a`), false},
+		{"bash git branch -v", cmd(`git branch -v | grep android`), false},
+
 		// Looking is answering.
 		{"bash tests", cmd(`cargo test --package breezeway-core 2>&1`), false},
 		{"bash wc", cmd(`wc -l docs/plans/m2.md`), false},

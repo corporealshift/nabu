@@ -58,17 +58,34 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 	maxTokens := replyCap(log, pcfg, m.cfg.MaxTokens)
 	req := buildRequest(log, m.cfg.SystemPrompt, modelName, m.toolsFor(pcfg), maxTokens)
 	turnID := protocol.NewULID()
+	// Each stream is watched on its own, and one that starts repeating a
+	// passage ends the call within a few copies rather than at the cap.
+	callCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	reply, thought := newRepeatWatch(pcfg.RepeatLimit), newRepeatWatch(pcfg.RepeatLimit)
+	var tripped *repeatWatch
 	onDelta := func(text string) {
+		if tripped == nil && reply.add(text) {
+			tripped = reply
+			cancel()
+		}
 		if m.deps.Deltas != nil {
 			m.deps.Deltas(h.ID(), turnID, text)
 		}
 	}
 	onThinking := func(text string) {
+		if tripped == nil && thought.add(text) {
+			tripped = thought
+			cancel()
+		}
 		if m.deps.Thinking != nil {
 			m.deps.Thinking(h.ID(), turnID, text)
 		}
 	}
-	resp, err := p.Complete(ctx, req, onDelta, onThinking)
+	resp, err := p.Complete(callCtx, req, onDelta, onThinking)
+	if tripped != nil && ctx.Err() == nil {
+		return false, m.stopRepeating(ctx, h, thought, reply, tripped == thought)
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return false, ctx.Err()
@@ -149,6 +166,31 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 	// No tool calls: the model believes it is finished. Nothing stops until
 	// every stop gate agrees (spec §10.1).
 	return m.askStopGate(ctx, h)
+}
+
+// stopRepeating ends a turn whose reply began repeating one passage. What
+// streamed is logged only up to the first copy, so the runaway is never sent
+// back to the model that wrote it, and no call in it runs. The session blocks
+// rather than retrying: a model that does this has usually been circling for
+// a while, and the person decides what comes next.
+func (m *Manager) stopRepeating(ctx context.Context, h *sessionHandle, thought, reply *repeatWatch, inThinking bool) error {
+	if t := thought.kept(); t != "" {
+		if _, err := h.s.Append(protocol.EventThinking, protocol.ThinkingData{Content: t, Source: "model"}); err != nil {
+			return err
+		}
+	}
+	if _, err := h.s.Append(protocol.EventMessage, protocol.MessageData{Role: "assistant", Content: reply.kept()}); err != nil {
+		return err
+	}
+	m.deps.Modules.TurnEnd(ctx, h)
+	w, which := reply, "reply"
+	if inThinking {
+		w, which = thought, "thinking"
+	}
+	h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "warn", Message: fmt.Sprintf(
+		"the model's %s repeated one passage %d times, so it was stopped after %d bytes and %d were dropped. The passage: %q",
+		which, w.repeats(), w.length(), w.length()-len(w.kept()), strings.ToValidUTF8(truncateText(w.passage(), 200), ""))})
+	return m.finish(ctx, h, protocol.StateBlocked, "the reply repeated itself")
 }
 
 // partialTail is how much of a failed reply's end partialReply quotes. The

@@ -83,6 +83,9 @@ One more is worth knowing about. **`max_tokens`** caps a single reply, 16384 unl
 and never more than the context has room for. A local model that falls into a loop
 otherwise writes until the ten-minute timeout, and the turn is lost. A hosted API that
 allows less output than 16384 refuses the request outright, so set it lower there.
+**`repeat_limit`** stops a reply sooner when the model starts writing one passage over
+and over: 8 copies in a row of the same 40 bytes or more, unless set, and a negative value
+turns it off. The copies are not logged, and the session blocks for you to look.
 
 Unknown fields are rejected rather than ignored, so a typo fails loudly at startup
 instead of silently doing nothing.

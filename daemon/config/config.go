@@ -72,6 +72,9 @@ type ProviderConfig struct {
 	// hosted API that allows less output than that needs it set lower, or it
 	// refuses the request.
 	MaxTokens int `json:"max_tokens"`
+	// RepeatLimit is how many copies in a row of one passage stop a reply as
+	// it streams. Zero means the daemon's default, 8; below zero turns it off.
+	RepeatLimit int `json:"repeat_limit"`
 }
 
 func (c *ProviderConfig) withDefaults() {
