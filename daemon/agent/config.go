@@ -33,7 +33,8 @@ type Config struct {
 	// NoProgressTurns is how many identical veto rounds with no tool use end
 	// the loop. Default 3.
 	NoProgressTurns int
-	// MaxTokens caps each response; 0 uses the provider default.
+	// MaxTokens caps each response, over every provider's own cap; 0 uses
+	// the provider's.
 	MaxTokens  int
 	Compaction CompactionConfig
 	// TasksEnabled offers task.update to the model. Default true.

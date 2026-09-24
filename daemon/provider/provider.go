@@ -59,7 +59,8 @@ type Response struct {
 // Provider streams one completion. onDelta and onThinking (either may be nil)
 // receive the answer and the reasoning as they arrive, separately, because a
 // reader showing thinking live must not splice it into the answer. The
-// returned Response holds both in full.
+// returned Response holds both in full. With an error, it holds whatever had
+// arrived before the failure, which may be nothing.
 type Provider interface {
 	Complete(ctx context.Context, req Request, onDelta, onThinking func(string)) (Response, error)
 }
@@ -77,7 +78,16 @@ type Config struct {
 	TasksEnabled *bool
 	Timeout      time.Duration // per attempt; 0 = 10 minutes
 	Retries      int           // retries after the first attempt; 0 = 2
+	// MaxTokens caps one reply. 0 means DefaultMaxTokens. Left uncapped, a
+	// local model that falls into a loop writes until the timeout kills the
+	// call, and the whole turn is lost with it.
+	MaxTokens int
 }
+
+// DefaultMaxTokens is the reply cap when a provider sets none. The longest
+// reply in the logs that finished on its own was 13,366 tokens, a large file
+// write; the one that prompted the cap was past 20,000 and still going.
+const DefaultMaxTokens = 16384
 
 func (c Config) withDefaults() Config {
 	if c.MaxInFlight < 1 {
@@ -88,6 +98,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.Retries == 0 {
 		c.Retries = 2
+	}
+	if c.MaxTokens == 0 {
+		c.MaxTokens = DefaultMaxTokens
 	}
 	return c
 }

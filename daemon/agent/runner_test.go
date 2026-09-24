@@ -358,3 +358,157 @@ func TestAHaltRefusesTheCallAndBlocksTheSession(t *testing.T) {
 		t.Fatalf("refused=%v notice=%v blocked-with-reason=%v", refused, notice, change)
 	}
 }
+
+// A reply is capped by the provider, or the daemon-wide override, and never
+// asks for more than the context has room for.
+func TestReplyCap(t *testing.T) {
+	usage := func(in int) []protocol.Event {
+		data, _ := json.Marshal(protocol.MessageData{Role: "assistant", Usage: &protocol.Usage{InputTokens: in}})
+		return []protocol.Event{{Type: protocol.EventMessage, Data: data}}
+	}
+	for _, tc := range []struct {
+		name     string
+		cap      int
+		window   int
+		used     int
+		override int
+		want     int
+	}{
+		{"the provider's cap", 16384, 128000, 50000, 0, 16384},
+		{"the override wins", 16384, 128000, 50000, 4000, 4000},
+		{"no window, no room check", 16384, 0, 50000, 0, 16384},
+		{"little room left", 16384, 128000, 120000, 0, 8000},
+		{"never below the floor", 16384, 128000, 127900, 0, minReplyCap},
+		{"the session that timed out", 16384, 128000, 103512, 0, 16384},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := replyCap(usage(tc.used), provider.Config{MaxTokens: tc.cap, ContextWindow: tc.window}, tc.override)
+			if got != tc.want {
+				t.Errorf("got %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// Issue: a reply ran for ten minutes, past 20,000 tokens, because nothing
+// capped it. Every request now says how much it may write.
+func TestEveryRequestCarriesAReplyCap(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{
+		{ToolCalls: []provider.ToolCall{{ID: "c1", Name: "read", Arguments: json.RawMessage(`{"path":"x"}`)}},
+			Usage: protocol.Usage{InputTokens: 5000, OutputTokens: 10}},
+		{Content: "done"},
+	})
+	s := h.create(t)
+	h.m.Prompt(context.Background(), s.ID(), "go")
+	h.m.WaitIdle(s.ID())
+
+	// The harness window is 8000 tokens: the first request has all of it,
+	// the second only what the first left.
+	for i, want := range []int{8000, 3000} {
+		if got := h.fake.Calls[i].MaxTokens; got != want {
+			t.Errorf("request %d: max tokens %d, want %d", i+1, got, want)
+		}
+	}
+}
+
+// A reply cut off by the cap ends inside its last call. Running that would
+// write half a file, so it is refused, and the model is told why.
+func TestACallCutOffByTheCapIsNotRun(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{
+		{ToolCalls: []provider.ToolCall{
+			{ID: "c1", Name: "write", Arguments: json.RawMessage(`{"path":"whole.txt","content":"fine"}`)},
+			{ID: "c2", Name: "write", Arguments: json.RawMessage(`{"_malformed":"{\"path\":\"half.txt\",\"content\":\"abc"}`)},
+		}, FinishReason: "length"},
+		{Content: "I will write it in parts."},
+	})
+	s := h.create(t)
+	h.m.Prompt(context.Background(), s.ID(), "write two files")
+	h.m.WaitIdle(s.ID())
+
+	if _, err := os.Stat(filepath.Join(h.dir, "whole.txt")); err != nil {
+		t.Errorf("the complete call should have run: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(h.dir, "half.txt")); err == nil {
+		t.Error("the cut-off call ran")
+	}
+	var refused, noticed bool
+	for _, e := range s.Events() {
+		switch e.Type {
+		case protocol.EventToolResult:
+			r := protocol.MustData[protocol.ToolResultData](e)
+			if r.CallID == "c2" && r.Status == "error" && strings.Contains(r.Content, "cut off") {
+				refused = true
+			}
+		case protocol.EventNotice:
+			if strings.Contains(protocol.MustData[protocol.NoticeData](e).Message, "cut off") {
+				noticed = true
+			}
+		}
+	}
+	if !refused {
+		t.Error("the model was not told the call was cut off")
+	}
+	if !noticed {
+		t.Error("nobody was told the reply was cut off")
+	}
+	// The refusal reaches the model, so the next turn can do better.
+	req := h.fake.Calls[1]
+	if tail := req.Messages[len(req.Messages)-1]; tail.Role != "tool" || !strings.Contains(tail.Content, "cut off") {
+		t.Errorf("second request tail: %+v", tail)
+	}
+}
+
+// What a failed call had streamed was thrown away, so a call that ran into its
+// timeout left no clue why. It is now a notice, and never sent to the model.
+func TestAFailedCallLeavesWhatItHadWritten(t *testing.T) {
+	h := newHarness(t, nil, nil)
+	h.fake.Errors = map[int]error{0: context.DeadlineExceeded}
+	h.fake.Partial = map[int]provider.Response{0: {
+		Reasoning: "Let me write the file.",
+		ToolCalls: []provider.ToolCall{{ID: "c1", Name: "write",
+			Arguments: json.RawMessage(`{"_malformed":"{\"path\":\"a.go\",\"content\":\"same line\nsame line\n"}`)}},
+	}}
+	s := h.create(t)
+	h.m.Prompt(context.Background(), s.ID(), "go")
+	h.m.WaitIdle(s.ID())
+
+	var partial, failed string
+	for _, e := range s.Events() {
+		if e.Type != protocol.EventNotice {
+			continue
+		}
+		msg := protocol.MustData[protocol.NoticeData](e).Message
+		switch {
+		case strings.HasPrefix(msg, "before the call failed"):
+			partial = msg
+		case strings.HasPrefix(msg, "model call failed"):
+			failed = msg
+		}
+	}
+	if failed == "" {
+		t.Fatal("the failure itself was not recorded")
+	}
+	for _, want := range []string{"22 characters of thinking", "a write call with", "same line\nsame line"} {
+		if !strings.Contains(partial, want) {
+			t.Errorf("the partial reply notice lacks %q:\n%s", want, partial)
+		}
+	}
+	if s.State().State != protocol.StateError {
+		t.Errorf("state: %s", s.State().State)
+	}
+}
+
+// A runaway reply is quoted by its end, not whole.
+func TestAPartialReplyIsQuotedByItsEnd(t *testing.T) {
+	long := strings.Repeat("loop ", 10000) + "THE END"
+	got := partialReply(provider.Response{Content: long})
+	if !strings.HasSuffix(got, "THE END") {
+		t.Error("the end of the reply is missing")
+	}
+	if len(got) > partialTail+200 {
+		t.Errorf("quoted %d characters of a %d-character reply", len(got), len(long))
+	}
+	if partialReply(provider.Response{}) != "" {
+		t.Error("a call that wrote nothing should say nothing")
+	}
+}

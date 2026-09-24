@@ -47,7 +47,8 @@ func (e *httpError) retryable() bool { return e.Status == 429 || e.Status >= 500
 
 // Complete implements Provider: acquire a slot, then attempt with retries.
 // A failure after the first delta was delivered is never retried, because the
-// caller has already seen partial output.
+// caller has already seen partial output. The Response returned with that
+// failure holds what had arrived, so the caller can say how far it got.
 func (p *OpenAI) Complete(ctx context.Context, req Request, onDelta, onThinking func(string)) (Response, error) {
 	select {
 	case p.sem <- struct{}{}:
@@ -60,6 +61,7 @@ func (p *OpenAI) Complete(ctx context.Context, req Request, onDelta, onThinking 
 		attempts = 1
 	}
 	var lastErr error
+	var partial Response
 	for attempt := 0; attempt < attempts; attempt++ {
 		started := false
 		// Either kind of token means the turn has begun, and a turn that has
@@ -76,7 +78,7 @@ func (p *OpenAI) Complete(ctx context.Context, req Request, onDelta, onThinking 
 		if err == nil {
 			return recoverLeakedCalls(resp, req.Tools), nil
 		}
-		lastErr = err
+		lastErr, partial = err, resp
 		if ctx.Err() != nil || started || !isRetryable(err) || attempt == attempts-1 {
 			break
 		}
@@ -90,7 +92,7 @@ func (p *OpenAI) Complete(ctx context.Context, req Request, onDelta, onThinking 
 			return Response{}, ctx.Err()
 		}
 	}
-	return Response{}, lastErr
+	return partial, lastErr
 }
 
 func isRetryable(err error) bool {
@@ -237,11 +239,25 @@ type partialCall struct {
 	args     strings.Builder
 }
 
-// readStream parses SSE chunks into a Response.
+// readStream parses SSE chunks into a Response. On a failure part way through,
+// the Response holds what had arrived before it.
 func readStream(r io.Reader, onDelta, onThinking func(string)) (Response, error) {
 	var resp Response
 	var content, reasoning strings.Builder
 	var calls []*partialCall
+	assemble := func() Response {
+		resp.Content = content.String()
+		resp.Reasoning = reasoning.String()
+		resp.ToolCalls = nil
+		for i, pc := range calls {
+			id := pc.id
+			if id == "" {
+				id = fmt.Sprintf("call_%d", i+1)
+			}
+			resp.ToolCalls = append(resp.ToolCalls, ToolCall{ID: id, Name: pc.name, Arguments: normalizeArgs(pc.args.String())})
+		}
+		return resp
+	}
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64<<10), 16<<20)
 	done := false
@@ -257,10 +273,10 @@ func readStream(r io.Reader, onDelta, onThinking func(string)) (Response, error)
 		}
 		var ch wireChunk
 		if err := json.Unmarshal([]byte(payload), &ch); err != nil {
-			return Response{}, fmt.Errorf("provider stream: bad chunk: %w", err)
+			return assemble(), fmt.Errorf("provider stream: bad chunk: %w", err)
 		}
 		if ch.Error != nil {
-			return Response{}, fmt.Errorf("provider error: %s", ch.Error.Message)
+			return assemble(), fmt.Errorf("provider error: %s", ch.Error.Message)
 		}
 		if ch.Usage != nil {
 			resp.Usage = protocol.Usage{InputTokens: ch.Usage.PromptTokens, OutputTokens: ch.Usage.CompletionTokens}
@@ -300,21 +316,13 @@ func readStream(r io.Reader, onDelta, onThinking func(string)) (Response, error)
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return Response{}, fmt.Errorf("provider stream: %w", err)
+		return assemble(), fmt.Errorf("provider stream: %w", err)
 	}
 	if !done && resp.FinishReason == "" && content.Len() == 0 &&
 		reasoning.Len() == 0 && len(calls) == 0 {
 		return Response{}, errors.New("provider stream ended without data")
 	}
-	resp.Content = content.String()
-	resp.Reasoning = reasoning.String()
-	for i, pc := range calls {
-		id := pc.id
-		if id == "" {
-			id = fmt.Sprintf("call_%d", i+1)
-		}
-		resp.ToolCalls = append(resp.ToolCalls, ToolCall{ID: id, Name: pc.name, Arguments: normalizeArgs(pc.args.String())})
-	}
+	resp = assemble()
 	if resp.FinishReason == "" {
 		if len(resp.ToolCalls) > 0 {
 			resp.FinishReason = "tool_calls"
