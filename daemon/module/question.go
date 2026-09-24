@@ -166,7 +166,8 @@ var harmlessRedirects = regexp.MustCompile(`\d*>&\d|\d*>\s*(/dev/null|nul)\b`)
 
 // mutatingCommand matches shell commands that change files or history.
 var mutatingCommand = regexp.MustCompile(`(^|[;&|]\s*|\s)(` +
-	`git\s+(commit|push|add|rm|mv|checkout|switch|reset|rebase|merge|cherry-pick|stash|tag|apply|am|restore|revert)\b` +
+	`git\s+(commit|push|add|rm|mv|checkout|switch|reset|rebase|merge|cherry-pick|stash|tag|apply|am|restore|revert|update-ref)\b` +
+	`|git\s+branch\s+(-[a-zA-Z]*[dDfmMcC]|--(delete|force|move|copy))\b` +
 	`|rm\s|mv\s|cp\s|mkdir\s|rmdir\s|touch\s|chmod\s|sed\s+(-[a-zA-Z]*i|--in-place)` +
 	`|tee\s|truncate\s|patch\s)` +
 	`|[^0-9&|<>]>{1,2}\s*[^&\s|]`)

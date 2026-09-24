@@ -66,8 +66,20 @@ A fourth case beside identical change, change not landing and watching.
 **Stalled:** the model has taken N consecutive turns (`stalled_after`, default 5) in
 which it called tools and every result was one already returned since the person's last
 message. Nothing new has entered the context, which is the shared cause the loops proposal
-named. A turn with no tool calls neither counts nor resets. A message from the person
-resets everything, as for the other cases.
+named.
+- A turn with no tool calls neither counts nor resets.
+- A message from the person resets everything, as for the other cases.
+- **A `write` or `edit` that succeeded is new**, however alike its result reads, unless
+  it says `unchanged`. It changed a file. Building and editing in turn is the
+  change-not-landing case, not a stall.
+- **A run of one call repeated is left to *watching*.** Polling CI is a single call
+  returning `in_progress` again and again, and the loop-module spec settled that a check
+  is never refused. So a stall needs more than one distinct call in its run. The
+  single-call loops, such as the 32 writes to `error.rs`, are identical changes, and that
+  case already handles them.
+
+These last two came from building it. The first version counted "replaced 1
+occurrence(s)" as nothing new, and blocked a session for polling CI.
 
 - **The notice** is a suffix `context` event with an info `notice` beside it, like the
   other cases. It carries facts, so no two read alike:
@@ -156,19 +168,19 @@ call, with no opinion about the work, and modules have no hook into the stream.
 
 ## 4. What proves it
 
-- **Replay** (`NABU_LOOP_REPLAY`) over every session log. On 2026-09-24, measured by script
-  over 3,218 turns: 28 runs of five or more turns returning nothing new, **all in the five
-  sessions already known to loop**. Four spot-checked runs were all genuine:
-  - the same read of `main.rs` five times;
-  - the same failed edit to `db.rs`;
-  - the same `ls migrations/`;
-  - the re-read after the `reset --hard`.
+- **Replay** (`NABU_LOOP_REPLAY`) over every session log. On 2026-09-24, over 3,254 calls:
+  - **11 stalled notices and 4 stops**, all in sessions already known to loop. The one
+    newer session among them, `01M39VB8…`, ran `cd breezeway && git diff --cached --stat`
+    four times into `No such file or directory`.
+  - In `01M39RT5…` the notice comes at 14:04:26 and the stop at 14:06:34. The session
+    actually ran until 14:16, with its degenerate last reply still to come.
+  - Nothing but writes and edits is ever refused.
 
-  Grouped by the person's messages, those runs give 9 stretches with a stalled notice, and 7
-  of them escalate to `blocked`. In `01M39RT5…` the notice lands at event 281 (14:04:19) and
-  the block at event 351 (14:06:23). The session actually ran until 14:16, with its
-  degenerate last reply still to come. The replay test prints every notice and block for
-  review, and asserts none in the other sessions.
+  A script found 12 notices and 5 stops. The difference is where the logs end: one stretch
+  ended with Kyle interrupting, and one with a reply that made no call, so the replay had
+  no request or call to act on. An earlier script, which counted a single repeated call
+  and a landed edit as stale, found 28 runs. The four of those that were spot-checked were
+  all genuine, but three were single-call loops that other cases already cover.
 - **The watching hint is not given** in `01M39RT5…`.
 - **The repetition check** is table-tested on:
   - the real 49,903-character reply, which must trip within its first few kilobytes;

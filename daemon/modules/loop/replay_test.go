@@ -46,6 +46,9 @@ func TestReplayRealLogs(t *testing.T) {
 	var refused []string
 	firstRefusal := map[string]bool{}
 	firstNotice := map[string]bool{}
+	// A logged session never stopped, so after a stall halts the replay
+	// carries on and every later call halts too: only the first counts.
+	halted := map[string]bool{}
 	for _, f := range files {
 		log := readLog(t, f)
 		id := strings.TrimSuffix(filepath.Base(f), ".jsonl")
@@ -69,6 +72,9 @@ func TestReplayRealLogs(t *testing.T) {
 					case strings.Contains(b.Content, "did not change it"):
 						counts["notice: change not landing"]++
 						t.Logf("%s %d not landing: %s", id[:10], i, clip(b.Content, 900))
+					case strings.Contains(b.Content, "have returned nothing new"):
+						counts["notice: stalled"]++
+						t.Logf("%s %d at %s stalled: %s", id[:10], i, e.Timestamp.Format("15:04:05"), b.Content)
 					case strings.Contains(b.Content, "`wait` tool"):
 						counts["hint: watching"]++
 						t.Logf("%s %d watching: %s", id[:10], i, kind[0])
@@ -79,6 +85,14 @@ func TestReplayRealLogs(t *testing.T) {
 				counts["calls"]++
 				v := m.GateTool(context.Background(), s, *c)
 				if v.Decision == module.Allow {
+					continue
+				}
+				if v.Decision == module.Halt && strings.HasPrefix(v.Summary, "loop: ") && !strings.Contains(v.Summary, "repeated") {
+					if seg := fmt.Sprintf("%s/%d", id, sincePerson(log[:i])); !halted[seg] {
+						halted[seg] = true
+						counts["stopped: stalled"]++
+						t.Logf("%s %d at %s stopped: %s", id[:10], i, e.Timestamp.Format("15:04:05"), v.Summary)
+					}
 					continue
 				}
 				counts["refused"]++

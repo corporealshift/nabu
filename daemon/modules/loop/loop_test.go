@@ -393,3 +393,203 @@ func TestTheLastFailureIsOneThatStillFails(t *testing.T) {
 		t.Fatalf("everything passes now: %q", got)
 	}
 }
+
+// thought logs one model turn that thought, made a call and got a result.
+func (f *fakeSession) thought(opening, tool, args, content string) *fakeSession {
+	f.add(protocol.EventThinking, protocol.ThinkingData{Content: opening, Source: "model"})
+	return f.ran(tool, args, "ok", content)
+}
+
+const (
+	logGrep  = `{"command":"git log --oneline --all | grep -n 2bc77dd"}`
+	logTail  = `{"command":"git log --oneline --all -- clients/android | tail -1"}`
+	plan     = "The Android work is already on main (56 commits). I need to reset main back."
+	grepOut  = "201:2bc77dd android: project skeleton\n"
+	tailOut  = "2bc77dd android: project skeleton\n"
+	stalling = "returned nothing new"
+)
+
+// stale logs n turns that alternate two calls whose results the model has
+// already seen, after one turn of each that saw them first.
+func stale(s *fakeSession, n int) *fakeSession {
+	s.thought(plan, "bash", logGrep, grepOut)
+	s.thought(plan, "bash", logTail, tailOut)
+	return more(s, n)
+}
+
+// more logs n further turns that return nothing new.
+func more(s *fakeSession, n int) *fakeSession {
+	for i := 0; i < n; i++ {
+		if i%2 == 0 {
+			s.thought(plan, "bash", logGrep, grepOut)
+		} else {
+			s.thought(plan, "bash", logTail, tailOut)
+		}
+	}
+	return s
+}
+
+// 01M39RT5: different calls, every one returning what it returned before, and
+// the same plan opening every turn, never carried out. The notice says so and
+// points at stopping or asking, not at wait.
+func TestStalledTurnsAreNoticed(t *testing.T) {
+	m := loaded(t, module.Config{})
+	s := stale(newSession(), 4)
+	if got := suffix(t, m, s); strings.Contains(got, stalling) {
+		t.Fatalf("four stale turns are not yet a stall: %q", got)
+	}
+	more(s, 1)
+	got := suffix(t, m, s)
+	for _, w := range []string{"Your last 5 turns have returned nothing new", "`bash git log --oneline --all | grep -n 2bc77dd`",
+		`"201:2bc77dd android: project skeleton"`, `"The Android work is already on main (56 commits)."`,
+		"say so and stop, or `ask`", "2 more turns like this will stop the session"} {
+		if !strings.Contains(got, w) {
+			t.Fatalf("missing %q in:\n%s", w, got)
+		}
+	}
+	if strings.Contains(got, "`wait`") {
+		t.Fatalf("a stall is not waiting; no wait hint: %q", got)
+	}
+	if len(s.notices) != 1 || !strings.Contains(s.notices[0], "5 turns returned nothing new") {
+		t.Fatalf("the person's clients should see one notice: %q", s.notices)
+	}
+	if v := m.GateTool(context.Background(), s, protocol.ToolCallData{Tool: "bash", Arguments: json.RawMessage(logGrep), Source: "model"}); v.Decision != module.Allow {
+		t.Fatalf("a notice is not yet a stop: %+v", v)
+	}
+}
+
+// Anything new resets the run.
+func TestSomethingNewBreaksAStall(t *testing.T) {
+	m := loaded(t, module.Config{})
+	s := stale(newSession(), 4)
+	s.thought("Let me look at the branch list.", "bash", `{"command":"git branch -v"}`, "* main 64cbd95\n")
+	more(s, 4)
+	if got := suffix(t, m, s); strings.Contains(got, stalling) {
+		t.Fatalf("a new result in between breaks the run: %q", got)
+	}
+}
+
+// A single call repeated is watching, which the stalled case leaves alone:
+// a check is never refused.
+func TestOneCallRepeatedIsWatchingNotStalled(t *testing.T) {
+	m := loaded(t, module.Config{})
+	s := newSession()
+	for i := 0; i < 10; i++ {
+		s.thought("Waiting for CI.", "bash", `{"command":"gh run view 42"}`, "in_progress")
+		if got := suffix(t, m, s); strings.Contains(got, stalling) {
+			t.Fatalf("turn %d: polling is watching, not a stall: %q", i+1, got)
+		}
+	}
+	if v := m.GateTool(context.Background(), s, protocol.ToolCallData{Tool: "bash", Arguments: json.RawMessage(`{"command":"gh run view 42"}`), Source: "model"}); v.Decision != module.Allow {
+		t.Fatalf("watching is never stopped: %+v", v)
+	}
+}
+
+// Two more stale turns after the notice, and the next call stops the session.
+func TestAStallThatGoesOnStops(t *testing.T) {
+	m := loaded(t, module.Config{})
+	s := stale(newSession(), 6)
+	if v := m.GateTool(context.Background(), s, protocol.ToolCallData{Tool: "bash", Arguments: json.RawMessage(logGrep), Source: "model"}); v.Decision != module.Allow {
+		t.Fatalf("one more stale turn is not yet a stop: %+v", v)
+	}
+	more(s, 1)
+	v := m.GateTool(context.Background(), s, protocol.ToolCallData{Tool: "read", Arguments: json.RawMessage(`{"path":"a.go"}`), Source: "model"})
+	if v.Decision != module.Halt {
+		t.Fatalf("got %+v, want Halt", v)
+	}
+	if !strings.Contains(v.Summary, "7 turns in a row returned nothing new") || !strings.HasPrefix(v.Reason, refusedPrefix) {
+		t.Fatalf("halt: %+v", v)
+	}
+}
+
+// A stuck model gets something new now and then. A second stall since the
+// person spoke stops the session: in 01M39RT5 the runs were 5 and 6 long.
+func TestASecondStallStops(t *testing.T) {
+	m := loaded(t, module.Config{})
+	s := stale(newSession(), 5)
+	suffix(t, m, s)
+	s.thought("Let me look at the branch list.", "bash", `{"command":"git branch -v"}`, "* main 64cbd95\n")
+	more(s, 4)
+	if v := m.GateTool(context.Background(), s, protocol.ToolCallData{Tool: "bash", Arguments: json.RawMessage(logGrep), Source: "model"}); v.Decision != module.Allow {
+		t.Fatalf("four stale turns into the second run is not yet a stop: %+v", v)
+	}
+	more(s, 1)
+	got := suffix(t, m, s)
+	if !strings.Contains(got, "the second time since the person's last message") || !strings.Contains(got, "next call will stop the session") {
+		t.Fatalf("the second notice should say what comes next:\n%s", got)
+	}
+	v := m.GateTool(context.Background(), s, protocol.ToolCallData{Tool: "bash", Arguments: json.RawMessage(logGrep), Source: "model"})
+	if v.Decision != module.Halt || !strings.Contains(v.Summary, "stalled twice") {
+		t.Fatalf("got %+v, want Halt", v)
+	}
+}
+
+// A word from the person starts everything again.
+func TestThePersonResetsAStall(t *testing.T) {
+	m := loaded(t, module.Config{})
+	s := stale(newSession(), 5)
+	suffix(t, m, s)
+	s.said("user", "the work is already on main, just open the PR from it")
+	stale(s, 5)
+	if got := suffix(t, m, s); !strings.Contains(got, "Your last 5 turns") || strings.Contains(got, "second time") {
+		t.Fatalf("a fresh first notice after the person spoke: %q", got)
+	}
+	if v := m.GateTool(context.Background(), s, protocol.ToolCallData{Tool: "bash", Arguments: json.RawMessage(logGrep), Source: "model"}); v.Decision != module.Allow {
+		t.Fatalf("the first stall since the person spoke is not a stop: %+v", v)
+	}
+}
+
+// When a repeated change is the fact, it is the one given.
+func TestAnIdenticalChangeNoticeWinsOverAStall(t *testing.T) {
+	const same = "unchanged: src/error.rs already has exactly this content (18 bytes)"
+	s := newSession()
+	s.thought(plan, "bash", logGrep, grepOut)
+	s.thought(plan, "bash", logTail, tailOut)
+	s.thought(plan, "write", errorRS, same)
+	more(s, 2)
+	s.thought(plan, "write", errorRS, same)
+	more(s, 1)
+	s.thought(plan, "write", errorRS, same)
+
+	// Without the identical-change notice, these five turns are a stall.
+	if got := suffix(t, loaded(t, module.Config{"identical_after": 9}), s); !strings.Contains(got, stalling) {
+		t.Fatalf("the turns should stall: %q", got)
+	}
+	got := suffix(t, loaded(t, module.Config{}), s)
+	if !strings.Contains(got, "has now run 3 times") {
+		t.Fatalf("the identical-change notice: %q", got)
+	}
+	if strings.Contains(got, stalling) {
+		t.Fatalf("one notice per request, the more specific: %q", got)
+	}
+}
+
+// An edit that lands is a change, however alike its result reads: building
+// and editing in turn is a change not landing, not a stall.
+func TestEditsThatLandAreNotAStall(t *testing.T) {
+	m := loaded(t, module.Config{})
+	s := newSession()
+	for i := 0; i < 6; i++ {
+		s.thought("Let me fix the import.", "bash", build, buildErr)
+		s.thought("Let me fix the import.", "edit", fmt.Sprintf(`{"path":"src/lib.rs","old":"a%d","new":"b"}`, i), "replaced 1 occurrence(s) in src/lib.rs")
+	}
+	if got := suffix(t, m, s); strings.Contains(got, stalling) {
+		t.Fatalf("edits that land are not a stall: %q", got)
+	}
+	if v := m.GateTool(context.Background(), s, protocol.ToolCallData{Tool: "bash", Arguments: json.RawMessage(build), Source: "model"}); v.Decision != module.Allow {
+		t.Fatalf("a check is never refused: %+v", v)
+	}
+}
+
+func TestStallThresholdsAreConfigurable(t *testing.T) {
+	s := stale(newSession(), 3)
+	if got := suffix(t, loaded(t, module.Config{"stalled_after": 3}), s); !strings.Contains(got, "Your last 3 turns") {
+		t.Fatalf("stalled_after 3: %q", got)
+	}
+	more(s, 1)
+	v := loaded(t, module.Config{"stalled_after": 3, "stalled_halt_after": 1}).GateTool(context.Background(), s,
+		protocol.ToolCallData{Tool: "bash", Arguments: json.RawMessage(logGrep), Source: "model"})
+	if v.Decision != module.Halt {
+		t.Fatalf("stalled_halt_after 1: %+v", v)
+	}
+}
