@@ -79,6 +79,11 @@ That is the minimum. Two things to know:
   also what the clients read to show how full the window is, and they say nothing rather
   than guess when it is unset.
 
+One more is worth knowing about. **`max_tokens`** caps a single reply, 16384 unless set,
+and never more than the context has room for. A local model that falls into a loop
+otherwise writes until the ten-minute timeout, and the turn is lost. A hosted API that
+allows less output than 16384 refuses the request outright, so set it lower there.
+
 Unknown fields are rejected rather than ignored, so a typo fails loudly at startup
 instead of silently doing nothing.
 

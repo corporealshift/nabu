@@ -218,6 +218,8 @@ type ResumeHook interface {
 }
 
 // SessionEnder runs at every terminal or paused transition, before the report.
+// It runs under Options.SessionEndTimeout rather than HookTimeout, because it
+// may make a model call of its own.
 type SessionEnder interface {
 	SessionEnd(ctx context.Context, s Session)
 }

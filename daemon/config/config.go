@@ -68,6 +68,10 @@ type ProviderConfig struct {
 	// provider refuses it.
 	ContextWindow int   `json:"context_window"`
 	TasksEnabled  *bool `json:"tasks_enabled"`
+	// MaxTokens caps one reply. Zero means the daemon's default, 16384. A
+	// hosted API that allows less output than that needs it set lower, or it
+	// refuses the request.
+	MaxTokens int `json:"max_tokens"`
 }
 
 func (c *ProviderConfig) withDefaults() {

@@ -517,3 +517,21 @@ func TestArchiveAfter(t *testing.T) {
 		}
 	}
 }
+
+// A hosted API with a smaller output limit refuses the default cap, so the cap
+// has to be settable per provider.
+func TestProviderReplyCapIsConfigurable(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "config.json"),
+		[]byte(`{"providers":{"hosted":{"base_url":"https://example.com/v1","max_tokens":8192}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Providers["hosted"].MaxTokens; got != 8192 {
+		t.Errorf("max_tokens = %d, want 8192", got)
+	}
+}

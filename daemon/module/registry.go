@@ -13,7 +13,8 @@ import (
 
 // Options configure a Registry.
 type Options struct {
-	// HookTimeout bounds every hook call. Zero means 30 seconds.
+	// HookTimeout bounds every hook call not given its own bound below. Zero
+	// means 30 seconds.
 	HookTimeout time.Duration
 	// GateTimeout bounds ToolGate and StopGate calls, which may run commands.
 	// Zero means 10 minutes.
@@ -24,6 +25,12 @@ type Options struct {
 	// HookTimeout allows. Zero means 10 minutes, the provider's own per-attempt
 	// limit: a hook allowed less than one model call cannot finish one.
 	CompactionTimeout time.Duration
+	// SessionEndTimeout bounds SessionEnd, for the same reason: the memory
+	// curator reads the session there too. Under HookTimeout it timed out on
+	// seven passes in ten on a local model, and a module that times out is
+	// disabled before it can commit what the session learned. Zero means 10
+	// minutes.
+	SessionEndTimeout time.Duration
 	Log               *slog.Logger
 }
 
@@ -50,6 +57,9 @@ func NewRegistry(mods []Module, opts Options) *Registry {
 	}
 	if opts.CompactionTimeout == 0 {
 		opts.CompactionTimeout = 10 * time.Minute
+	}
+	if opts.SessionEndTimeout == 0 {
+		opts.SessionEndTimeout = 10 * time.Minute
 	}
 	if opts.Log == nil {
 		opts.Log = slog.Default()
@@ -353,7 +363,7 @@ func (r *Registry) SessionResume(ctx context.Context, s Session) {
 func (r *Registry) SessionEnd(ctx context.Context, s Session) {
 	for _, m := range r.Modules() {
 		if h, ok := m.(SessionEnder); ok {
-			r.call(ctx, s, m, "SessionEnd", r.opts.HookTimeout, func(c context.Context) { h.SessionEnd(c, s) })
+			r.call(ctx, s, m, "SessionEnd", r.opts.SessionEndTimeout, func(c context.Context) { h.SessionEnd(c, s) })
 		}
 	}
 }

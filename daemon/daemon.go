@@ -174,6 +174,7 @@ func New(opts Options) (*Daemon, error) {
 				MaxInFlight:   p.MaxInFlight,
 				ContextWindow: p.ContextWindow,
 				TasksEnabled:  p.TasksEnabled,
+				MaxTokens:     p.MaxTokens,
 			}
 			providers.Add(pc, provider.NewOpenAI(pc, nil), isFirst)
 			isFirst = false

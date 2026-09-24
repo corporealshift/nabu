@@ -12,8 +12,10 @@ import (
 // (or the error scheduled for that call index), records the Request, and
 // streams Content through onDelta in one piece.
 type Fake struct {
-	Script  []Response
-	Errors  map[int]error // by zero-based call index
+	Script []Response
+	Errors map[int]error // by zero-based call index
+	// Partial is what arrived before a scheduled error, returned with it.
+	Partial map[int]Response
 	BlockOn chan struct{} // when non-nil, Complete waits for close or ctx
 
 	mu    sync.Mutex
@@ -37,7 +39,7 @@ func (f *Fake) Complete(ctx context.Context, req Request, onDelta, onThinking fu
 		return Response{}, err
 	}
 	if err := f.Errors[i]; err != nil {
-		return Response{}, err
+		return f.Partial[i], err
 	}
 	if i >= len(f.Script) {
 		return Response{}, fmt.Errorf("fake provider: no scripted response for call %d", i+1)

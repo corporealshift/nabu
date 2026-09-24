@@ -3,12 +3,14 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // sse writes one SSE data line.
@@ -113,5 +115,58 @@ func TestOpenAIErrorEventMidStream(t *testing.T) {
 	_, err := p.Complete(context.Background(), Request{Model: "m"}, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "context length exceeded") {
 		t.Fatalf("err: %v", err)
+	}
+}
+
+// The call that prompted this: a reply still streaming when the per-attempt
+// timeout ends it. What had arrived comes back with the error, rather than
+// being lost with the call.
+func TestOpenAITimeoutMidStreamReturnsWhatArrived(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		sse(w, `{"choices":[{"delta":{"reasoning_content":"let me write it"}}]}`)
+		sse(w, `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"write","arguments":"{\"path\":\"a.go\",\"content\":\"same"}}]}}]}`)
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+
+	p := NewOpenAI(Config{Name: "t", BaseURL: srv.URL + "/v1", Timeout: 200 * time.Millisecond}, srv.Client())
+	resp, err := p.Complete(context.Background(), Request{Model: "m"}, nil, nil)
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err: %v", err)
+	}
+	if resp.Reasoning != "let me write it" {
+		t.Errorf("reasoning: %q", resp.Reasoning)
+	}
+	if len(resp.ToolCalls) != 1 || resp.ToolCalls[0].Name != "write" ||
+		!strings.Contains(string(resp.ToolCalls[0].Arguments), "_malformed") {
+		t.Errorf("tool calls: %+v", resp.ToolCalls)
+	}
+}
+
+// With no cap given, a request still carries one: the provider's default.
+func TestOpenAIRequestsAreCappedByDefault(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		json.Unmarshal(b, &body)
+		sse(w, `{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`)
+		sse(w, "[DONE]")
+	}))
+	defer srv.Close()
+	p := NewOpenAI(Config{Name: "t", BaseURL: srv.URL + "/v1"}, srv.Client())
+	if got := p.Config().MaxTokens; got != DefaultMaxTokens {
+		t.Fatalf("default cap: %d", got)
+	}
+	if _, err := p.Complete(context.Background(), Request{Model: "m", MaxTokens: p.Config().MaxTokens}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if body["max_tokens"] != float64(DefaultMaxTokens) {
+		t.Errorf("max_tokens on the wire: %v", body["max_tokens"])
 	}
 }

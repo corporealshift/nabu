@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -341,5 +342,60 @@ func TestCompactionHooksGetTheCompactionBudget(t *testing.T) {
 				t.Fatalf("notices = %v, want %d", n, tc.wantNotes)
 			}
 		})
+	}
+}
+
+// slowEnder is the memory curator at the end of a session.
+type slowEnder struct {
+	base
+	delay time.Duration
+	done  *atomic.Bool
+}
+
+func (e slowEnder) SessionEnd(ctx context.Context, _ Session) {
+	select {
+	case <-time.After(e.delay):
+		e.done.Store(true)
+	case <-ctx.Done():
+	}
+}
+
+// SessionEnd may call the model too: the curator reads the session there, and
+// at 30 seconds it timed out on seven passes in ten on a local model, taking
+// the session's memory commit with it. Issue 87, again, at the other end.
+func TestSessionEndGetsItsOwnBudget(t *testing.T) {
+	cases := []struct {
+		name      string
+		delay     time.Duration
+		wantDone  bool
+		wantNotes int
+	}{
+		{"slower than an ordinary hook is allowed", 60 * time.Millisecond, true, 0},
+		{"slower than the session-end budget", 400 * time.Millisecond, false, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			done := &atomic.Bool{}
+			r := NewRegistry([]Module{slowEnder{base{"memory"}, tc.delay, done}}, Options{
+				HookTimeout:       20 * time.Millisecond,
+				SessionEndTimeout: 200 * time.Millisecond,
+				Log:               slog.New(slog.DiscardHandler),
+			})
+			s := &fakeSession{id: "S1"}
+			r.SessionEnd(context.Background(), s)
+			if done.Load() != tc.wantDone {
+				t.Fatalf("finished = %v, want %v", done.Load(), tc.wantDone)
+			}
+			if n := s.notices(); len(n) != tc.wantNotes {
+				t.Fatalf("notices = %v, want %d", n, tc.wantNotes)
+			}
+		})
+	}
+}
+
+func TestSessionEndBudgetDefaultsToTenMinutes(t *testing.T) {
+	r := NewRegistry(nil, Options{})
+	if r.opts.SessionEndTimeout != 10*time.Minute {
+		t.Errorf("default: %s", r.opts.SessionEndTimeout)
 	}
 }
