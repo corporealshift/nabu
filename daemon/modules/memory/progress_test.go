@@ -131,3 +131,63 @@ func TestProgressIsSkippedWhenTheCuratorIsOff(t *testing.T) {
 		t.Errorf("a disabled curator wrote %+v", h.tools.calls)
 	}
 }
+
+// The breezeway session resumed "Phase 9: tests" from this memory, never put
+// it on a task list, gave up on half the tests, and ended. No tasks read as
+// nothing open, and the only record of what was left went with it.
+func TestASessionWithNoTasksLeavesTheInProgressMemoryAlone(t *testing.T) {
+	m, h := curatorModule(t, `[]`, nil)
+	earlier := withTasks(newSession(t, "breezeway-bdbc0f9b"),
+		protocol.Task{ID: "t9", Title: "Phase 9: tests", Status: protocol.TaskInProgress,
+			DoneWhen: "all JVM tests pass (outbox collapse, concurrent 401s)"})
+	m.recordProgress(context.Background(), earlier)
+
+	later := newSession(t, "breezeway-bdbc0f9b") // no task list at all
+	h.tools.calls = nil
+	m.recordProgress(context.Background(), later)
+
+	if len(h.tools.calls) != 0 {
+		t.Errorf("a session with no tasks touched the in-progress memory: %+v", h.tools.calls)
+	}
+	mems := m.mustLoad(t, later)
+	if len(mems) != 1 || !strings.Contains(mems[0].Body, "concurrent 401s") {
+		t.Fatalf("the unfinished work was lost: %+v", mems)
+	}
+}
+
+// The next session is told to put the work back on its task list, so the stop
+// gate holds it to the done-when rather than to its own opinion.
+func TestTheInProgressMemorySaysToResumeAsTasks(t *testing.T) {
+	m, _ := curatorModule(t, `[]`, nil)
+	s := withTasks(newSession(t, "repo-abc123"),
+		protocol.Task{ID: "t1", Title: "outstanding", Status: protocol.TaskPending})
+	m.recordProgress(context.Background(), s)
+	mems := m.mustLoad(t, s)
+	if len(mems) != 1 || !strings.Contains(mems[0].Body, "task.update") {
+		t.Fatalf("the memory does not say how to resume: %+v", mems)
+	}
+}
+
+// The curator read a transcript in which the model declared "Phase 9 is
+// COMPLETE" and wrote that over the in-progress memory. That memory comes from
+// the task list only.
+func TestTheCuratorCannotWriteTheInProgressMemory(t *testing.T) {
+	reply := `[{"scope":"workspace","name":"breezeway-bdbc0f9b-in-progress","type":"project",
+	  "description":"where work left off","body":"Phase 9 (tests) is COMPLETE."},
+	 {"scope":"workspace","name":"gradle-wrapper","type":"project",
+	  "description":"run gradle through gradlew.sh","body":"Use ./gradlew.sh, not gradle."}]`
+	m, _ := curatorModule(t, reply, nil)
+	s := newSession(t, "breezeway-bdbc0f9b")
+	s.events = []protocol.Event{userMsg("01A", "can you finish the work here")}
+
+	m.curate(context.Background(), s)
+
+	for _, mem := range m.mustLoad(t, s) {
+		if strings.HasSuffix(mem.Name, "-in-progress") {
+			t.Errorf("the curator wrote the in-progress memory: %q", mem.Body)
+		}
+	}
+	if len(m.mustLoad(t, s)) != 1 {
+		t.Errorf("the curator's other proposals should still land: %+v", m.mustLoad(t, s))
+	}
+}
