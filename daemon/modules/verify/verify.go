@@ -49,10 +49,19 @@ type Module struct {
 
 	host module.Host
 
-	// baselines is the dirty tree each session started with, by session id.
-	// The gate answers for what a session changed, never for what it found.
+	// baselines is the tree each session started with, by session id. The
+	// gate answers for what a session changed, never for what it found.
 	mu        sync.Mutex
-	baselines map[string]map[string]bool
+	baselines map[string]baseline
+}
+
+// baseline is the repository as a session found it.
+type baseline struct {
+	// dirty is every path git reported as changed or untracked, with its
+	// two-letter status.
+	dirty map[string]string
+	// head is the commit checked out, empty when there is none yet.
+	head string
 }
 
 // SessionStart implements module.SessionStarter. It records the tree the
@@ -69,7 +78,7 @@ func (m *Module) SessionResume(_ context.Context, s module.Session) error {
 	return nil
 }
 
-// baseline records the currently dirty paths for a session.
+// baseline records the dirty paths and the commit a session starts from.
 func (m *Module) baseline(s module.Session) {
 	if s == nil {
 		return
@@ -78,12 +87,13 @@ func (m *Module) baseline(s module.Session) {
 	if !ok {
 		return
 	}
+	head, _ := headCommit(s.Workspace().Path)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.baselines == nil {
-		m.baselines = map[string]map[string]bool{}
+		m.baselines = map[string]baseline{}
 	}
-	m.baselines[s.ID()] = paths
+	m.baselines[s.ID()] = baseline{dirty: paths, head: head}
 }
 
 // Name implements module.Module.
@@ -243,6 +253,9 @@ func (m *Module) BeforeStop(ctx context.Context, s module.Session, info module.S
 	if reason := m.gateVeto(ctx, s); reason != "" {
 		return module.StopVerdict{Reason: reason}
 	}
+	if reason := m.committedBuildVeto(s); reason != "" {
+		return module.StopVerdict{Reason: reason}
+	}
 	if reason := m.treeVeto(s); reason != "" {
 		return module.StopVerdict{Reason: reason}
 	}
@@ -376,28 +389,188 @@ func (m *Module) treeVeto(s module.Session) string {
 		return ""
 	}
 
-	var changed []string
-	for p := range now {
-		if !before[p] {
+	var untracked, changed []string
+	for p, code := range now {
+		if _, was := before.dirty[p]; was {
+			continue
+		}
+		if code == "??" {
+			untracked = append(untracked, p)
+		} else {
 			changed = append(changed, p)
 		}
 	}
-	if len(changed) == 0 {
+	if len(untracked)+len(changed) == 0 {
 		return ""
 	}
-	sort.Strings(changed)
-	return "this session left uncommitted changes: " + strings.Join(changed, ", ") +
-		" — commit them or say why they should stay uncommitted"
+	return treeReason(untracked, changed)
 }
 
-// dirtyPaths is the set of paths git reports as changed or untracked. The
-// second result is false when the question cannot be answered.
-func dirtyPaths(dir string) (map[string]bool, bool) {
-	out, err := git(dir, "status", "--porcelain")
+// treeReason says what git reports and the only things that clear it.
+//
+// It used to end "commit them or say why they should stay uncommitted". Saying
+// why cleared nothing, so a model explained itself fourteen times to a veto
+// that kept coming back, and the session ended blocked twice. It had also
+// convinced itself the files were ignored, from a check-ignore run in the
+// wrong directory; git status is what settles that, so the reason says so.
+func treeReason(untracked, changed []string) string {
+	// Build output is summarised by directory rather than listed: a build
+	// leaves hundreds of files, and listing them buried the source among them.
+	var build []string
+	source := func(paths []string) []string {
+		var out []string
+		for _, p := range paths {
+			if buildPrefix(p) != "" {
+				build = append(build, p)
+			} else {
+				out = append(out, p)
+			}
+		}
+		sort.Strings(out)
+		return out
+	}
+	untracked, changed = source(untracked), source(changed)
+
+	var b strings.Builder
+	b.WriteString("this session left uncommitted changes that git status still lists:\n")
+	if len(untracked) > 0 {
+		b.WriteString("  untracked, and not ignored: " + listSome(untracked, maxListed) + "\n")
+	}
+	if len(changed) > 0 {
+		b.WriteString("  changed: " + listSome(changed, maxListed) + "\n")
+	}
+	if len(build) > 0 {
+		fmt.Fprintf(&b, "  build output, not ignored: %d files under %s\n",
+			len(build), strings.Join(buildDirs(build), ", "))
+		b.WriteString("Ignore build output in the .gitignore at the repository root: a pattern " +
+			"in a nested .gitignore is relative to that file's own directory. A tracked file " +
+			"is never ignored, whatever .gitignore says; untrack it with `git rm -r --cached <dir>`.\n")
+	}
+	b.WriteString("Commit what belongs in the repository. This clears only when git status " +
+		"stops listing these paths; explaining them does not clear it. If they should " +
+		"stay as they are, say so once and stop: the session ends blocked, for the person to decide.")
+	return b.String()
+}
+
+// maxListed bounds each list in a veto. A build can leave hundreds of paths,
+// and the first few say what they are.
+const maxListed = 15
+
+// listSome joins up to n items and counts the rest.
+func listSome(items []string, n int) string {
+	if len(items) <= n {
+		return strings.Join(items, ", ")
+	}
+	return strings.Join(items[:n], ", ") + fmt.Sprintf(", and %d more", len(items)-n)
+}
+
+// committedBuildVeto refuses a stop when the session's own commits added build
+// output. An agent that staged a whole directory committed 866 Gradle files
+// that way, and nothing noticed until they were in a pull request.
+//
+// It compares the commit the session started on with HEAD, so it answers only
+// for commits made on top of that start, and a later commit that untracks the
+// files clears it.
+func (m *Module) committedBuildVeto(s module.Session) string {
+	if !m.RequireCleanTree {
+		return ""
+	}
+	m.mu.Lock()
+	before, known := m.baselines[s.ID()]
+	m.mu.Unlock()
+	if !known || before.head == "" {
+		return ""
+	}
+	dir := s.Workspace().Path
+	head, ok := headCommit(dir)
+	if !ok || head == before.head {
+		return ""
+	}
+	// Switching to another branch is not this session committing.
+	if _, err := git(dir, "merge-base", "--is-ancestor", before.head, head); err != nil {
+		return ""
+	}
+	out, err := git(dir, "diff", "--name-only", "--diff-filter=A", before.head, head)
+	if err != nil {
+		return ""
+	}
+	var added []string
+	for _, p := range strings.Split(out, "\n") {
+		if p = strings.TrimSpace(p); p != "" && buildPrefix(p) != "" {
+			added = append(added, p)
+		}
+	}
+	if len(added) == 0 {
+		return ""
+	}
+	dirs := buildDirs(added)
+	return fmt.Sprintf("this session committed %d files of build output under %s. "+
+		"Build output does not belong in the repository: untrack it with "+
+		"`git rm -r --cached %s`, ignore it in the .gitignore at the repository root, "+
+		"and commit that.", len(added), strings.Join(dirs, ", "), strings.Join(dirs, " "))
+}
+
+// buildDotDirs are the dotted caches a build writes. module.NoiseDir leaves
+// dotted directories to its callers, since they disagree about them.
+var buildDotDirs = map[string]bool{
+	".gradle": true, ".kotlin": true, ".next": true, ".venv": true,
+	".pytest_cache": true, ".mypy_cache": true,
+}
+
+// buildPrefix is a repository path up to and including its first build
+// directory, or "" when it is not under one. A file's own name is not a
+// directory, so a file called "build" is not build output; git names an
+// untracked directory with a trailing slash, and that last name is.
+func buildPrefix(p string) string {
+	dir := strings.HasSuffix(p, "/")
+	parts := strings.Split(strings.TrimSuffix(p, "/"), "/")
+	for i, seg := range parts {
+		if i == len(parts)-1 && !dir {
+			break
+		}
+		if module.NoiseDir(seg) || buildDotDirs[strings.ToLower(seg)] {
+			return strings.Join(parts[:i+1], "/") + "/"
+		}
+	}
+	return ""
+}
+
+// buildDirs is the distinct build directories the paths lie under, sorted.
+func buildDirs(paths []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range paths {
+		if d := buildPrefix(p); d != "" && !seen[d] {
+			seen[d] = true
+			out = append(out, d)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// headCommit is the commit checked out. The second result is false outside a
+// repository or before its first commit.
+func headCommit(dir string) (string, bool) {
+	out, err := git(dir, "rev-parse", "--verify", "-q", "HEAD")
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(out), true
+}
+
+// dirtyPaths is every path git reports as changed or untracked, with its
+// two-letter status ("??" for untracked). The second result is false when the
+// question cannot be answered.
+//
+// Untracked files are listed one by one. By default git folds a new directory
+// into one line, and "android/" hid the build output inside it.
+func dirtyPaths(dir string) (map[string]string, bool) {
+	out, err := git(dir, "status", "--porcelain", "--untracked-files=all")
 	if err != nil {
 		return nil, false
 	}
-	paths := map[string]bool{}
+	paths := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
 		if len(line) < 4 {
 			continue
@@ -408,7 +581,7 @@ func dirtyPaths(dir string) (map[string]bool, bool) {
 			p = p[i+4:]
 		}
 		if p = strings.Trim(strings.TrimSpace(p), `"`); p != "" {
-			paths[p] = true
+			paths[p] = line[:2]
 		}
 	}
 	return paths, true
