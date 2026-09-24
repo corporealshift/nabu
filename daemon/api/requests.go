@@ -226,28 +226,29 @@ func (h *Handler) resumeAfterLateAnswer(ctx context.Context, sessionID string) {
 
 // Permission implements agent.Asker. It broadcasts to every attached client
 // and takes the first verdict. With nobody attached, or nobody answering, it
-// denies: refusing a gated call is the safe outcome.
-func (h *Handler) Permission(ctx context.Context, sessionID string, call protocol.ToolCallData, summary, risk string) (bool, string) {
+// denies: refusing a gated call is the safe outcome. It reports those cases as
+// unanswered, because no person made that decision.
+func (h *Handler) Permission(ctx context.Context, sessionID string, call protocol.ToolCallData, summary, risk string) (bool, string, bool) {
 	raw, err := h.ask(ctx, sessionID, "nabu.rpc.permission.request", map[string]any{
 		"tool":    call.Tool,
 		"summary": summary,
 		"risk":    risk,
 	}, false)
 	if err != nil {
-		return false, err.Error()
+		return false, err.Error(), false
 	}
 	var reply permissionReply
 	if err := json.Unmarshal(raw, &reply); err != nil {
-		return false, "unreadable verdict: " + err.Error()
+		return false, "unreadable verdict: " + err.Error(), false
 	}
 	if reply.Verdict != "approve" {
 		reason := reply.Reason
 		if reason == "" {
 			reason = "denied by the client"
 		}
-		return false, reason
+		return false, reason, true
 	}
-	return true, reply.Reason
+	return true, reply.Reason, true
 }
 
 // Ask implements agent.Asker for module ui.ask.

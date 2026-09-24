@@ -23,8 +23,14 @@ import (
 // Asker answers questions that need a human: permission for a gated tool call
 // and module ui.ask. P1b supplies the WebSocket implementation; a nil Asker
 // denies permission and errors on ask.
+//
+// answered is false when no person saw the request: nobody was attached, or
+// nobody replied in time. The model is told which, because "denied by the
+// user" when there was no user read as a refusal, then as the session having
+// ended, and it spent the rest of the run working around a person who was
+// never there.
 type Asker interface {
-	Permission(ctx context.Context, sessionID string, call protocol.ToolCallData, summary, risk string) (approved bool, reason string)
+	Permission(ctx context.Context, sessionID string, call protocol.ToolCallData, summary, risk string) (approved bool, reason string, answered bool)
 	Ask(ctx context.Context, sessionID, question string, choices []string) (string, error)
 }
 
@@ -719,14 +725,16 @@ func (m *Manager) executeTool(ctx context.Context, h *sessionHandle, call protoc
 	case module.Ask:
 		if h.State().Options.PermissionMode != protocol.PermissionBypass {
 			if m.deps.Asker == nil {
-				return fail(protocol.ToolErrorDenied,
-					"denied: this call needs approval and no client is attached")
+				return fail(protocol.ToolErrorDenied, unanswered("no client is attached"))
 			}
 			summary := v.Summary
 			if summary == "" {
 				summary = call.Tool
 			}
-			approved, reason := m.deps.Asker.Permission(ctx, h.ID(), call, summary, v.Risk)
+			approved, reason, answered := m.deps.Asker.Permission(ctx, h.ID(), call, summary, v.Risk)
+			if !approved && !answered {
+				return fail(protocol.ToolErrorDenied, unanswered(reason))
+			}
 			if !approved {
 				if reason == "" {
 					reason = "not approved"
@@ -747,6 +755,20 @@ func (m *Manager) executeTool(ctx context.Context, h *sessionHandle, call protoc
 		return res
 	}
 	return protocol.ToolResultData{CallID: call.CallID, Tool: call.Tool, Content: out, Status: "ok"}
+}
+
+// unanswered is the result for a call that needed approval nobody gave or
+// refused. It says both halves plainly: nobody refused it, and the session has
+// not ended, since those were the two wrong conclusions a model drew from the
+// old wording.
+func unanswered(why string) string {
+	msg := "not run: this call needs a person's approval and nobody answered"
+	if why = strings.TrimSpace(why); why != "" {
+		msg += " (" + why + ")"
+	}
+	return msg + ". Nobody refused it, and the session is still running. " +
+		"Do it another way that needs no approval, or finish what you can " +
+		"and say what is still waiting on approval."
 }
 
 // complete runs a module's model call through the provider layer, so

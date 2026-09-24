@@ -136,19 +136,24 @@ func TestDeniedToolBecomesAnErrorResult(t *testing.T) {
 	}
 }
 
-// fakeAsker approves or denies on demand.
+// fakeAsker approves or denies on demand. absent plays a daemon with nobody
+// attached: the request is refused without anyone having seen it.
 type fakeAsker struct {
 	approve  bool
+	absent   bool
 	asked    int
 	question string
 }
 
-func (a *fakeAsker) Permission(_ context.Context, _ string, _ protocol.ToolCallData, _, _ string) (bool, string) {
+func (a *fakeAsker) Permission(_ context.Context, _ string, _ protocol.ToolCallData, _, _ string) (bool, string, bool) {
 	a.asked++
-	if a.approve {
-		return true, ""
+	if a.absent {
+		return false, "no client is attached to session S1", false
 	}
-	return false, "user said no"
+	if a.approve {
+		return true, "", true
+	}
+	return false, "user said no", true
 }
 
 func (a *fakeAsker) Ask(_ context.Context, _, q string, _ []string) (string, error) {
@@ -184,6 +189,40 @@ func TestAskGoesToTheAskerAndBypassSkipsIt(t *testing.T) {
 	res = h.m.invokeTool(context.Background(), handle, call)
 	if res.Status != "ok" || asker.asked != 1 {
 		t.Fatalf("bypass path: %+v asked=%d", res, asker.asked)
+	}
+}
+
+// A refusal nobody made must not read as one. "denied by the user: no client
+// is attached" sent a model into twenty turns of "the session ended, so I'll
+// continue here".
+func TestAnUnansweredAskIsNotReportedAsTheUsersRefusal(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		asker Asker
+	}{
+		{"nobody attached", &fakeAsker{absent: true}},
+		{"no asker at all", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, []module.Module{asksModule{}}, nil)
+			h.m.deps.Asker = tc.asker
+			s := h.create(t)
+			handle, _ := h.m.handle(s.ID())
+			call := protocol.ToolCallData{
+				CallID: "c1", Tool: "write", Arguments: json.RawMessage(`{"path":"a.txt","content":"x"}`), Source: "model"}
+			res := h.m.invokeTool(context.Background(), handle, call)
+			if res.Status != "error" {
+				t.Fatalf("an unapproved call ran: %+v", res)
+			}
+			if strings.Contains(res.Content, "denied by the user") {
+				t.Errorf("reported as the user's refusal: %q", res.Content)
+			}
+			for _, want := range []string{"nobody answered", "Nobody refused it", "still running"} {
+				if !strings.Contains(res.Content, want) {
+					t.Errorf("result is missing %q: %q", want, res.Content)
+				}
+			}
+		})
 	}
 }
 
