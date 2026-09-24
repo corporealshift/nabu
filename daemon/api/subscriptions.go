@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"sync"
 
 	"github.com/corporealshift/nabu/protocol"
 )
@@ -12,26 +11,6 @@ import (
 // session store drops it. Events are replayable from the log by cursor, so a
 // client that falls behind resyncs rather than losing anything.
 const eventBuffer = 64
-
-// connState is one client connection. A WebSocket has a single writer, so
-// every write goes through mu: the read loop, the event pump and the delta
-// sink all share it.
-type connState struct {
-	conn Conn
-	ctx  context.Context
-
-	mu sync.Mutex
-}
-
-func (c *connState) write(v any) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.conn.WriteJSON(c.ctx, v)
-}
-
-func (c *connState) notify(method string, params any) {
-	_ = c.write(jsonrpcNotification{JSONRPC: "2.0", Method: method, Params: params})
-}
 
 // fanout pumps one session's events to every connection subscribed to it.
 // It exists only while at least one connection is subscribed.
@@ -59,12 +38,12 @@ func (h *Handler) subscribe(sessionID string, cs *connState) *protocol.RPCError 
 	ch, cancel := s.Subscribe(eventBuffer)
 	f := &fanout{conns: map[*connState]bool{cs: true}, cancel: cancel}
 	h.fanouts[sessionID] = f
-	go h.pump(sessionID, ch)
+	go h.pump(sessionID, f, ch)
 	return nil
 }
 
 // pump forwards events to every current subscriber until the channel closes.
-func (h *Handler) pump(sessionID string, ch <-chan protocol.Event) {
+func (h *Handler) pump(sessionID string, f *fanout, ch <-chan protocol.Event) {
 	for ev := range ch {
 		for _, cs := range h.subscribers(sessionID) {
 			cs.notify("nabu.session.event", map[string]any{
@@ -72,6 +51,36 @@ func (h *Handler) pump(sessionID string, ch <-chan protocol.Event) {
 				"event":      ev,
 			})
 		}
+	}
+	h.pumpEnded(sessionID, f)
+}
+
+// pumpEnded forgets a fan-out whose channel the store closed while it still
+// had subscribers. Left registered, it was a dead stream that every later
+// subscriber joined and heard nothing from (issue 110).
+//
+// The store closes a channel for two reasons. The session was archived, and
+// its subscriptions end with it (spec 7.19). Or the pump fell behind, and its
+// subscribers have missed events: they are dropped, and resync from their
+// cursors when they reconnect.
+func (h *Handler) pumpEnded(sessionID string, f *fanout) {
+	h.subMu.Lock()
+	if h.fanouts[sessionID] != f {
+		// The last subscriber left and cancelled it; nothing is registered.
+		h.subMu.Unlock()
+		return
+	}
+	delete(h.fanouts, sessionID)
+	conns := f.conns
+	h.subMu.Unlock()
+
+	if _, rpcErr := h.getSession(sessionID); rpcErr != nil {
+		return
+	}
+	h.log.Warn("a session's event stream fell behind; dropping its subscribers to resync",
+		"session", sessionID, "subscribers", len(conns))
+	for cs := range conns {
+		cs.drop()
 	}
 }
 

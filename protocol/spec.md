@@ -444,6 +444,12 @@ Thereafter the daemon sends notifications (no `id`):
 
 `nabu.session.unsubscribe {session_id}` → `{subscribed: false}`.
 
+One client never holds up another. A connection that stops reading — a phone frozen in
+the background keeps its socket open but takes nothing — is **closed** once it falls
+too far behind or a write to it stalls, rather than delaying what the daemon sends to
+anyone else. Nothing is lost by this: a client reconnects and resumes from its cursor
+with §7.5.
+
 ### 7.7 `nabu.session.interrupt {session_id}` → `{}`
 
 Cancels the in-flight turn. The daemon appends the partial assistant `message` with

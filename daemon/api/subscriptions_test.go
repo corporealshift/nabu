@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -84,8 +86,8 @@ func (c *recordConn) await(t *testing.T, method string) map[string]any {
 func (hn *harness) attach(t *testing.T) (*connState, *recordConn) {
 	t.Helper()
 	rc := newRecordConn()
-	cs := &connState{conn: rc, ctx: context.Background()}
-	t.Cleanup(func() { hn.h.dropConn(cs) })
+	cs := newConnState(context.Background(), rc)
+	t.Cleanup(func() { hn.h.dropConn(cs); cs.finish() })
 	return cs, rc
 }
 
@@ -365,4 +367,115 @@ func TestMutatorsRejectUnknownSession(t *testing.T) {
 			t.Errorf("%s code: got %d, want %d", method, resp.Error.Code, protocol.CodeSessionNotFound)
 		}
 	}
+}
+
+// stuckConn accepts no writes: a phone frozen in the background, whose socket
+// stays open with a full receive window.
+type stuckConn struct{}
+
+func (stuckConn) ReadJSON(ctx context.Context, _ any) error { <-ctx.Done(); return ctx.Err() }
+func (stuckConn) WriteJSON(ctx context.Context, _ any) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+func (stuckConn) Close(websocket.StatusCode, string) {}
+func (stuckConn) CloseNow()                          {}
+
+// Issue 110: with a phone asleep and the TUI open on one session, the TUI
+// heard nothing. The fan-out wrote to each subscriber in turn, so the frozen
+// one held up the rest, and the store then dropped the stalled pump.
+func TestAFrozenSubscriberDoesNotStallTheOthers(t *testing.T) {
+	hn := newHarness(t)
+	id := hn.mustCreate(t)
+
+	frozen := newConnState(context.Background(), stuckConn{})
+	t.Cleanup(func() { hn.h.dropConn(frozen); frozen.drop() })
+	hn.subscribeVia(t, frozen, id)
+	cs, rc := hn.attach(t)
+	hn.subscribeVia(t, cs, id)
+
+	// More than the store lets a pump fall behind by, read as they come:
+	// the recorder holds fewer than this.
+	const n = 2 * eventBuffer
+	heard := make(chan int)
+	go func() {
+		got := 0
+		for got < n {
+			select {
+			case m := <-rc.out:
+				if m.Method == "nabu.session.event" {
+					got++
+				}
+			case <-time.After(5 * time.Second):
+				heard <- got
+				return
+			}
+		}
+		heard <- got
+	}()
+	for i := range n {
+		if _, err := hn.m.SetGoal(context.Background(), id, fmt.Sprintf("goal %d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := <-heard; got != n {
+		t.Fatalf("the attentive client heard %d of %d events", got, n)
+	}
+
+	// And a client arriving afterwards hears the session too.
+	csC, rcC := hn.attach(t)
+	hn.subscribeVia(t, csC, id)
+	if _, err := hn.m.SetGoal(context.Background(), id, "after"); err != nil {
+		t.Fatal(err)
+	}
+	rcC.await(t, "nabu.session.event")
+}
+
+// A connection that stops reading is dropped once its queue is full, rather
+// than holding its messages forever.
+func TestAConnectionThatStopsReadingIsDropped(t *testing.T) {
+	c := &closeCounter{}
+	cs := newConnState(context.Background(), c)
+	t.Cleanup(cs.drop)
+	var err error
+	for i := 0; i <= sendQueue+1 && err == nil; i++ {
+		err = cs.write(jsonrpcNotification{JSONRPC: "2.0", Method: "m"})
+	}
+	if err == nil {
+		t.Fatal("a queue that never drains accepted everything")
+	}
+	if c.closed.Load() == 0 {
+		t.Error("a connection too far behind was not closed")
+	}
+}
+
+// closeCounter blocks every write and records being closed.
+type closeCounter struct {
+	stuckConn
+	closed atomic.Int32
+}
+
+func (c *closeCounter) CloseNow() { c.closed.Add(1) }
+
+// A session archived with a client attached, then restored, must be heard by
+// whoever subscribes next. The pump ended with the archive; left registered,
+// it was a dead stream every later subscriber joined.
+func TestSubscribingAfterRestoreHearsEvents(t *testing.T) {
+	hn := newHarness(t)
+	id := hn.mustCreate(t)
+	csA, _ := hn.attach(t)
+	hn.subscribeVia(t, csA, id)
+
+	for _, method := range []string{"nabu.session.archive", "nabu.session.restore"} {
+		if resp := hn.call(t, 2, method, map[string]any{"session_id": id}); resp.Error != nil {
+			t.Fatalf("%s: %+v", method, resp.Error)
+		}
+	}
+
+	csB, rcB := hn.attach(t)
+	hn.subscribeVia(t, csB, id)
+	if _, err := hn.m.SetGoal(context.Background(), id, "after restore"); err != nil {
+		t.Fatal(err)
+	}
+	rcB.await(t, "nabu.session.event")
 }

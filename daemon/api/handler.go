@@ -119,7 +119,10 @@ var jumpsQueue = map[string]bool{
 // Calls are still answered in the order they arrive, by one worker, except the
 // few in jumpsQueue.
 func (h *Handler) ServeConn(ctx context.Context, conn Conn) error {
-	cs := &connState{conn: conn, ctx: ctx}
+	cs := newConnState(ctx, conn)
+	// Deferred first so it runs last: the replies to calls still in hand are
+	// queued by then, and are written before the writer stops.
+	defer cs.finish()
 	defer h.dropConn(cs)
 
 	calls := make(chan json.RawMessage, callQueue)
