@@ -347,8 +347,15 @@ func FormatIndex(skills []Skill) string {
 	if len(skills) == 0 {
 		return ""
 	}
-	const header = "## Skills\n\nThe following skills are available. " +
-		"To read one, call `skill.load` with its name.\n\n"
+	// The header says when, not only how. "To read one, call skill.load"
+	// left it to the model to decide a skill was worth reading, and across
+	// every session on record it decided so three times: an Android session
+	// ran bare commands for an hour with android-dev listed right here.
+	const header = "## Skills\n\n" +
+		"Before starting a task, and again when the work turns to something new, " +
+		"check this list. If a skill's description matches what you are about to do, " +
+		"call `skill.load` with its name and follow it before doing anything else. " +
+		"A skill exists because the obvious approach already failed here.\n\n"
 
 	for _, limit := range []int{maxDescription, 80, 0} {
 		body := renderLines(skills, limit)
