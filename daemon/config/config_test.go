@@ -535,3 +535,22 @@ func TestProviderReplyCapIsConfigurable(t *testing.T) {
 		t.Errorf("max_tokens = %d, want 8192", got)
 	}
 }
+
+// How a model degenerates depends on the model, so the check that stops a
+// repeating reply is set per provider, and can be turned off.
+func TestProviderRepeatLimitIsConfigurable(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "config.json"),
+		[]byte(`{"providers":{"local":{"repeat_limit":12},"off":{"repeat_limit":-1},"plain":{}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]int{"local": 12, "off": -1, "plain": 0} {
+		if got := cfg.Providers[name].RepeatLimit; got != want {
+			t.Errorf("%s: repeat_limit = %d, want %d", name, got, want)
+		}
+	}
+}

@@ -17,6 +17,9 @@ type Fake struct {
 	// Partial is what arrived before a scheduled error, returned with it.
 	Partial map[int]Response
 	BlockOn chan struct{} // when non-nil, Complete waits for close or ctx
+	// Chunk, when set, streams reasoning then content in pieces of this many
+	// bytes, stopping with what had arrived if ctx is cancelled between them.
+	Chunk int
 
 	mu    sync.Mutex
 	Calls []Request
@@ -45,11 +48,21 @@ func (f *Fake) Complete(ctx context.Context, req Request, onDelta, onThinking fu
 		return Response{}, fmt.Errorf("fake provider: no scripted response for call %d", i+1)
 	}
 	r := f.Script[i]
-	if onThinking != nil && r.Reasoning != "" {
-		onThinking(r.Reasoning)
-	}
-	if onDelta != nil && r.Content != "" {
-		onDelta(r.Content)
+	if f.Chunk > 0 {
+		var got Response
+		if err := stream(ctx, r.Reasoning, f.Chunk, onThinking, &got.Reasoning); err != nil {
+			return got, err
+		}
+		if err := stream(ctx, r.Content, f.Chunk, onDelta, &got.Content); err != nil {
+			return got, err
+		}
+	} else {
+		if onThinking != nil && r.Reasoning != "" {
+			onThinking(r.Reasoning)
+		}
+		if onDelta != nil && r.Content != "" {
+			onDelta(r.Content)
+		}
 	}
 	if r.Usage == (protocol.Usage{}) {
 		r.Usage = protocol.Usage{InputTokens: 100, OutputTokens: 10}
@@ -62,6 +75,21 @@ func (f *Fake) Complete(ctx context.Context, req Request, onDelta, onThinking fu
 		}
 	}
 	return r, nil
+}
+
+// stream delivers text in pieces, recording what arrived, until ctx ends.
+func stream(ctx context.Context, text string, size int, on func(string), got *string) error {
+	for i := 0; i < len(text); i += size {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		piece := text[i:min(i+size, len(text))]
+		*got += piece
+		if on != nil {
+			on(piece)
+		}
+	}
+	return nil
 }
 
 // CallCount returns how many times Complete ran.

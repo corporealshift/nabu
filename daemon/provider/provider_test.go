@@ -66,3 +66,21 @@ func TestRegistryResolve(t *testing.T) {
 		t.Fatal("no default provider must be an error")
 	}
 }
+
+// A provider that sets no repeat limit gets the default, and a negative one
+// stays off: the runner reads it from the registry.
+func TestRepeatLimitDefaults(t *testing.T) {
+	r := NewRegistry()
+	for name, limit := range map[string]int{"plain": 0, "set": 12, "off": -1} {
+		r.Add(Config{Name: name, RepeatLimit: limit}, &Fake{}, false)
+	}
+	for name, want := range map[string]int{"plain": DefaultRepeatLimit, "set": 12, "off": -1} {
+		_, _, cfg, err := r.Resolve(name + "/m")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.RepeatLimit != want {
+			t.Errorf("%s: repeat limit %d, want %d", name, cfg.RepeatLimit, want)
+		}
+	}
+}

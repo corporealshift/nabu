@@ -512,3 +512,123 @@ func TestAPartialReplyIsQuotedByItsEnd(t *testing.T) {
 		t.Error("a call that wrote nothing should say nothing")
 	}
 }
+
+// 01M39RT5: the reply repeated one paragraph for 7.5 minutes. Watching the
+// stream stops it within a few copies, keeps the runaway out of the log, and
+// blocks the session so the person decides what comes next.
+func TestARepeatingReplyIsStoppedAndBlocksTheSession(t *testing.T) {
+	thinking := testdata(t, "degenerate-thinking.txt")
+	reply := testdata(t, "degenerate-reply.txt")
+	h := newHarness(t, nil, []provider.Response{
+		{Reasoning: thinking, Content: reply,
+			ToolCalls: []provider.ToolCall{{ID: "c1", Name: "write", Arguments: json.RawMessage(`{"path":"after.txt","content":"x"}`)}}},
+		{Content: "a turn that must not be taken"},
+	})
+	h.fake.Chunk = 20
+	s := h.create(t)
+	h.m.Prompt(context.Background(), s.ID(), "create a PR for this work")
+	h.m.WaitIdle(s.ID())
+
+	if st := s.State(); st.State != protocol.StateBlocked {
+		t.Fatalf("state = %s, want blocked", st.State)
+	}
+	if len(h.fake.Calls) != 1 {
+		t.Fatalf("no further turn may be taken, made %d requests", len(h.fake.Calls))
+	}
+	if _, err := os.Stat(filepath.Join(h.dir, "after.txt")); err == nil {
+		t.Fatal("a call in a stopped reply must not run")
+	}
+	var thought, said, notice string
+	var change bool
+	for _, e := range s.Events() {
+		switch e.Type {
+		case protocol.EventThinking:
+			thought = protocol.MustData[protocol.ThinkingData](e).Content
+		case protocol.EventMessage:
+			if d := protocol.MustData[protocol.MessageData](e); d.Role == "assistant" {
+				said = d.Content
+			}
+		case protocol.EventNotice:
+			notice = protocol.MustData[protocol.NoticeData](e).Message
+		case protocol.EventToolCall, protocol.EventToolResult:
+			t.Fatalf("no call from a stopped reply is logged: %s", e.Type)
+		case protocol.EventStateChange:
+			d := protocol.MustData[protocol.StateChangeData](e)
+			change = change || (d.To == protocol.StateBlocked && d.Reason == "the reply repeated itself")
+		}
+	}
+	// The thinking tripped first; the reply never streamed.
+	if thought == "" || len(thought) > 1024 || strings.Count(thought, "I need to reset main back") != 1 {
+		t.Errorf("logged thinking (%d bytes) should hold one copy:\n%s", len(thought), thought)
+	}
+	if said != "" {
+		t.Errorf("the reply began after the thinking tripped, so nothing of it is logged: %q", said)
+	}
+	for _, w := range []string{"the model's thinking repeated one passage", "times, so it was stopped after", "I need to reset main back"} {
+		if !strings.Contains(notice, w) {
+			t.Errorf("notice missing %q: %s", w, notice)
+		}
+	}
+	if !change {
+		t.Error("the session should block with reason \"the reply repeated itself\"")
+	}
+}
+
+// With the check off, a repeating reply runs as it always did.
+func TestARepeatWatchOffLetsTheReplyRun(t *testing.T) {
+	reply := testdata(t, "degenerate-reply.txt")
+	h := newHarnessWithProvider(t, provider.Config{Name: "fake", ContextWindow: 128000, RepeatLimit: -1}, []provider.Response{
+		{Content: reply},
+	})
+	h.fake.Chunk = 500
+	s := h.create(t)
+	h.m.Prompt(context.Background(), s.ID(), "go")
+	h.m.WaitIdle(s.ID())
+
+	if st := s.State(); st.State == protocol.StateBlocked {
+		t.Fatalf("state = %s, want not blocked", st.State)
+	}
+	var said string
+	for _, e := range s.Events() {
+		if e.Type == protocol.EventMessage {
+			if d := protocol.MustData[protocol.MessageData](e); d.Role == "assistant" {
+				said = d.Content
+			}
+		}
+	}
+	if said != reply {
+		t.Errorf("logged %d bytes, want the whole %d", len(said), len(reply))
+	}
+}
+
+// A reply with no thinking that repeats is cut to its first copy.
+func TestARepeatingReplyWithoutThinkingIsCut(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{{Content: testdata(t, "degenerate-reply.txt")}})
+	h.fake.Chunk = 20
+	s := h.create(t)
+	h.m.Prompt(context.Background(), s.ID(), "go")
+	h.m.WaitIdle(s.ID())
+
+	if st := s.State(); st.State != protocol.StateBlocked {
+		t.Fatalf("state = %s, want blocked", st.State)
+	}
+	var said, notice string
+	for _, e := range s.Events() {
+		switch e.Type {
+		case protocol.EventThinking:
+			t.Fatal("no thinking arrived, so none is logged")
+		case protocol.EventMessage:
+			if d := protocol.MustData[protocol.MessageData](e); d.Role == "assistant" {
+				said = d.Content
+			}
+		case protocol.EventNotice:
+			notice = protocol.MustData[protocol.NoticeData](e).Message
+		}
+	}
+	if len(said) > 1024 || strings.Count(said, "I need to reset main back") != 1 {
+		t.Errorf("logged reply (%d bytes) should hold one copy:\n%s", len(said), said)
+	}
+	if !strings.Contains(notice, "the model's reply repeated one passage") {
+		t.Errorf("notice: %s", notice)
+	}
+}
