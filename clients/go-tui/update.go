@@ -104,6 +104,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case askMsg:
 		q := msg.q
+		// Sent again after a reconnect: keep what has been typed so far.
+		if m.asking != nil && q.req.RequestID != "" && m.asking.req.RequestID == q.req.RequestID {
+			return m, nil
+		}
 		m.asking = &q
 		// The panel is taller than the composer it replaces.
 		m.relayout()

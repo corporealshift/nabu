@@ -222,7 +222,7 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 is Incoming.Permission -> _pendingPermission.value = msg.value
-                is Incoming.Ask -> _pendingAsk.value = msg.value
+                is Incoming.Ask -> _asks.value = withQuestion(_asks.value, msg.value)
                 else -> Unit
             }
         }
@@ -244,22 +244,26 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * The question the agent is waiting on, if any. One at a time: the agent is
-     * blocked until it is answered, so it cannot ask a second thing meanwhile.
+     * The questions agents are waiting on, oldest first. Each session asks one
+     * at a time, but several sessions can be waiting at once.
      */
-    private val _pendingAsk = MutableStateFlow<com.nabu.client.net.AskRequest?>(null)
-    val pendingAsk: StateFlow<com.nabu.client.net.AskRequest?> = _pendingAsk.asStateFlow()
+    private val _asks = MutableStateFlow<List<com.nabu.client.net.AskRequest>>(emptyList())
 
-    /** Answers the agent's question. A blank answer is not one, and is ignored. */
+    /** The question on screen: the oldest one waiting. */
+    val pendingAsk: StateFlow<com.nabu.client.net.AskRequest?> = _asks
+        .map { it.firstOrNull() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Answers the question on screen. A blank answer is not one, and is ignored. */
     fun answerQuestion(answer: String) {
-        val req = _pendingAsk.value ?: return
+        val req = _asks.value.firstOrNull() ?: return
         if (!canSend(answer)) return
         val c = client ?: return
         viewModelScope.launch {
             runCatching {
                 c.respond(req.id, askReply(answer))
             }
-            _pendingAsk.value = null
+            _asks.value = _asks.value.filterNot { it.requestId == req.requestId }
         }
     }
 

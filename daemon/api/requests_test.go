@@ -270,3 +270,88 @@ func lastErrorWrittenTo(cs *connState) *rpcError {
 	defer rc.mu.Unlock()
 	return rc.lastErr
 }
+
+// Issue 109: a question asked while the phone was asleep failed at once with
+// "no client is attached", so it could never be answered from the phone. It
+// now waits, and the phone is sent it when it wakes and subscribes.
+func TestAQuestionWaitsForSomeoneToAttach(t *testing.T) {
+	hn := newHarness(t)
+	id := hn.mustCreate(t)
+
+	got := make(chan string, 1)
+	errs := make(chan error, 1)
+	go func() {
+		a, err := hn.h.Ask(context.Background(), id, "which branch?", []string{"main", "p1b"})
+		got <- a
+		errs <- err
+	}()
+	reqID := hn.pendingID(t)
+
+	cs, rc := hn.attach(t)
+	hn.subscribeVia(t, cs, id)
+	sent := rc.await(t, "nabu.rpc.ui.ask")
+	if sent["request_id"] != reqID || sent["question"] != "which branch?" {
+		t.Fatalf("the late subscriber was sent %#v", sent)
+	}
+	hn.answer(t, cs, reqID, askReply{Answer: "main"})
+
+	select {
+	case a := <-got:
+		if a != "main" {
+			t.Errorf("answer: got %q, want %q", a, "main")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Ask never returned")
+	}
+	if err := <-errs; err != nil {
+		t.Errorf("Ask: %v", err)
+	}
+}
+
+// A client that subscribes while a request is open is sent it, once, and a
+// request already answered is not sent again.
+func TestSubscribingSendsWhatIsStillOpen(t *testing.T) {
+	hn := newHarness(t)
+	id := hn.mustCreate(t)
+	csA, rcA := hn.attach(t)
+	hn.subscribeVia(t, csA, id)
+
+	done := make(chan struct{})
+	go func() {
+		hn.h.Permission(context.Background(), id,
+			protocol.ToolCallData{Tool: "bash", CallID: "c1"}, "ls", "low")
+		close(done)
+	}()
+	reqID := hn.pendingID(t)
+	rcA.await(t, "nabu.rpc.permission.request")
+
+	csB, rcB := hn.attach(t)
+	hn.subscribeVia(t, csB, id)
+	if got := rcB.await(t, "nabu.rpc.permission.request"); got["request_id"] != reqID {
+		t.Fatalf("the late subscriber was sent %#v", got)
+	}
+	// Subscribing again, as a reconnecting client does, sends it again.
+	hn.subscribeVia(t, csB, id)
+	rcB.await(t, "nabu.rpc.permission.request")
+
+	hn.answer(t, csB, reqID, permissionReply{Verdict: "approve"})
+	<-done
+
+	csC, rcC := hn.attach(t)
+	hn.subscribeVia(t, csC, id)
+	csC.flush()
+	select {
+	case n := <-rcC.out:
+		t.Fatalf("an answered request was sent again: %s", n.Method)
+	default:
+	}
+	for _, rc := range []*recordConn{rcA, rcB} {
+		select {
+		case n := <-rc.out:
+			if n.Method == "nabu.rpc.permission.request" {
+				t.Fatal("a subscriber was sent the request twice")
+			}
+		default:
+		}
+	}
+}

@@ -372,3 +372,14 @@ func TestAConnectionStartsTheBackoffOver(t *testing.T) {
 		t.Fatalf("after a good connection the next wait is %v, want %v", got, minBackoff)
 	}
 }
+
+// A permission request sent again after a reconnect is not queued twice.
+func TestAPermissionRequestSentAgainIsNotQueuedTwice(t *testing.T) {
+	m := sized(t, nil)
+	req := promptMsg{p: prompt{id: "r1", req: goclient.PermissionRequest{RequestID: "r1", Summary: "x"}}}
+	m, _ = send(m, req)
+	m, _ = send(m, req)
+	if len(m.queued) != 0 {
+		t.Errorf("queued after a resend: %d, want 0", len(m.queued))
+	}
+}

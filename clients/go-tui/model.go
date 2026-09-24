@@ -351,11 +351,32 @@ func (m *model) addDelta(d goclient.SessionDelta) {
 
 // enqueue adds a permission request, showing it if nothing else is on screen.
 func (m *model) enqueue(p prompt) {
+	// The daemon sends what is still open to a client that subscribes, so a
+	// reconnect brings back a request already on screen.
+	if m.holdsPrompt(p.req.RequestID) {
+		return
+	}
 	if m.pending == nil {
 		m.pending = &p
 		return
 	}
 	m.queued = append(m.queued, p)
+}
+
+// holdsPrompt reports whether a permission request is showing or queued.
+func (m *model) holdsPrompt(requestID string) bool {
+	if requestID == "" {
+		return false
+	}
+	if m.pending != nil && m.pending.req.RequestID == requestID {
+		return true
+	}
+	for _, q := range m.queued {
+		if q.req.RequestID == requestID {
+			return true
+		}
+	}
+	return false
 }
 
 // resolve dismisses the current prompt and promotes the next.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -33,6 +34,10 @@ type pendingRequest struct {
 	sessionID string
 	answer    chan json.RawMessage
 
+	// req is the request as sent, so a client that attaches while it is open
+	// can be sent it too.
+	req jsonrpcRequest
+
 	mu    sync.Mutex
 	state requestState
 }
@@ -52,6 +57,13 @@ func (p *pendingRequest) resolve(raw json.RawMessage) requestState {
 		p.answer <- raw
 	}
 	return was
+}
+
+// isOpen reports whether the request still wants an answer.
+func (p *pendingRequest) isOpen() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.state == requestOpen
 }
 
 // markTimedOut moves an unanswered request to timed out.
@@ -95,22 +107,42 @@ func (h *Handler) requestTimeout() time.Duration {
 }
 
 // ask broadcasts a daemon-to-client request to every connection subscribed to
-// the session and waits for the first answer. It returns the raw result, or an
-// error if nobody was attached, nobody answered in time, or the caller's
-// context was cancelled.
-func (h *Handler) ask(ctx context.Context, sessionID, method string, params map[string]any) (json.RawMessage, error) {
-	subs := h.subscribers(sessionID)
-	if len(subs) == 0 {
-		return nil, fmt.Errorf("no client is attached to session %s", sessionID)
-	}
-
+// the session and waits for the first answer. A connection that subscribes
+// while the request is open is sent it then (see openRequests). It returns the
+// raw result, or an error if nobody answered in time or the caller's context
+// was cancelled.
+//
+// With nobody attached, waitForAttach decides between failing at once and
+// waiting for someone to arrive. A question waits: a phone in a pocket has no
+// socket until it is picked up, and a question that failed at once could never
+// be answered from it (issue 109). A permission request does not: refusing a
+// gated call at once is the safe outcome, and the model can carry on around it.
+func (h *Handler) ask(ctx context.Context, sessionID, method string, params map[string]any, waitForAttach bool) (json.RawMessage, error) {
 	id := protocol.NewULID()
 	params["session_id"] = sessionID
 	params["request_id"] = id
 
-	p := &pendingRequest{sessionID: sessionID, answer: make(chan json.RawMessage, 1)}
+	req := jsonrpcRequest{JSONRPC: "2.0", ID: id, Method: method}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+	req.Params = raw
+
+	// Registered and broadcast under reqMu, which a subscribe also holds while
+	// it joins and collects what is open: so a connection that subscribes now
+	// is sent the request exactly once, by one path or the other.
+	p := &pendingRequest{sessionID: sessionID, answer: make(chan json.RawMessage, 1), req: req}
 	h.reqMu.Lock()
+	subs := h.subscribers(sessionID)
+	if len(subs) == 0 && !waitForAttach {
+		h.reqMu.Unlock()
+		return nil, fmt.Errorf("no client is attached to session %s", sessionID)
+	}
 	h.pending[id] = p
+	for _, cs := range subs {
+		_ = cs.write(req)
+	}
 	h.reqMu.Unlock()
 
 	// The entry outlives the wait on purpose. Spec 7.18 requires that a late
@@ -124,16 +156,6 @@ func (h *Handler) ask(ctx context.Context, sessionID, method string, params map[
 			h.reqMu.Unlock()
 		})
 	}()
-
-	req := jsonrpcRequest{JSONRPC: "2.0", ID: id, Method: method}
-	raw, err := json.Marshal(params)
-	if err != nil {
-		return nil, err
-	}
-	req.Params = raw
-	for _, cs := range subs {
-		_ = cs.write(req)
-	}
 
 	timer := time.NewTimer(h.requestTimeout())
 	defer timer.Stop()
@@ -210,7 +232,7 @@ func (h *Handler) Permission(ctx context.Context, sessionID string, call protoco
 		"tool":    call.Tool,
 		"summary": summary,
 		"risk":    risk,
-	})
+	}, false)
 	if err != nil {
 		return false, err.Error()
 	}
@@ -234,7 +256,7 @@ func (h *Handler) Ask(ctx context.Context, sessionID, question string, choices [
 	if len(choices) > 0 {
 		params["choices"] = choices
 	}
-	raw, err := h.ask(ctx, sessionID, "nabu.rpc.ui.ask", params)
+	raw, err := h.ask(ctx, sessionID, "nabu.rpc.ui.ask", params, true)
 	if err != nil {
 		return "", err
 	}
@@ -243,4 +265,28 @@ func (h *Handler) Ask(ctx context.Context, sessionID, question string, choices [
 		return "", fmt.Errorf("unreadable answer: %w", err)
 	}
 	return reply.Answer, nil
+}
+
+// subscribeAndCatchUp subscribes cs to a session and sends it every request
+// still waiting on an answer there. Without the catch-up, a question asked
+// while the phone was asleep was never shown on it, even after it woke and
+// subscribed (issue 109).
+func (h *Handler) subscribeAndCatchUp(sessionID string, cs *connState) *protocol.RPCError {
+	h.reqMu.Lock()
+	defer h.reqMu.Unlock()
+	if rpcErr := h.subscribe(sessionID, cs); rpcErr != nil {
+		return rpcErr
+	}
+	var open []*pendingRequest
+	for _, p := range h.pending {
+		if p.sessionID == sessionID && p.isOpen() {
+			open = append(open, p)
+		}
+	}
+	// Oldest first, as they were asked. Request ids are ULIDs.
+	sort.Slice(open, func(i, j int) bool { return open[i].req.ID.(string) < open[j].req.ID.(string) })
+	for _, p := range open {
+		_ = cs.write(p.req)
+	}
+	return nil
 }
