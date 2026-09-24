@@ -57,7 +57,8 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(func() { _ = m.Shutdown(context.Background()) })
 
 	hn := &harness{h: NewHandler(m, store, discardLogger()), m: m, fake: fake, store: store, dir: dir}
-	hn.cs = &connState{conn: &scriptedConn{}, ctx: context.Background()}
+	hn.cs = newConnState(context.Background(), &scriptedConn{})
+	t.Cleanup(hn.cs.finish)
 	return hn
 }
 

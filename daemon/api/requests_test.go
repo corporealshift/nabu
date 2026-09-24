@@ -265,6 +265,7 @@ func lastErrorWrittenTo(cs *connState) *rpcError {
 	if !ok {
 		return nil
 	}
+	cs.flush()
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	return rc.lastErr
