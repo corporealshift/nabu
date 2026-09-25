@@ -25,7 +25,14 @@ func (m *Module) recordProgress(ctx context.Context, s module.Session) {
 		return
 	}
 	name := progressName(s)
-	open := openTasks(s.State().Tasks)
+	tasks := s.State().Tasks
+	if len(tasks) == 0 {
+		// A session that never kept a task list says nothing about whether
+		// the work is finished. Treating that as "nothing is open" deleted the
+		// only record of an unfinished phase, and its done-when with it.
+		return
+	}
+	open := openTasks(tasks)
 
 	if len(open) == 0 {
 		m.forgetProgress(ctx, s, name)
@@ -102,6 +109,8 @@ func progressBody(open []protocol.Task) string {
 	}
 	b.WriteString("\n**Why:** a new session on this repository would otherwise start over.\n")
 	b.WriteString("**How to apply:** pick these up before starting anything new, " +
-		"and confirm with the owner if the work looks stale.\n")
+		"and confirm with the owner if the work looks stale. When you resume one, " +
+		"put it back on your task list with task.update, done_when and all, so " +
+		"finishing it means meeting that condition rather than deciding it is done.\n")
 	return b.String()
 }

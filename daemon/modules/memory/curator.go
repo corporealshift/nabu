@@ -302,6 +302,12 @@ func (m *Module) curate(ctx context.Context, s module.Session) {
 	}
 
 	for _, p := range parseProposals(resp.Content, m.CuratorMaxPerPass) {
+		// The in-progress memory is written from the task list, never from a
+		// reading of the transcript. The curator once overwrote it with "Phase
+		// 9 is COMPLETE" on the word of the model that had just given up on it.
+		if Slug(p.Name) == progressName(s) {
+			continue
+		}
 		m.write(ctx, s, p)
 	}
 

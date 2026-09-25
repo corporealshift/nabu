@@ -430,3 +430,74 @@ func TestDottedFilesAreNotAChange(t *testing.T) {
 		t.Errorf("want only pkg/main.go reported, got:\n%s", got)
 	}
 }
+
+// shellCall runs fn as if it were a bash command: the gate sees the call, fn
+// changes the workspace, and the result comes back.
+func shellCall(t *testing.T, m *Module, s fakeSession, id string, res protocol.ToolResultData, fn func()) {
+	t.Helper()
+	call := protocol.ToolCallData{CallID: id, Tool: "bash", Arguments: json.RawMessage(`{"command":"rm -f a.txt"}`)}
+	if v := m.GateTool(context.Background(), s, call); v.Decision != module.Allow {
+		t.Fatalf("watch must never object to a call: %+v", v)
+	}
+	fn()
+	m.ToolResult(context.Background(), s, call, res)
+}
+
+// An `rm` of the model's own test files was reported to it as someone else's
+// change, and it concluded the person had deleted them.
+func TestWhatAShellCommandChangedIsTheAgentsOwn(t *testing.T) {
+	m, s := newModule(t, nil)
+	write(t, s.dir, "a.txt", "the agent's test")
+	write(t, s.dir, "theirs.txt", "before")
+	if _, err := m.SessionStart(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+
+	shellCall(t, m, s, "c1", protocol.ToolResultData{Status: "ok"}, func() {
+		if err := os.Remove(filepath.Join(s.dir, "a.txt")); err != nil {
+			t.Fatal(err)
+		}
+		write(t, s.dir, "out/report.txt", "made by the command")
+	})
+	touch(t, s.dir, "theirs.txt", "somebody else, after the command")
+
+	got := request(t, m, s)
+	for _, own := range []string{"a.txt", "report.txt"} {
+		if strings.Contains(got, own) {
+			t.Errorf("the command's own change to %s was reported back:\n%s", own, got)
+		}
+	}
+	if !strings.Contains(got, "theirs.txt") {
+		t.Errorf("a change made outside the command should still be reported:\n%s", got)
+	}
+}
+
+// A command that exits non-zero may still have changed files.
+func TestAFailedShellCommandStillOwnsItsChanges(t *testing.T) {
+	m, s := newModule(t, nil)
+	write(t, s.dir, "a.txt", "before")
+	if _, err := m.SessionStart(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	shellCall(t, m, s, "c1", protocol.ToolResultData{Status: "error", Kind: "exit"}, func() {
+		touch(t, s.dir, "a.txt", "half-written, then it failed")
+	})
+	if got := request(t, m, s); strings.Contains(got, "a.txt") {
+		t.Errorf("a failed command's own change was reported back:\n%s", got)
+	}
+}
+
+// A command that was refused never ran, so whatever changed was somebody else.
+func TestADeniedShellCommandClaimsNothing(t *testing.T) {
+	m, s := newModule(t, nil)
+	write(t, s.dir, "a.txt", "before")
+	if _, err := m.SessionStart(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	shellCall(t, m, s, "c1", protocol.ToolResultData{Status: "error", Kind: protocol.ToolErrorDenied}, func() {
+		touch(t, s.dir, "a.txt", "somebody else, while it was being refused")
+	})
+	if got := request(t, m, s); !strings.Contains(got, "a.txt") {
+		t.Errorf("a change during a refused command should be reported:\n%s", got)
+	}
+}

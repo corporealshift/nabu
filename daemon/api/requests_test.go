@@ -54,7 +54,7 @@ func TestPermissionFirstResponderWins(t *testing.T) {
 	verdict := make(chan bool, 1)
 	reason := make(chan string, 1)
 	go func() {
-		ok, why := hn.h.Permission(context.Background(), id,
+		ok, why, _ := hn.h.Permission(context.Background(), id,
 			protocol.ToolCallData{Tool: "bash", CallID: "c1"}, "rm -rf /", "high")
 		verdict <- ok
 		reason <- why
@@ -128,10 +128,13 @@ func TestPermissionDeniedWhenNobodyIsAttached(t *testing.T) {
 	hn := newHarness(t)
 	id := hn.mustCreate(t)
 
-	ok, reason := hn.h.Permission(context.Background(), id,
+	ok, reason, answered := hn.h.Permission(context.Background(), id,
 		protocol.ToolCallData{Tool: "bash", CallID: "c1"}, "ls", "low")
 	if ok {
 		t.Fatal("with nobody attached, a gated call must be denied")
+	}
+	if answered {
+		t.Error("nobody was attached, so nobody answered")
 	}
 	if reason == "" {
 		t.Error("a denial should say why")
@@ -146,10 +149,13 @@ func TestPermissionTimesOutAndDenies(t *testing.T) {
 	hn.subscribeVia(t, cs, id)
 
 	start := time.Now()
-	ok, reason := hn.h.Permission(context.Background(), id,
+	ok, reason, answered := hn.h.Permission(context.Background(), id,
 		protocol.ToolCallData{Tool: "bash", CallID: "c1"}, "ls", "low")
 	if ok {
 		t.Fatal("an unanswered request must deny")
+	}
+	if answered {
+		t.Error("a timeout is not an answer")
 	}
 	if reason == "" {
 		t.Error("a timeout should say why")

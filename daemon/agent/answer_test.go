@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/corporealshift/nabu/daemon/module"
@@ -49,7 +48,7 @@ func TestAQuestionIsAnsweredNotTakenAsWork(t *testing.T) {
 			edit = *protocol.MustData[protocol.ToolResultData](e)
 		}
 	}
-	if edit.Status != "error" || !strings.Contains(edit.Content, "denied") {
+	if edit.Status != "error" || edit.Kind != protocol.ToolErrorDenied {
 		t.Fatalf("the edit should have waited for approval and, with nobody attached, been refused: %+v", edit)
 	}
 	if vetoes != 0 {

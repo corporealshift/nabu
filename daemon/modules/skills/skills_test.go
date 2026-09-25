@@ -575,3 +575,15 @@ func TestConcurrentSessionStartsAreSafe(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// The index must say when to load a skill, not only how. With only "to read
+// one, call skill.load", skills were loaded three times across every session
+// on record.
+func TestTheIndexSaysWhenToLoadASkill(t *testing.T) {
+	got := FormatIndex([]Skill{{Name: "android-dev", Description: "Use for any Android work"}})
+	for _, want := range []string{"Before starting a task", "matches what you are about to do", "follow it before doing anything else"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("index is missing %q:\n%s", want, got)
+		}
+	}
+}

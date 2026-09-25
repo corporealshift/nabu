@@ -94,6 +94,9 @@ type sessionState struct {
 	// model's own edits back to it is noise, and noise in every request is
 	// worse than a gap in an unlikely one.
 	mine map[string]bool
+	// before holds the snapshot taken just before a shell command ran, by
+	// call id, so what the command changed can be counted as the agent's.
+	before map[string]snapshot
 	// off stops scanning this session after the workspace proved too large.
 	off bool
 }
@@ -195,6 +198,43 @@ func (m *Module) BeforeRequest(_ context.Context, s module.Session) ([]module.Co
 	return []module.ContextBlock{{Slot: "suffix", Content: render(s.Workspace().Path, changes, m.maxReported)}}, nil
 }
 
+// shellTools run arbitrary commands, so what they change can only be learned by
+// looking before and after.
+var shellTools = map[string]bool{"bash": true, "wait": true}
+
+// GateTool implements module.ToolGate, only to look at the workspace before a
+// shell command runs. It never objects to anything.
+//
+// write and edit name their path, but a shell command does not: an `rm` of the
+// model's own test files was reported to it as a change "not because of your
+// own edits", and it concluded the person had deleted them. A snapshot taken
+// here, compared with one taken when the command returns, is what the command
+// did.
+func (m *Module) GateTool(_ context.Context, s module.Session, call protocol.ToolCallData) module.Verdict {
+	allow := module.Verdict{Decision: module.Allow}
+	if !m.enabled || s == nil || !shellTools[call.Tool] {
+		return allow
+	}
+	st := m.stateFor(s.ID())
+	m.mu.Lock()
+	off := st.off
+	m.mu.Unlock()
+	if off {
+		return allow
+	}
+	snap, ok := m.scan(s.Workspace().Path)
+	if !ok {
+		return allow
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if st.before == nil {
+		st.before = map[string]snapshot{}
+	}
+	st.before[call.CallID] = snap
+	return allow
+}
+
 // ToolResult records what the agent itself wrote, so its own edits are not
 // reported back to it next turn.
 //
@@ -203,7 +243,14 @@ func (m *Module) BeforeRequest(_ context.Context, s module.Session) ([]module.Co
 // here is what the next diff compares against. Suppressing the model's own
 // edits every turn is worth that.
 func (m *Module) ToolResult(_ context.Context, s module.Session, call protocol.ToolCallData, res protocol.ToolResultData) {
-	if !m.enabled || res.Status != "ok" {
+	if !m.enabled {
+		return
+	}
+	if shellTools[call.Tool] {
+		m.claimShellChanges(s, call, res)
+		return
+	}
+	if res.Status != "ok" {
 		return
 	}
 	if call.Tool != "write" && call.Tool != "edit" {
@@ -224,6 +271,35 @@ func (m *Module) ToolResult(_ context.Context, s module.Session, call protocol.T
 		st.mine = map[string]bool{}
 	}
 	st.mine[filepath.Clean(abs)] = true
+}
+
+// claimShellChanges counts what a shell command changed as the agent's own.
+//
+// A command that failed may still have changed files, so the exit status does
+// not matter. A command that never ran did not, so a denied one claims
+// nothing.
+func (m *Module) claimShellChanges(s module.Session, call protocol.ToolCallData, res protocol.ToolResultData) {
+	st := m.stateFor(s.ID())
+	m.mu.Lock()
+	before, ok := st.before[call.CallID]
+	delete(st.before, call.CallID)
+	m.mu.Unlock()
+	if !ok || res.Kind == protocol.ToolErrorDenied {
+		return
+	}
+	after, ok := m.scan(s.Workspace().Path)
+	if !ok {
+		return
+	}
+	changes := diff(before, after, nil)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if st.mine == nil {
+		st.mine = map[string]bool{}
+	}
+	for _, c := range changes {
+		st.mine[c.Path] = true
+	}
 }
 
 // SessionEnd drops the session's snapshot. A daemon that runs for weeks should
