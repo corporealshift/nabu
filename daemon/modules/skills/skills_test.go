@@ -495,6 +495,15 @@ func TestImplementsItsHooks(t *testing.T) {
 	if _, ok := m.(module.CompactionHook); !ok {
 		t.Error("not a CompactionHook")
 	}
+	if _, ok := m.(module.ToolObserver); !ok {
+		t.Error("not a ToolObserver, so touching a covered file reminds nobody")
+	}
+	if _, ok := m.(module.RequestHook); !ok {
+		t.Error("not a RequestHook, so a reminder never reaches the model")
+	}
+	if _, ok := m.(module.SessionEnder); !ok {
+		t.Error("not a SessionEnder, so reminders outlive their session")
+	}
 }
 
 // Skills are edited far more often than the daemon is restarted, so a session

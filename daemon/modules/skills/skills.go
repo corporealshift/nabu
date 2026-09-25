@@ -35,6 +35,9 @@ type Skill struct {
 	Description string
 	// Path is the absolute path to the skill's SKILL.md.
 	Path string
+	// Covers are the workspace files the skill is about, from the nabu-only
+	// "paths" frontmatter key. Touching one reminds the model of the skill.
+	Covers []glob
 }
 
 // Module discovers skills and offers them to the model: an index as a prefix
@@ -48,6 +51,9 @@ type Module struct {
 	mu     sync.RWMutex
 	skills []Skill
 	log    logger
+
+	// rem holds reminders waiting for a session's next request.
+	rem reminders
 }
 
 // logger is the slice of the host we need, so tests need no host at all.
@@ -243,8 +249,8 @@ func walk(dir string, depth int, seen map[string]bool, found func(Skill), log lo
 	}
 }
 
-// parseSkill reads a SKILL.md's frontmatter. Only name and description are
-// used; any other key is ignored.
+// parseSkill reads a SKILL.md's frontmatter. Only name, description and paths
+// are used; any other key is ignored.
 func parseSkill(path string) (Skill, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -258,7 +264,8 @@ func parseSkill(path string) (Skill, error) {
 	if name == "" {
 		return Skill{}, fmt.Errorf("frontmatter has no name")
 	}
-	return Skill{Name: name, Description: front["description"], Path: path}, nil
+	return Skill{Name: name, Description: front["description"], Path: path,
+		Covers: parseGlobs(front["paths"])}, nil
 }
 
 // frontmatter extracts the leading --- delimited block as key/value pairs.

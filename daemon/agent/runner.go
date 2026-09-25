@@ -58,15 +58,21 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 	maxTokens := replyCap(log, pcfg, m.cfg.MaxTokens)
 	req := buildRequest(log, m.cfg.SystemPrompt, modelName, m.toolsFor(pcfg), maxTokens)
 	turnID := protocol.NewULID()
-	// Each stream is watched on its own, and one that starts repeating a
+	// Each stream is watched on its own. A reply that starts repeating a
 	// passage ends the call within a few copies rather than at the cap.
+	//
+	// Thinking that repeats is only trimmed from the log. Stopping it ended
+	// two turns, and blocked the session each time, a thousand tokens into a
+	// loop the server's own reasoning budget would have closed with "let's
+	// answer now". Thinking never goes back to the model, so the loop costs
+	// time, and the reply cap bounds that where a server sets no budget.
 	callCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	reply, thought := newRepeatWatch(pcfg.RepeatLimit), newRepeatWatch(pcfg.RepeatLimit)
-	var tripped *repeatWatch
+	replyTripped := false
 	onDelta := func(text string) {
-		if tripped == nil && reply.add(text) {
-			tripped = reply
+		if !replyTripped && reply.add(text) {
+			replyTripped = true
 			cancel()
 		}
 		if m.deps.Deltas != nil {
@@ -74,17 +80,14 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 		}
 	}
 	onThinking := func(text string) {
-		if tripped == nil && thought.add(text) {
-			tripped = thought
-			cancel()
-		}
+		thought.add(text)
 		if m.deps.Thinking != nil {
 			m.deps.Thinking(h.ID(), turnID, text)
 		}
 	}
 	resp, err := p.Complete(callCtx, req, onDelta, onThinking)
-	if tripped != nil && ctx.Err() == nil {
-		return false, m.stopRepeating(ctx, h, thought, reply, tripped == thought)
+	if replyTripped && ctx.Err() == nil {
+		return false, m.stopRepeating(ctx, h, thought, reply, resp.Reasoning)
 	}
 	if err != nil {
 		if ctx.Err() != nil {
@@ -101,11 +104,8 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 
 	// Thinking is appended first, so a reader that stops at the message has
 	// already seen the reasoning behind it (spec 3.1).
-	if resp.Reasoning != "" {
-		thought := protocol.ThinkingData{Content: resp.Reasoning, Source: "model"}
-		if _, err := h.s.Append(protocol.EventThinking, thought); err != nil {
-			return false, err
-		}
+	if err := m.logThinking(h, thought, resp.Reasoning); err != nil {
+		return false, err
 	}
 
 	// The provider rebuilt a call the server had reported as thinking. Saying
@@ -168,28 +168,41 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 	return m.askStopGate(ctx, h)
 }
 
+// logThinking appends a turn's thinking, with any repeated run collapsed to
+// one copy and a notice saying so. The whole stream went to clients live; the
+// log keeps what a reader needs, not the runaway.
+func (m *Manager) logThinking(h *sessionHandle, thought *repeatWatch, reasoning string) error {
+	if reasoning == "" {
+		return nil
+	}
+	text, dropped := thought.collapsed(reasoning)
+	if _, err := h.s.Append(protocol.EventThinking, protocol.ThinkingData{Content: text, Source: "model"}); err != nil {
+		return err
+	}
+	if dropped > 0 {
+		h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "info", Message: fmt.Sprintf(
+			"the model's thinking repeated one passage %d more times; the copies were dropped from the log and the turn went on. The passage: %q",
+			dropped, strings.ToValidUTF8(truncateText(thought.passage(), 200), ""))})
+	}
+	return nil
+}
+
 // stopRepeating ends a turn whose reply began repeating one passage. What
 // streamed is logged only up to the first copy, so the runaway is never sent
 // back to the model that wrote it, and no call in it runs. The session blocks
 // rather than retrying: a model that does this has usually been circling for
 // a while, and the person decides what comes next.
-func (m *Manager) stopRepeating(ctx context.Context, h *sessionHandle, thought, reply *repeatWatch, inThinking bool) error {
-	if t := thought.kept(); t != "" {
-		if _, err := h.s.Append(protocol.EventThinking, protocol.ThinkingData{Content: t, Source: "model"}); err != nil {
-			return err
-		}
+func (m *Manager) stopRepeating(ctx context.Context, h *sessionHandle, thought, reply *repeatWatch, reasoning string) error {
+	if err := m.logThinking(h, thought, reasoning); err != nil {
+		return err
 	}
 	if _, err := h.s.Append(protocol.EventMessage, protocol.MessageData{Role: "assistant", Content: reply.kept()}); err != nil {
 		return err
 	}
 	m.deps.Modules.TurnEnd(ctx, h)
-	w, which := reply, "reply"
-	if inThinking {
-		w, which = thought, "thinking"
-	}
 	h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "warn", Message: fmt.Sprintf(
-		"the model's %s repeated one passage %d times, so it was stopped after %d bytes and %d were dropped. The passage: %q",
-		which, w.repeats(), w.length(), w.length()-len(w.kept()), strings.ToValidUTF8(truncateText(w.passage(), 200), ""))})
+		"the model's reply repeated one passage %d times, so it was stopped after %d bytes and %d were dropped. The passage: %q",
+		reply.repeats(), reply.length(), reply.length()-len(reply.kept()), strings.ToValidUTF8(truncateText(reply.passage(), 200), ""))})
 	return m.finish(ctx, h, protocol.StateBlocked, "the reply repeated itself")
 }
 

@@ -105,3 +105,22 @@ func TestARepeatWatchCanBeOff(t *testing.T) {
 		t.Fatalf("an off watch tripped at %d", at)
 	}
 }
+
+func TestCollapsedKeepsWhatFollowsTheRun(t *testing.T) {
+	passage := "I keep saying the same thing over and over, at some length here. "
+	full := "Start. " + strings.Repeat(passage, 12) + "Then I answer."
+	w := newRepeatWatch(8)
+	for i := 0; i < len(full); i += 7 {
+		w.add(full[i:min(i+7, len(full))])
+	}
+	got, dropped := w.collapsed(full)
+	if dropped == 0 || strings.Count(got, passage) > 1 {
+		t.Errorf("run not collapsed (dropped %d):\n%s", dropped, got)
+	}
+	if !strings.HasPrefix(got, "Start. ") || !strings.HasSuffix(got, "Then I answer.") {
+		t.Errorf("what came before or after the run was lost:\n%s", got)
+	}
+	if plain, n := newRepeatWatch(8).collapsed("nothing repeats"); plain != "nothing repeats" || n != 0 {
+		t.Errorf("an untripped watch changed the text: %q, %d", plain, n)
+	}
+}

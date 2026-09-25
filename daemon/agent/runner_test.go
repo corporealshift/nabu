@@ -557,20 +557,65 @@ func TestARepeatingReplyIsStoppedAndBlocksTheSession(t *testing.T) {
 			change = change || (d.To == protocol.StateBlocked && d.Reason == "the reply repeated itself")
 		}
 	}
-	// The thinking tripped first; the reply never streamed.
-	if thought == "" || len(thought) > 1024 || strings.Count(thought, "I need to reset main back") != 1 {
-		t.Errorf("logged thinking (%d bytes) should hold one copy:\n%s", len(thought), thought)
+	// The thinking repeated too, but only the reply stops a turn. The thinking
+	// is logged with its run collapsed and the server's own way out kept.
+	if len(thought) > 1024 || !strings.Contains(thought, "more times; dropped from the log") ||
+		!strings.Contains(thought, "let's answer now") {
+		t.Errorf("logged thinking (%d bytes) should be collapsed:\n%s", len(thought), thought)
 	}
-	if said != "" {
-		t.Errorf("the reply began after the thinking tripped, so nothing of it is logged: %q", said)
+	if len(said) > 1024 || strings.Count(said, "I need to reset main back") != 1 {
+		t.Errorf("logged reply (%d bytes) should hold one copy:\n%s", len(said), said)
 	}
-	for _, w := range []string{"the model's thinking repeated one passage", "times, so it was stopped after", "I need to reset main back"} {
+	for _, w := range []string{"the model's reply repeated one passage", "times, so it was stopped after", "I need to reset main back"} {
 		if !strings.Contains(notice, w) {
 			t.Errorf("notice missing %q: %s", w, notice)
 		}
 	}
 	if !change {
 		t.Error("the session should block with reason \"the reply repeated itself\"")
+	}
+}
+
+// 01M3B65R: thinking looped, was stopped a thousand tokens in, and blocked the
+// session twice, once straight after "continue here". Thinking that repeats
+// now only costs time: the turn goes on, its call runs, and the log keeps one
+// copy.
+func TestRepeatingThinkingDoesNotStopTheTurn(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{
+		{Reasoning: testdata(t, "degenerate-thinking.txt"), Content: "writing it now",
+			ToolCalls: []provider.ToolCall{{ID: "c1", Name: "write", Arguments: json.RawMessage(`{"path":"after.txt","content":"x"}`)}}},
+		{Content: "done"},
+	})
+	h.fake.Chunk = 20
+	s := h.create(t)
+	h.m.Prompt(context.Background(), s.ID(), "continue here")
+	h.m.WaitIdle(s.ID())
+
+	if st := s.State(); st.State == protocol.StateBlocked {
+		t.Fatalf("state = %s: repeating thinking must not block the session", st.State)
+	}
+	if _, err := os.Stat(filepath.Join(h.dir, "after.txt")); err != nil {
+		t.Fatal("the call after the thinking should have run")
+	}
+	if len(h.fake.Calls) != 2 {
+		t.Errorf("the turn should continue, made %d requests", len(h.fake.Calls))
+	}
+	var thought, notice string
+	for _, e := range s.Events() {
+		switch e.Type {
+		case protocol.EventThinking:
+			if thought == "" {
+				thought = protocol.MustData[protocol.ThinkingData](e).Content
+			}
+		case protocol.EventNotice:
+			notice += protocol.MustData[protocol.NoticeData](e).Message + "\n"
+		}
+	}
+	if len(thought) > 1024 || !strings.Contains(thought, "more times; dropped from the log") {
+		t.Errorf("logged thinking (%d bytes) should be collapsed:\n%s", len(thought), thought)
+	}
+	if !strings.Contains(notice, "the turn went on") || strings.Contains(notice, "stopped") {
+		t.Errorf("notices should say the turn continued:\n%s", notice)
 	}
 }
 
