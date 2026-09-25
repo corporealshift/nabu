@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -91,6 +92,28 @@ func (w *repeatWatch) kept() string {
 		return text
 	}
 	return strings.ToValidUTF8(text[:w.start+w.period], "")
+}
+
+// collapsed is the whole of a stream with its repeated run reduced to one copy
+// and a marker, keeping whatever came after the run. full is the stream as it
+// finished; the watch stopped reading at the trip, so it cannot know the end.
+// The second result is how many copies were dropped.
+func (w *repeatWatch) collapsed(full string) (string, int) {
+	if w.period == 0 {
+		return full, 0
+	}
+	head := w.text.String()[:w.start+w.period]
+	if !strings.HasPrefix(full, head) {
+		return w.kept(), 0
+	}
+	passage := head[w.start:]
+	rest, dropped := full[len(head):], 0
+	for strings.HasPrefix(rest, passage) {
+		rest = rest[len(passage):]
+		dropped++
+	}
+	marker := fmt.Sprintf("\n[… the passage above repeated %d more times; dropped from the log]\n", dropped)
+	return strings.ToValidUTF8(head+marker+rest, ""), dropped
 }
 
 // repeats is how many copies had arrived when the watch tripped.
