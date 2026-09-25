@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -38,6 +39,9 @@ type Module struct {
 	RequireDoneWhen *bool
 	// Command is the project's canonical gate, run at the stop gate.
 	Command string
+	// Commands are gates for particular workspaces, keyed by workspaceKey. One
+	// replaces Command in its workspace; an empty one turns the gate off there.
+	Commands map[string]string
 	// RequireCleanTree vetoes a stop while the tree has uncommitted changes.
 	RequireCleanTree bool
 	// JudgeModel overrides the model used for the goal judge.
@@ -103,6 +107,9 @@ func (m *Module) Name() string { return "verify" }
 func (m *Module) Init(h module.Host, cfg module.Config) error {
 	m.host = h
 	m.Command = cfg.String("command", "")
+	if err := m.readCommands(cfg["commands"]); err != nil {
+		return err
+	}
 	m.JudgeModel = cfg.String("judge_model", "")
 	m.RequireCleanTree = cfg.Bool("require_clean_tree", true)
 
@@ -343,12 +350,57 @@ func failedCheckVeto(s module.Session) string {
 	return "these checks are failing:\n  - " + strings.Join(failed, "\n  - ")
 }
 
+// readCommands reads the per-workspace gates: an object of workspace path to
+// command.
+//
+// They live here because the workspace overlay (<workspace>/.nabu/config.json)
+// is never applied: module config is read once, for the whole daemon, so one
+// global "command" ran in every repository or in none. A gate is the one
+// setting that is plainly per project, and the module can pick it per session.
+func (m *Module) readCommands(raw any) error {
+	if raw == nil {
+		return nil
+	}
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return fmt.Errorf("verify: commands must be an object of workspace path to command, got %T", raw)
+	}
+	m.Commands = make(map[string]string, len(obj))
+	for path, v := range obj {
+		cmd, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("verify: the command for %s must be a string, got %T", path, v)
+		}
+		m.Commands[workspaceKey(path)] = cmd
+	}
+	return nil
+}
+
+// workspaceKey puts a workspace path in one comparable form: absolute, clean,
+// forward slashes, and lower case, since Windows paths are case-insensitive
+// and the same directory is written both ways.
+func workspaceKey(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	return strings.ToLower(filepath.ToSlash(filepath.Clean(p)))
+}
+
+// commandFor is the gate for a session's workspace.
+func (m *Module) commandFor(s module.Session) string {
+	if cmd, ok := m.Commands[workspaceKey(s.Workspace().Path)]; ok {
+		return cmd
+	}
+	return m.Command
+}
+
 // gateVeto runs the project's canonical gate and refuses a stop if it fails.
 func (m *Module) gateVeto(ctx context.Context, s module.Session) string {
-	if strings.TrimSpace(m.Command) == "" {
+	command := m.commandFor(s)
+	if strings.TrimSpace(command) == "" {
 		return ""
 	}
-	out, err := m.run(ctx, s.Workspace().Path, m.Command)
+	out, err := m.run(ctx, s.Workspace().Path, command)
 	status, summary := "pass", "exit 0"
 	if err != nil {
 		status, summary = "fail", truncate(err.Error(), maxSummary)
@@ -361,7 +413,7 @@ func (m *Module) gateVeto(ctx context.Context, s module.Session) string {
 		return ""
 	}
 	return fmt.Sprintf("the project gate failed: %s (%v)\n%s",
-		m.Command, err, tail(out, maxCheckOutput))
+		command, err, tail(out, maxCheckOutput))
 }
 
 // treeVeto targets the failure this whole module exists for: the agent
