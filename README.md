@@ -509,6 +509,17 @@ Everything below is optional. nabu works with none of it.
 Now the agent cannot finish a run while that command fails. This is the single most
 useful thing to configure.
 
+A gate for one repository goes under `commands`, keyed by its path. It replaces
+`command` there, and an empty string turns the gate off for that repository:
+
+```json
+{ "modules": { "verify": { "commands": {
+  "C:/src/app": "cd android && ./gradlew.sh :app:assembleDebug :app:testDebugUnitTest"
+} } } }
+```
+
+A gate runs for up to `command_timeout` seconds (default 300). Raise it for a slow build.
+
 ### Memory
 
 On by default. To seed it from an existing Claude Code memory directory, read-only:
