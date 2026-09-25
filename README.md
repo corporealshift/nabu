@@ -85,7 +85,9 @@ otherwise writes until the ten-minute timeout, and the turn is lost. A hosted AP
 allows less output than 16384 refuses the request outright, so set it lower there.
 **`repeat_limit`** stops a reply sooner when the model starts writing one passage over
 and over: 8 copies in a row of the same 40 bytes or more, unless set, and a negative value
-turns it off. The copies are not logged, and the session blocks for you to look.
+turns it off. The copies are not logged, and the session blocks for you to look. Thinking
+that repeats is only trimmed from the log; the turn goes on, and a server's reasoning
+budget or the reply cap ends it.
 
 Unknown fields are rejected rather than ignored, so a typo fails loudly at startup
 instead of silently doing nothing.
@@ -525,6 +527,11 @@ works when the model chooses to use it.
 Markdown instructions the agent can load on demand. It reads `~/.claude/skills` and
 `~/.nabu/skills` by default; point it elsewhere with
 `{"modules": {"skills": {"paths": ["..."]}}}`.
+
+A skill can name the files it covers with a `paths:` line in its frontmatter, a
+comma-separated list of globs such as `**/*.gradle.kts, **/AndroidManifest.xml`. The first
+time the agent touches a matching file without having loaded the skill, it is told to
+load it. Claude Code ignores the key.
 
 ### Permission mode
 
