@@ -509,7 +509,8 @@ Everything below is optional. nabu works with none of it.
 ```
 
 Now the agent cannot finish a run while that command fails. This is the single most
-useful thing to configure.
+useful thing to configure. It runs only when the turn changed something, so a question
+or a turn that only read files is never held up by a build it did not touch.
 
 A gate for one repository goes under `commands`, keyed by its path. It replaces
 `command` there, and an empty string turns the gate off for that repository:
