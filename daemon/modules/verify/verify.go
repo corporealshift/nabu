@@ -233,10 +233,11 @@ func byID(tasks []protocol.Task) map[string]protocol.Task {
 // ---------------------------------------------------------------------------
 // StopGate: deterministic checks first, then the judge.
 
-// BeforeStop implements module.StopGate. Spec 10.3 requires the cheap checks
-// to run before paying for a judge call, so the order here is load-bearing:
-// open tasks, undocumented blocks, failed checks, the gate, the tree, and only
-// then the judge.
+// BeforeStop implements module.StopGate. Without a goal it sends at most one
+// reminder a turn (remindOnce). With a goal, spec 10.3 requires the cheap
+// checks to run before paying for a judge call, so the order here is
+// load-bearing: open tasks, undocumented blocks, failed checks, the gate, the
+// tree, and only then the judge.
 func (m *Module) BeforeStop(ctx context.Context, s module.Session, info module.StopInfo) module.StopVerdict {
 	if s == nil {
 		return module.StopVerdict{Allow: true}
@@ -249,6 +250,13 @@ func (m *Module) BeforeStop(ctx context.Context, s module.Session, info module.S
 	// and every check below applies.
 	if answeredOnly(s) {
 		return module.StopVerdict{Allow: true}
+	}
+
+	// With the person watching, one reminder and then the stop. The vetoes
+	// below are for a run with a goal, where nobody is there to say "carry on"
+	// (docs/specs/2026-09-26-one-reminder-stop-design.md).
+	if !s.State().GoalActive() {
+		return m.remindOnce(ctx, s, info)
 	}
 
 	if reason := openTaskVeto(info.Tasks); reason != "" {
@@ -317,9 +325,19 @@ func openTaskVeto(tasks []protocol.Task) string {
 
 // failedCheckVeto refuses a stop while a mechanical check last failed.
 func failedCheckVeto(s module.Session) string {
+	failed := failedChecks(s)
+	if len(failed) == 0 {
+		return ""
+	}
+	return "these checks are failing:\n  - " + strings.Join(failed, "\n  - ")
+}
+
+// failedChecks names each check whose latest result is a failure, with its
+// summary, in the order the checks first appeared.
+func failedChecks(s module.Session) []string {
 	events, err := s.Events(nil)
 	if err != nil {
-		return ""
+		return nil
 	}
 	// Last status per check name wins: a later pass clears an earlier failure.
 	status := map[string]protocol.CheckData{}
@@ -344,10 +362,7 @@ func failedCheckVeto(s module.Session) string {
 			failed = append(failed, name+": "+d.Summary)
 		}
 	}
-	if len(failed) == 0 {
-		return ""
-	}
-	return "these checks are failing:\n  - " + strings.Join(failed, "\n  - ")
+	return failed
 }
 
 // readCommands reads the per-workspace gates: an object of workspace path to
@@ -433,12 +448,22 @@ func (m *Module) gateVeto(ctx context.Context, s module.Session) string {
 // tree and is asked a read-only question has nothing to answer for, and
 // vetoing there blocks work that was already finished.
 func (m *Module) treeVeto(s module.Session) string {
-	if !m.RequireCleanTree {
+	untracked, changed := m.sessionChanges(s)
+	if len(untracked)+len(changed) == 0 {
 		return ""
+	}
+	return treeReason(untracked, changed)
+}
+
+// sessionChanges are the paths git lists as untracked or changed that were not
+// already so when the session started. Both are empty with the check off.
+func (m *Module) sessionChanges(s module.Session) (untracked, changed []string) {
+	if !m.RequireCleanTree {
+		return nil, nil
 	}
 	now, ok := dirtyPaths(s.Workspace().Path)
 	if !ok || len(now) == 0 {
-		return ""
+		return nil, nil
 	}
 
 	m.mu.Lock()
@@ -448,10 +473,9 @@ func (m *Module) treeVeto(s module.Session) string {
 		// No baseline, so there is no way to tell whose changes these are.
 		// Staying quiet is the safe direction: the alternative blames the
 		// session for the whole tree.
-		return ""
+		return nil, nil
 	}
 
-	var untracked, changed []string
 	for p, code := range now {
 		if _, was := before.dirty[p]; was {
 			continue
@@ -462,10 +486,7 @@ func (m *Module) treeVeto(s module.Session) string {
 			changed = append(changed, p)
 		}
 	}
-	if len(untracked)+len(changed) == 0 {
-		return ""
-	}
-	return treeReason(untracked, changed)
+	return untracked, changed
 }
 
 // treeReason says what git reports and the only things that clear it.
