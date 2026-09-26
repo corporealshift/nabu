@@ -508,9 +508,16 @@ Everything below is optional. nabu works with none of it.
 { "modules": { "verify": { "command": "go build ./... && go test ./..." } } }
 ```
 
-Now the agent cannot finish a run while that command fails. This is the single most
-useful thing to configure. It runs only when the turn changed something, so a question
-or a turn that only read files is never held up by a build it did not touch.
+It runs only when the turn changed something, so a question or a turn that only read
+files is never held up by a build it did not touch.
+
+How hard nabu holds the agent to it depends on whether anyone is watching. In an
+ordinary session, when the agent finishes a turn that changed files, nabu reminds it
+once: what is uncommitted or unpushed, whether the branch has a pull request, which
+tasks are still open, and what the gate said. It asks the agent to commit and open a
+PR if the work is finished, or to say what is left if it is not, and then lets it stop.
+With a goal (`nabu run --done-when`), nobody is there to say "carry on", so the agent
+cannot finish while the command fails, the tree is dirty, or tasks are open.
 
 A gate for one repository goes under `commands`, keyed by its path. It replaces
 `command` there, and an empty string turns the gate off for that repository:

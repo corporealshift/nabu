@@ -24,6 +24,13 @@ func turn(t *testing.T, ws, prompt string, calls ...protocol.ToolCallData) *fake
 	return s
 }
 
+// strict gives a session an active goal: the mode with repeated vetoes, for a
+// run nobody is watching.
+func strict(s *fakeSession) *fakeSession {
+	s.state.Goal = &protocol.GoalData{Condition: "the work is done", State: "set"}
+	return s
+}
+
 // worked is a session whose turn wrote a file, so the gate applies to it.
 func worked(t *testing.T, ws string) *fakeSession {
 	t.Helper()
@@ -71,7 +78,7 @@ func TestATurnThatChangedSomethingIsGated(t *testing.T) {
 // the recorded check is what stops it, not a fresh run of the gate.
 func TestAFailureTheSessionCausedStillHoldsTheNextTurn(t *testing.T) {
 	m := newVerify(t, module.Config{"command": "exit 3", "require_clean_tree": false})
-	s := worked(t, t.TempDir())
+	s := strict(worked(t, t.TempDir()))
 	if v := m.BeforeStop(context.Background(), s, module.StopInfo{}); v.Allow {
 		t.Fatal("setup: the gate should fail")
 	}
