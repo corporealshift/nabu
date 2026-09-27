@@ -351,7 +351,7 @@ func TestWorkspaceGateVetoesOnFailure(t *testing.T) {
 	ws := t.TempDir()
 
 	failing := newVerify(t, module.Config{"command": "exit 3", "require_clean_tree": false})
-	s := &fakeSession{workspace: ws}
+	s := worked(t, ws)
 	v := failing.BeforeStop(context.Background(), s, module.StopInfo{})
 	if v.Allow {
 		t.Fatal("a failing gate must veto")
@@ -365,7 +365,7 @@ func TestWorkspaceGateVetoesOnFailure(t *testing.T) {
 	}
 
 	passing := newVerify(t, module.Config{"command": "exit 0", "require_clean_tree": false})
-	s2 := &fakeSession{workspace: ws}
+	s2 := worked(t, ws)
 	if v := passing.BeforeStop(context.Background(), s2, module.StopInfo{}); !v.Allow {
 		t.Errorf("a passing gate should allow, got %q", v.Reason)
 	}

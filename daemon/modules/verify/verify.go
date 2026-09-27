@@ -395,9 +395,19 @@ func (m *Module) commandFor(s module.Session) string {
 }
 
 // gateVeto runs the project's canonical gate and refuses a stop if it fails.
+//
+// Only a turn that changed the workspace is gated, as with the tree veto: the
+// gate answers for work, not for what the session walked into. Asked for a
+// README, a model replied without calling a tool, the gate failed on an
+// Android build it had never touched, and the session blocked. The follow-up
+// prompt then met the same recorded failure. A failure the session did cause
+// still holds a later turn, through failedCheckVeto.
 func (m *Module) gateVeto(ctx context.Context, s module.Session) string {
 	command := m.commandFor(s)
 	if strings.TrimSpace(command) == "" {
+		return ""
+	}
+	if log, err := s.Events(nil); err == nil && !module.ChangedSinceUser(log) {
 		return ""
 	}
 	out, err := m.run(ctx, s.Workspace().Path, command)

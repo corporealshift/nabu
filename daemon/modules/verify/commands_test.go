@@ -24,14 +24,14 @@ func TestAWorkspaceCommandReplacesTheGlobalOne(t *testing.T) {
 		},
 	})
 
-	v := m.BeforeStop(context.Background(), &fakeSession{workspace: android}, module.StopInfo{})
+	v := m.BeforeStop(context.Background(), worked(t, android), module.StopInfo{})
 	if v.Allow || !strings.Contains(v.Reason, "echo building the app") || !strings.Contains(v.Reason, "building the app") {
 		t.Errorf("the workspace's own gate should run and veto, got allow=%v %q", v.Allow, v.Reason)
 	}
-	if v := m.BeforeStop(context.Background(), &fakeSession{workspace: other}, module.StopInfo{}); !v.Allow {
+	if v := m.BeforeStop(context.Background(), worked(t, other), module.StopInfo{}); !v.Allow {
 		t.Errorf("another workspace should get the global gate, got %q", v.Reason)
 	}
-	s := &fakeSession{workspace: off}
+	s := worked(t, off)
 	if v := m.BeforeStop(context.Background(), s, module.StopInfo{}); !v.Allow {
 		t.Errorf("an empty workspace command turns the gate off, got %q", v.Reason)
 	}
@@ -44,10 +44,10 @@ func TestWorkspaceCommandsWithoutAGlobalOne(t *testing.T) {
 	ws := t.TempDir()
 	m := newVerify(t, module.Config{"require_clean_tree": false,
 		"commands": map[string]any{ws: "exit 2"}})
-	if v := m.BeforeStop(context.Background(), &fakeSession{workspace: ws}, module.StopInfo{}); v.Allow {
+	if v := m.BeforeStop(context.Background(), worked(t, ws), module.StopInfo{}); v.Allow {
 		t.Error("the workspace gate should run with no global command")
 	}
-	if v := m.BeforeStop(context.Background(), &fakeSession{workspace: t.TempDir()}, module.StopInfo{}); !v.Allow {
+	if v := m.BeforeStop(context.Background(), worked(t, t.TempDir()), module.StopInfo{}); !v.Allow {
 		t.Errorf("no gate anywhere else, got %q", v.Reason)
 	}
 }
