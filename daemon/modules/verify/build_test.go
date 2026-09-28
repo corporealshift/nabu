@@ -57,7 +57,7 @@ func TestBuildPrefix(t *testing.T) {
 func TestTheTreeVetoOffersOnlyWhatClearsIt(t *testing.T) {
 	ws := gitRepo(t)
 	m := newVerify(t, module.Config{})
-	s := &fakeSession{workspace: ws}
+	s := strict(&fakeSession{workspace: ws})
 	m.SessionStart(context.Background(), s)
 
 	writeAt(t, ws, "android/app/build/intermediates/x.bin")
@@ -87,7 +87,7 @@ func TestTheTreeVetoOffersOnlyWhatClearsIt(t *testing.T) {
 func TestTheTreeVetoSaysNothingAboutBuildOutputWhenThereIsNone(t *testing.T) {
 	ws := gitRepo(t)
 	m := newVerify(t, module.Config{})
-	s := &fakeSession{workspace: ws}
+	s := strict(&fakeSession{workspace: ws})
 	m.SessionStart(context.Background(), s)
 	writeAt(t, ws, "src/Main.kt")
 
@@ -112,7 +112,7 @@ func TestListSomeCountsWhatItLeavesOut(t *testing.T) {
 func TestCommittingBuildOutputVetoesUntilItIsUntracked(t *testing.T) {
 	ws := gitRepo(t)
 	m := newVerify(t, module.Config{})
-	s := &fakeSession{workspace: ws}
+	s := strict(&fakeSession{workspace: ws})
 	m.SessionStart(context.Background(), s)
 
 	writeAt(t, ws, "android/app/src/Main.kt")

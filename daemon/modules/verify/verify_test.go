@@ -279,7 +279,7 @@ func TestCommandTimeoutIsAFailure(t *testing.T) {
 
 func TestOpenTasksVeto(t *testing.T) {
 	m := newVerify(t, module.Config{})
-	s := &fakeSession{workspace: t.TempDir()}
+	s := strict(&fakeSession{workspace: t.TempDir()})
 	info := module.StopInfo{Tasks: []protocol.Task{
 		{ID: "t1", Title: "finished", Status: protocol.TaskDone},
 		{ID: "t2", Title: "still going", Status: protocol.TaskInProgress},
@@ -299,7 +299,7 @@ func TestOpenTasksVeto(t *testing.T) {
 // Spec 10.2: blocked tasks must carry a note; they are reported, not vetoed.
 func TestBlockedTaskNeedsANote(t *testing.T) {
 	m := newVerify(t, module.Config{})
-	s := &fakeSession{workspace: t.TempDir()}
+	s := strict(&fakeSession{workspace: t.TempDir()})
 
 	documented := module.StopInfo{Tasks: []protocol.Task{
 		{ID: "t1", Title: "waiting", Status: protocol.TaskBlocked, Note: "needs the API key"},
@@ -322,7 +322,7 @@ func TestBlockedTaskNeedsANote(t *testing.T) {
 
 func TestFailedCheckVetoes(t *testing.T) {
 	m := newVerify(t, module.Config{})
-	s := &fakeSession{workspace: t.TempDir()}
+	s := strict(&fakeSession{workspace: t.TempDir()})
 	_, _ = s.Append(protocol.EventCheck, protocol.CheckData{
 		Name: "task:t1", Kind: "command", Status: "fail", Summary: "exit 1"})
 
@@ -378,7 +378,7 @@ func TestWorkspaceGateVetoesOnFailure(t *testing.T) {
 func TestDirtyTreeVetoes(t *testing.T) {
 	ws := gitRepo(t)
 	m := newVerify(t, module.Config{})
-	s := &fakeSession{workspace: ws}
+	s := strict(&fakeSession{workspace: ws})
 	m.SessionStart(context.Background(), s)
 
 	// The session's own uncommitted work, made after it started.
@@ -731,7 +731,7 @@ func TestChangesMadeDuringTheSessionStillVeto(t *testing.T) {
 	dirtyFile(t, ws, "notes.txt")
 
 	m := newVerify(t, module.Config{})
-	s := &fakeSession{workspace: ws}
+	s := strict(&fakeSession{workspace: ws})
 	m.SessionStart(context.Background(), s)
 
 	dirtyFile(t, ws, "src.go") // the agent's own work
@@ -809,8 +809,10 @@ func TestAnAnsweredQuestionIsAFinishedTurn(t *testing.T) {
 	}{
 		{"answered", []protocol.Event{question, answer}, nil, true},
 		{"changed something while answering", []protocol.Event{question, edit, edited, answer}, nil, false},
-		{"a request, not a question",
-			[]protocol.Event{logged(t, "E1", protocol.EventMessage, protocol.MessageData{Role: "user", Content: "can you finish the port?"}), answer}, nil, false},
+		// Without a goal, a turn that changed nothing is not reminded of
+		// anything: the person is there to say "carry on".
+		{"a request, not a question, that changed nothing",
+			[]protocol.Event{logged(t, "E1", protocol.EventMessage, protocol.MessageData{Role: "user", Content: "can you finish the port?"}), answer}, nil, true},
 		{"a run with a goal", []protocol.Event{question, answer}, &protocol.GoalData{Condition: "done", State: "set"}, false},
 	}
 	for _, tc := range cases {
