@@ -19,18 +19,18 @@ const (
 
 // Comment is one comment on a pull request, of any kind.
 type Comment struct {
-	Kind   string
-	ID     int64
-	Author string
-	Body   string
+	Kind   string `json:"kind"`
+	ID     int64  `json:"id"`
+	Author string `json:"author,omitempty"`
+	Body   string `json:"body"`
 	// Path, Line and DiffHunk place a line comment; InReplyTo is the comment
 	// a reply in a thread answers.
-	Path      string
-	Line      int
-	DiffHunk  string
-	InReplyTo int64
-	Created   time.Time
-	URL       string
+	Path      string    `json:"path,omitempty"`
+	Line      int       `json:"line,omitempty"`
+	DiffHunk  string    `json:"diff_hunk,omitempty"`
+	InReplyTo int64     `json:"in_reply_to,omitempty"`
+	Created   time.Time `json:"created"`
+	URL       string    `json:"url,omitempty"`
 }
 
 // Root is the comment a line comment's thread starts from. GitHub takes

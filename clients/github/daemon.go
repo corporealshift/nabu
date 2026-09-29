@@ -22,6 +22,12 @@ func (c Client) Create(ctx context.Context, workspace string, maxTurns int) (str
 	return out.SessionID, err
 }
 
+func (c Client) SetGoal(ctx context.Context, sessionID, condition string) error {
+	return c.C.CallInto(ctx, "nabu.session.set_goal", map[string]any{
+		"session_id": sessionID, "condition": condition,
+	}, nil)
+}
+
 // promptClientID makes the one prompt a watcher session gets idempotent, so
 // sending it again after a crash does not append it twice (spec §7.4).
 const promptClientID = "nabu-github-prompt"

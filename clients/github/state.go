@@ -57,8 +57,10 @@ type Job struct {
 	Base string `json:"base"`
 	// HeadRef is the branch a comments job pushes to.
 	HeadRef string `json:"head_ref,omitempty"`
-	// Through is the newest comment of each kind a comments job answers.
-	Through Marks `json:"through,omitzero"`
+	// Through is the newest comment of each kind a comments job answers, and
+	// Due is those comments, kept so the replies can be built after a restart.
+	Through Marks     `json:"through,omitzero"`
+	Due     []Comment `json:"due,omitempty"`
 	// Prompt, Goal and MaxTurns are what the session is started with. They
 	// are kept so a restart can start it without asking GitHub again.
 	Prompt   string `json:"prompt,omitempty"`

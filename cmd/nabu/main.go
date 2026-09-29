@@ -40,7 +40,8 @@ usage: nabu [flags]              open the interactive UI on a new session
   restore <id>      bring an archived session back
   notes             print the working notes kept for this workspace
   stats [id]        a session's numbers as JSON, or tokens per day without an id
-  github            review open pull requests in the repos in <root>/github/config.json;
+  github            review open pull requests, and address comments on ones labeled nabu,
+                    in the repos in <root>/github/config.json;
                     --once polls once and exits, --dry-run prints instead of posting
 
 A daemon is started automatically if none is listening.
