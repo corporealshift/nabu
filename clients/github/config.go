@@ -38,6 +38,12 @@ type ReviewConfig struct {
 	MaxTurns int   `json:"max_turns"`
 }
 
+// CommentsConfig is the comments job's section.
+type CommentsConfig struct {
+	Enabled  *bool `json:"enabled"`
+	MaxTurns int   `json:"max_turns"`
+}
+
 // Config is <root>/github/config.json.
 type Config struct {
 	Repos []Repo   `json:"repos"`
@@ -45,9 +51,10 @@ type Config struct {
 	Poll  Duration `json:"poll"`
 	// Quiet is how long a head must stay the head before it is reviewed, so a
 	// burst of pushes gets one review. A pointer because 0 is a real setting.
-	Quiet   *Duration    `json:"quiet"`
-	MaxJobs int          `json:"max_jobs"`
-	Review  ReviewConfig `json:"review"`
+	Quiet    *Duration      `json:"quiet"`
+	MaxJobs  int            `json:"max_jobs"`
+	Review   ReviewConfig   `json:"review"`
+	Comments CommentsConfig `json:"comments"`
 }
 
 // QuietFor is the quiet period.
@@ -60,6 +67,9 @@ func (c Config) QuietFor() time.Duration {
 
 // ReviewEnabled reports whether review jobs run.
 func (c Config) ReviewEnabled() bool { return c.Review.Enabled == nil || *c.Review.Enabled }
+
+// CommentsEnabled reports whether comment jobs run.
+func (c Config) CommentsEnabled() bool { return c.Comments.Enabled == nil || *c.Comments.Enabled }
 
 // ReviewPushes reports whether each new head gets its own review.
 func (c Config) ReviewPushes() bool { return c.Review.Pushes == nil || *c.Review.Pushes }
@@ -138,5 +148,8 @@ func (c *Config) withDefaults() {
 	}
 	if c.Review.MaxTurns <= 0 {
 		c.Review.MaxTurns = 30
+	}
+	if c.Comments.MaxTurns <= 0 {
+		c.Comments.MaxTurns = 60
 	}
 }

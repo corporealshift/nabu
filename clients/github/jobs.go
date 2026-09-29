@@ -2,6 +2,7 @@ package github
 
 import (
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -15,7 +16,18 @@ type PR struct {
 	Body    string
 	Draft   bool
 	// Fork is true when the head lives in another repository.
-	Fork bool
+	Fork   bool
+	Labels []string
+}
+
+// HasLabel reports whether the PR carries a label.
+func (p PR) HasLabel(name string) bool {
+	for _, l := range p.Labels {
+		if strings.EqualFold(l, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // Observe records when each open PR's head was first seen. A new head starts

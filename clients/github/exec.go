@@ -41,7 +41,7 @@ type GH struct{ Run Runner }
 
 // prFields is what OpenPRs asks gh for. Naming them is what makes gh answer
 // in JSON.
-const prFields = "number,headRefOid,headRefName,baseRefName,isDraft,isCrossRepository,title,body"
+const prFields = "number,headRefOid,headRefName,baseRefName,isDraft,isCrossRepository,title,body,labels"
 
 func (g GH) OpenPRs(ctx context.Context, repo string) ([]PR, error) {
 	out, err := g.Run(ctx, "", nil, "gh", "pr", "list", "--repo", repo, "--state", "open", "--limit", "100", "--json", prFields)
@@ -57,16 +57,23 @@ func (g GH) OpenPRs(ctx context.Context, repo string) ([]PR, error) {
 		IsCrossRepository bool   `json:"isCrossRepository"`
 		Title             string `json:"title"`
 		Body              string `json:"body"`
+		Labels            []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
 	}
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, fmt.Errorf("gh pr list: %w", err)
 	}
 	prs := make([]PR, 0, len(raw))
 	for _, r := range raw {
-		prs = append(prs, PR{
+		p := PR{
 			Number: r.Number, HeadSHA: r.HeadRefOid, HeadRef: r.HeadRefName, BaseRef: r.BaseRefName,
 			Title: r.Title, Body: r.Body, Draft: r.IsDraft, Fork: r.IsCrossRepository,
-		})
+		}
+		for _, l := range r.Labels {
+			p.Labels = append(p.Labels, l.Name)
+		}
+		prs = append(prs, p)
 	}
 	return prs, nil
 }

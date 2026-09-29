@@ -80,13 +80,14 @@ func TestOpenPRsDecodesGh(t *testing.T) {
 	out, _ := json.Marshal([]map[string]any{{
 		"number": 7, "headRefOid": "abc", "headRefName": "feat", "baseRefName": "main",
 		"isDraft": true, "isCrossRepository": true, "title": "T", "body": "B",
+		"labels": []map[string]any{{"name": "nabu", "color": "fff"}},
 	}})
 	r, _ := recorder(string(out))
 	prs, err := GH{r}.OpenPRs(context.Background(), "kyle/bw")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []PR{{Number: 7, HeadSHA: "abc", HeadRef: "feat", BaseRef: "main", Title: "T", Body: "B", Draft: true, Fork: true}}
+	want := []PR{{Number: 7, HeadSHA: "abc", HeadRef: "feat", BaseRef: "main", Title: "T", Body: "B", Draft: true, Fork: true, Labels: []string{"nabu"}}}
 	if !reflect.DeepEqual(prs, want) {
 		t.Errorf("prs = %+v", prs)
 	}
