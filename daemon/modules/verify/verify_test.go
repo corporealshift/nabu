@@ -90,13 +90,15 @@ func (h testHost) Log() *slog.Logger              { return slog.New(slog.NewText
 
 // scriptedModel returns a canned answer, or an error.
 type scriptedModel struct {
-	content string
-	err     error
-	calls   int
+	content   string
+	err       error
+	calls     int
+	maxTokens int
 }
 
-func (m *scriptedModel) Complete(context.Context, module.Session, module.CompletionRequest) (module.CompletionResponse, error) {
+func (m *scriptedModel) Complete(_ context.Context, _ module.Session, req module.CompletionRequest) (module.CompletionResponse, error) {
 	m.calls++
+	m.maxTokens = req.MaxTokens
 	if m.err != nil {
 		return module.CompletionResponse{}, m.err
 	}
@@ -501,7 +503,7 @@ func TestJudgeFailureVetoes(t *testing.T) {
 	}{
 		{"call fails", "", fmt.Errorf("connection refused"), "judge call failed"},
 		{"unparseable answer", "I think it looks good to me!", nil, "required form"},
-		{"empty answer", "", nil, "required form"},
+		{"empty answer", "", nil, "gave no answer; it may have run out of its 4096 tokens"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, _ := judgeModule(t, tc.content, tc.err)
@@ -514,6 +516,25 @@ func TestJudgeFailureVetoes(t *testing.T) {
 				t.Errorf("reason %q should mention %q", v.Reason, tc.want)
 			}
 		})
+	}
+}
+
+// A reasoning model's thinking counts against the cap. At 400 tokens the local
+// Qwen ran out before its verdict on every try, so every goal session blocked.
+func TestJudgeHasRoomToThink(t *testing.T) {
+	m, sm := judgeModule(t, "VERDICT: met", nil)
+	if v := m.BeforeStop(context.Background(), goalSession(t), goalInfo()); !v.Allow {
+		t.Fatalf("met should allow, got %q", v.Reason)
+	}
+	if sm.maxTokens != DefaultJudgeMaxTokens || DefaultJudgeMaxTokens < 2000 {
+		t.Errorf("judge cap = %d, want the default %d", sm.maxTokens, DefaultJudgeMaxTokens)
+	}
+
+	set := newVerify(t, module.Config{"require_clean_tree": false, "judge_max_tokens": 1234})
+	set.host = testHost{model: sm}
+	set.BeforeStop(context.Background(), goalSession(t), goalInfo())
+	if sm.maxTokens != 1234 {
+		t.Errorf("judge_max_tokens = %d, want 1234", sm.maxTokens)
 	}
 }
 

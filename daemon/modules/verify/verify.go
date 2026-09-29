@@ -24,6 +24,11 @@ const (
 	// DefaultJudgeTurns is how much transcript the judge sees. It is a model
 	// call on every stop attempt, so this is a recurring cost.
 	DefaultJudgeTurns = 10
+	// DefaultJudgeMaxTokens caps the judge's answer. The verdict is one line,
+	// but a reasoning model thinks first and the thinking counts: at 400 the
+	// local Qwen ran out every time, 767 to 1066 tokens into a verdict it
+	// would have given, and every goal session blocked on "did not answer".
+	DefaultJudgeMaxTokens = 4096
 	// maxCheckOutput is how much command output reaches a check event.
 	maxCheckOutput = 2000
 	// maxSummary is how much reaches a one-line summary.
@@ -52,6 +57,8 @@ type Module struct {
 	CommandTimeout time.Duration
 	// JudgeTurns is how many turns of transcript the judge sees.
 	JudgeTurns int
+	// JudgeMaxTokens caps the judge's reply, thinking included.
+	JudgeMaxTokens int
 
 	host module.Host
 
@@ -135,6 +142,9 @@ func (m *Module) Init(h module.Host, cfg module.Config) error {
 		m.JudgeTurns = turns
 	} else {
 		m.JudgeTurns = DefaultJudgeTurns
+	}
+	if m.JudgeMaxTokens = cfg.Int("judge_max_tokens", 0); m.JudgeMaxTokens <= 0 {
+		m.JudgeMaxTokens = DefaultJudgeMaxTokens
 	}
 	return nil
 }
@@ -746,10 +756,14 @@ func (m *Module) judge(ctx context.Context, s module.Session, info module.StopIn
 		// A fresh context: the condition, the tasks, and a transcript window.
 		// The judge never sees the loop's own message history.
 		Messages:  []module.Message{{Role: "user", Content: prompt}},
-		MaxTokens: 400,
+		MaxTokens: m.JudgeMaxTokens,
 	})
 	if err != nil {
 		return "unmet", "judge call failed: " + err.Error()
+	}
+	if strings.TrimSpace(resp.Content) == "" {
+		// A reasoning model that thinks past the cap answers nothing at all.
+		return "unmet", fmt.Sprintf("the judge gave no answer; it may have run out of its %d tokens (verify.judge_max_tokens)", m.JudgeMaxTokens)
 	}
 	verdict, reason, ok := parseVerdict(resp.Content)
 	if !ok {
