@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -125,7 +126,9 @@ type fakeSession struct {
 	goals     []string
 	prompts   []string
 	state     protocol.SessionState
-	final     string
+	// earlier are assistant messages before the final one.
+	earlier []string
+	final   string
 }
 
 type fakeDaemon struct {
@@ -180,8 +183,11 @@ func (d *fakeDaemon) Events(_ context.Context, id string) ([]protocol.Event, err
 		b, _ := json.Marshal(protocol.MessageData{Role: "user", Content: p})
 		evs = append(evs, protocol.Event{Type: protocol.EventMessage, Data: b})
 	}
-	if s.final != "" {
-		b, _ := json.Marshal(protocol.MessageData{Role: "assistant", Content: s.final})
+	for _, m := range append(slices.Clone(s.earlier), s.final) {
+		if m == "" && s.final == "" {
+			continue
+		}
+		b, _ := json.Marshal(protocol.MessageData{Role: "assistant", Content: m})
 		evs = append(evs, protocol.Event{Type: protocol.EventMessage, Data: b})
 	}
 	return evs, nil

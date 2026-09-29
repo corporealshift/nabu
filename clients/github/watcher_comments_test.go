@@ -179,3 +179,32 @@ func TestWatcherDryRunNeitherPushesNorPosts(t *testing.T) {
 		}
 	}
 }
+
+// Seen live: the model wrote its replies block, the stop gate sent it round
+// again, and its last message was a summary without the block. The replies
+// must still be found, or every thread goes unanswered.
+func TestWatcherFindsRepliesBeforeTheLastMessage(t *testing.T) {
+	r := commentsRig(t)
+	r.poll(t)
+	s := r.d.sessions["S1"]
+	s.earlier = []string{"", repliesFinal, ""}
+	r.d.finish("S1", "All three comments have been addressed. Committed as a1b2c3d.", protocol.StateIdle)
+	r.poll(t)
+	if len(r.gh.replies) != 1 || !strings.Contains(r.gh.replies[0], "Renamed in a1b2c3d.") {
+		t.Errorf("thread replies = %q", r.gh.replies)
+	}
+	if len(r.gh.convo) != 1 || strings.Contains(r.gh.convo[0], "All three comments") {
+		t.Errorf("the summary was posted instead of the replies: %q", r.gh.convo)
+	}
+}
+
+func TestWatcherFindsAReviewBeforeTheLastMessage(t *testing.T) {
+	r := newRig(t, pr7)
+	r.started(t)
+	r.d.sessions["S1"].earlier = []string{goodFinal}
+	r.d.finish("S1", "That's my review.", protocol.StateIdle)
+	r.poll(t)
+	if len(r.gh.posts) != 1 || len(r.gh.posts[0].Comments) != 1 || !strings.Contains(r.gh.posts[0].Body, "One bug.") {
+		t.Errorf("posts = %+v", r.gh.posts)
+	}
+}

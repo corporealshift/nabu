@@ -301,7 +301,7 @@ func (w *Watcher) advance(ctx context.Context, d Daemon, repo Repo, job Job, pr 
 	if err != nil {
 		return fmt.Errorf("github: %s#%d: session %s: %w", repo.Name, job.PR, job.SessionID, err)
 	}
-	final, answered := finalMessage(events)
+	answers, answered := assistantMessages(events)
 
 	switch st.State {
 	case protocol.StateRunning:
@@ -331,34 +331,66 @@ func (w *Watcher) advance(ctx context.Context, d Daemon, repo Repo, job Job, pr 
 		return w.fail(repo, job, "the session ended "+string(st.State))
 	}
 	if job.Kind == KindComments {
-		return w.postComments(ctx, repo, job, final)
+		return w.postComments(ctx, repo, job, answers)
 	}
-	return w.postReview(ctx, repo, job, final)
+	return w.postReview(ctx, repo, job, answers)
 }
 
-// finalMessage is the last assistant message in a log.
-func finalMessage(events []protocol.Event) (string, bool) {
+// assistantMessages is what the model said, newest first, leaving out the
+// empty messages that only carry tool calls. The second result is whether it
+// said anything at all, empty or not: whether the loop has started.
+func assistantMessages(events []protocol.Event) ([]string, bool) {
+	var out []string
+	started := false
 	for i := len(events) - 1; i >= 0; i-- {
 		if events[i].Type != protocol.EventMessage {
 			continue
 		}
 		var m protocol.MessageData
-		if json.Unmarshal(events[i].Data, &m) == nil && m.Role == "assistant" {
-			return m.Content, true
+		if json.Unmarshal(events[i].Data, &m) != nil || m.Role != "assistant" {
+			continue
+		}
+		started = true
+		if strings.TrimSpace(m.Content) != "" {
+			out = append(out, m.Content)
 		}
 	}
-	return "", false
+	return out, started
+}
+
+// newest is the most recent answer to carry a block parse accepts, and
+// whether there was one. The block is not always in the last message: the
+// stop gate can send the model round again after it wrote the block, and
+// its last word is then a summary without one.
+func newest[T any](answers []string, parse func(string) (T, bool)) (T, bool) {
+	for _, a := range answers {
+		if v, ok := parse(a); ok {
+			return v, true
+		}
+	}
+	var zero T
+	return zero, false
+}
+
+// last is the final thing the model said, which is posted as it stands when
+// no answer carries a block.
+func last(answers []string) string {
+	if len(answers) == 0 {
+		return ""
+	}
+	return answers[0]
 }
 
 // postReview builds the review from a finished session and posts it. Only a
 // successful post marks the head reviewed; a failed one leaves the job for
 // the next poll, which posts again from the same session.
-func (w *Watcher) postReview(ctx context.Context, repo Repo, job Job, final string) error {
+func (w *Watcher) postReview(ctx context.Context, repo Repo, job Job, answers []string) error {
 	diff, err := w.Git.Diff(ctx, job.Worktree, job.Base, job.SHA)
 	if err != nil {
 		w.logf("%s#%d: no diff, so every comment goes in the body: %v", repo.Name, job.PR, err)
 	}
-	r, ok := ParseReview(final)
+	final := last(answers)
+	r, ok := newest(answers, ParseReview)
 	post := BuildReview(r, ok, final, diff, job.SHA)
 
 	if w.DryRun {
@@ -384,7 +416,7 @@ func (w *Watcher) postReview(ctx context.Context, repo Repo, job Job, final stri
 // neither pushes nor posts anything twice. A push the remote refuses means
 // the branch moved while the session worked: nothing is posted, and the job
 // fails.
-func (w *Watcher) postComments(ctx context.Context, repo Repo, job Job, final string) error {
+func (w *Watcher) postComments(ctx context.Context, repo Repo, job Job, answers []string) error {
 	rs := w.state.Repo(repo.Name)
 	if !job.Pushed {
 		head, err := w.Git.Head(ctx, job.Worktree)
@@ -407,8 +439,8 @@ func (w *Watcher) postComments(ctx context.Context, repo Repo, job Job, final st
 		}
 	}
 
-	replies, ok := ParseReplies(final)
-	out := BuildReplies(job.Due, replies, ok, final)
+	replies, ok := newest(answers, ParseReplies)
+	out := BuildReplies(job.Due, replies, ok, last(answers))
 	type post struct {
 		key  string
 		root int64
