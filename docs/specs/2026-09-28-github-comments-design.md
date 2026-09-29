@@ -3,8 +3,8 @@
 **Date:** 2026-09-28
 **Status:** Approved by Kyle in conversation
 **Part 2 of 3.** Builds on the watcher in `2026-09-28-github-review-design.md`. Its config,
-state, queue, worktrees, marker and failure handling apply here unchanged, and this spec
-only covers what is different.
+state, queue, worktrees, signature, marker and failure handling apply here unchanged, and
+this spec only covers what is different.
 **Changes:** `2026-09-25-per-workspace-gate-design.md`. A gate configured for a
 repository's path also applies to that repository's worktrees.
 
@@ -30,13 +30,26 @@ PR. Taking the label off stops the job.
 - review bodies that are not empty, from `pulls/<n>/reviews`;
 - conversation comments, from `issues/<n>/comments`.
 
-A comment counts if its ID is newer than the last one handled for that PR and it does not
-carry the `<!-- nabu -->` marker. The newest counting comment must also be at least `quiet`
-old (default 5 minutes), so a review written as several comments becomes one job rather
-than several.
+A comment counts if it does not carry the `<!-- nabu -->` marker and its ID is newer than
+the last one handled **of its own kind** on that PR. The three kinds come from three
+endpoints, each with its own sequence of IDs, so one number cannot be compared across
+them. The state keeps three watermarks per PR, one for each kind.
+
+The first time the watcher sees a labeled PR, nothing on it has been handled, so every
+comment on it counts. Labeling a PR hands it over, comments and all. On a PR with a long
+history, that includes threads that were settled long ago. The model sees the code and
+can reply that something is already done, and the REST API gives no way to tell a
+resolved thread from an open one.
+
+The newest counting comment must also be at least `quiet` old (default 5 minutes), going
+by GitHub's `created_at` for comments and `submitted_at` for reviews. That way a review
+written as several comments becomes one job rather than several.
 
 **One job per PR at a time.** Comments that arrive while a job is running wait for the
 next one.
+
+**Comment jobs go first.** When more jobs are due than `max_jobs` allows, comment jobs
+start before reviews, because a person is waiting on a reply.
 
 ### Worktree
 
@@ -91,10 +104,10 @@ message. Then:
    - a review comment is replied to in its thread (`pulls/<n>/comments/<id>/replies`);
    - review bodies and conversation comments get one conversation comment that quotes
      each and answers it underneath;
-   - every body ends with the marker.
+   - every body opens with the signature (`🤖 **nabu**: `) and ends with the marker.
 3. Any counting comment without a reply goes into a closing line: "Not answered
    individually: …, see the pushed commits."
-4. Record the newest comment ID as handled and remove the worktree.
+4. Record the newest ID of each kind in the job as handled, and remove the worktree.
 
 If there is no JSON block, or it does not parse, step 1 still runs. Instead of step 2,
 the whole final message is posted as one conversation comment.
@@ -130,7 +143,7 @@ The part 1 table applies, plus:
 | The push is rejected because the branch moved | Nothing is posted. The job is recorded as failed. The comments stay unhandled, so the next new comment makes a new job, starting from the moved branch. |
 | The session changed nothing and only replied | Nothing is pushed. The replies are posted. |
 | The label is removed while a job is running | The job finishes and posts. No new jobs start. |
-| The judge never agrees and the session ends `blocked` | Nothing is pushed or posted. The job is recorded as failed at that comment ID. A newer comment starts it again. |
+| The judge never agrees and the session ends `blocked` | Nothing is pushed or posted. The job's watermarks are recorded as failed-through. Only a comment newer than those starts a job again, and that job still includes every comment not yet handled. |
 
 ## Not doing
 
