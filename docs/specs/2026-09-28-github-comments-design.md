@@ -51,6 +51,11 @@ next one.
 **Comment jobs go first.** When more jobs are due than `max_jobs` allows, comment jobs
 start before reviews, because a person is waiting on a reply.
 
+**A poll that pushes does not review the head it replaced.** A poll reads the list of PRs
+before it finishes running jobs. So when a comments job pushes, that poll still shows the
+old head. Reviewing that head is wasted work: it is gone, and the next poll reviews the
+new one. This happened in the first live run.
+
 ### Worktree
 
 Kyle's clone may have the PR's branch checked out, and git will not check out one branch
@@ -94,8 +99,12 @@ The watcher pushes with `git push origin HEAD:refs/heads/<head>`. It never uses 
 
 ### When it is done
 
-When the state is `idle`, the watcher calls `nabu.session.stop` and reads the final
-message. Then:
+When the state is `idle`, the watcher calls `nabu.session.stop` and reads the replies
+block from the newest assistant message that has one. That is not always the last
+message. In the first live run, the model wrote its block, then the stop gate sent it
+round again, and its last message was a summary with no block. Reading only the last
+message posted that summary and left every thread unanswered. The same rule applies to
+review blocks. Then:
 
 1. If there are new commits since the head the job started from, push them. If the push
    is rejected, the branch has moved: post nothing, record the job as failed, keep the
