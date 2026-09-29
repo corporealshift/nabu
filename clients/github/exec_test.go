@@ -39,10 +39,10 @@ func TestExecArgs(t *testing.T) {
 			want: []string{"gh", "pr", "list", "--repo", "kyle/bw", "--state", "open", "--limit", "100", "--json", prFields}},
 		{name: "post review",
 			call: func(r Runner) error {
-				return GH{r}.PostReview(ctx, "kyle/bw", 7, ReviewPost{CommitID: "abc", Event: "COMMENT", Body: "b"})
+				return GH{r}.PostReview(ctx, "kyle/bw", 7, ReviewPost{CommitID: "abc", Event: "COMMENT", Body: "b " + Marker})
 			},
 			want:  []string{"gh", "api", "repos/kyle/bw/pulls/7/reviews", "--method", "POST", "--input", "-"},
-			stdin: `{"commit_id":"abc","body":"b","event":"COMMENT"}`},
+			stdin: `{"commit_id":"abc","body":"b <!-- nabu -->","event":"COMMENT"}`},
 		{name: "fetch",
 			call: func(r Runner) error { return GitCLI{r}.FetchPR(ctx, "C:/bw", 7, "main") },
 			want: []string{"git", "-C", "C:/bw", "fetch", "origin", "pull/7/head", "+refs/heads/main:refs/remotes/origin/main"}},

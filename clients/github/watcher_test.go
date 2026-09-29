@@ -345,8 +345,12 @@ func TestWatcherDryRun(t *testing.T) {
 	if len(r.gh.posts) != 0 {
 		t.Error("a dry run posted")
 	}
-	if !strings.Contains(r.out.String(), "would post a review on kyle/breezeway#7") || !strings.Contains(r.out.String(), "off by one") {
+	if !strings.Contains(r.out.String(), "would post a review on kyle/breezeway#7") || !strings.Contains(r.out.String(), "off by one") ||
+		!strings.Contains(r.out.String(), Marker) {
 		t.Errorf("dry run printed:\n%s", r.out.String())
+	}
+	if strings.Contains(r.log.String(), "review posted") {
+		t.Errorf("a dry run logged a post:\n%s", r.log.String())
 	}
 	if _, err := os.Stat(StatePath(r.w.Root, true)); err != nil {
 		t.Errorf("no dry-run state: %v", err)

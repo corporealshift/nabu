@@ -1,6 +1,7 @@
 package github
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -172,4 +173,18 @@ func short(sha string) string {
 		return sha[:7]
 	}
 	return sha
+}
+
+// JSON encodes a post as written: the default encoder would turn the
+// marker's angle brackets into < escapes, which GitHub decodes but a
+// person reading a dry run should not have to.
+func (p ReviewPost) JSON(indent bool) []byte {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if indent {
+		enc.SetIndent("", "  ")
+	}
+	_ = enc.Encode(p)
+	return bytes.TrimRight(b.Bytes(), "\n")
 }

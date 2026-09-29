@@ -72,11 +72,7 @@ func (g GH) OpenPRs(ctx context.Context, repo string) ([]PR, error) {
 }
 
 func (g GH) PostReview(ctx context.Context, repo string, number int, post ReviewPost) error {
-	body, err := json.Marshal(post)
-	if err != nil {
-		return err
-	}
-	_, err = g.Run(ctx, "", body, "gh", "api", "repos/"+repo+"/pulls/"+strconv.Itoa(number)+"/reviews",
+	_, err := g.Run(ctx, "", post.JSON(false), "gh", "api", "repos/"+repo+"/pulls/"+strconv.Itoa(number)+"/reviews",
 		"--method", "POST", "--input", "-")
 	return err
 }

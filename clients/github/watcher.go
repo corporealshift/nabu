@@ -306,8 +306,7 @@ func (w *Watcher) post(ctx context.Context, repo Repo, job Job, final string) er
 	post := BuildReview(r, ok, final, diff, job.SHA)
 
 	if w.DryRun {
-		b, _ := json.MarshalIndent(post, "", "  ")
-		fmt.Fprintf(w.Out, "would post a review on %s#%d at %s:\n%s\n", repo.Name, job.PR, short(job.SHA), b)
+		fmt.Fprintf(w.Out, "would post a review on %s#%d at %s:\n%s\n", repo.Name, job.PR, short(job.SHA), post.JSON(true))
 	} else if err := w.GH.PostReview(ctx, repo.Name, job.PR, post); err != nil {
 		return fmt.Errorf("github: %s#%d: posting the review from session %s: %w", repo.Name, job.PR, job.SessionID, err)
 	}
@@ -325,7 +324,11 @@ func (w *Watcher) post(ctx context.Context, repo Repo, job Job, final string) er
 	if err := w.save(); err != nil {
 		return err
 	}
-	w.logf("%s#%d %s: review posted from session %s", repo.Name, job.PR, short(job.SHA), job.SessionID)
+	posted := "review posted"
+	if w.DryRun {
+		posted = "review printed (dry run)"
+	}
+	w.logf("%s#%d %s: %s from session %s", repo.Name, job.PR, short(job.SHA), posted, job.SessionID)
 	if err := w.Git.RemoveWorktree(ctx, repo.Clone, job.Worktree); err != nil {
 		w.logf("%s#%d: removing %s: %v", repo.Name, job.PR, job.Worktree, err)
 	}
