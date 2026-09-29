@@ -40,6 +40,8 @@ usage: nabu [flags]              open the interactive UI on a new session
   restore <id>      bring an archived session back
   notes             print the working notes kept for this workspace
   stats [id]        a session's numbers as JSON, or tokens per day without an id
+  github            review open pull requests in the repos in <root>/github/config.json;
+                    --once polls once and exits, --dry-run prints instead of posting
 
 A daemon is started automatically if none is listening.
 
@@ -99,6 +101,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdNotes(args[1:], stdout, stderr)
 	case "stats":
 		return cmdStats(args[1:], stdout, stderr)
+	case "github":
+		return cmdGitHub(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "nabu: unknown command %q\n\n%s", args[0], usage)
 		return exitUsage

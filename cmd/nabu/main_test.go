@@ -569,3 +569,20 @@ func TestNotesCommandSaysSoWhenThereAreNone(t *testing.T) {
 		t.Errorf("want a plain answer, got %q", out.String())
 	}
 }
+
+func TestGitHubWithoutConfigSaysWhereItGoes(t *testing.T) {
+	code, _, stderr := runCLI("github", "--once", "--root", t.TempDir())
+	if code != exitError {
+		t.Errorf("exit: got %d, want %d", code, exitError)
+	}
+	if !strings.Contains(stderr, filepath.Join("github", "config.json")) {
+		t.Errorf("stderr should say where the config goes, got %q", stderr)
+	}
+}
+
+func TestUsageListsGitHub(t *testing.T) {
+	_, stdout, _ := runCLI("help")
+	if !strings.Contains(stdout, "  github ") {
+		t.Errorf("usage does not list github:\n%s", stdout)
+	}
+}

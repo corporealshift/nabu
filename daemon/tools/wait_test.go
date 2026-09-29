@@ -15,30 +15,32 @@ func TestWaitReturnsOnceSomethingHappens(t *testing.T) {
 	cases := []struct {
 		name    string
 		until   string
-		later   string // written to status.txt after 150ms
+		later   string // what every check after the first prints
 		timeout time.Duration
 		want    []string
 	}{
 		{"output changes", "", "done\n", 3 * time.Second, []string{"[changed after", "done"}},
 		{"output matches", "^done", "done\n", 3 * time.Second, []string{"[matched after", "done"}},
-		{"a change that does not match", "^done", "still going 2\n", 600 * time.Millisecond,
+		{"a change that does not match", "^done", "still going 2\n", 2 * time.Second,
 			[]string{`[no match for "^done" after`, "still going 2"}},
-		{"nothing changes", "", "", 400 * time.Millisecond, []string{"[no change after", "running"}},
+		{"nothing changes", "", "running\n", 400 * time.Millisecond, []string{"[no change after", "running"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			// The change comes from the checks, not a clock: the first prints
+			// "running" and every later one prints the file. A timer raced
+			// the first check, and on a Windows runner a shell can take longer
+			// to start than the timer took to fire, so the first check already
+			// saw the change and no change was ever reported.
 			dir := t.TempDir()
-			status := filepath.Join(dir, "status.txt")
-			os.WriteFile(status, []byte("running\n"), 0o644)
-			if c.later != "" {
-				time.AfterFunc(150*time.Millisecond, func() { os.WriteFile(status, []byte(c.later), 0o644) })
-			}
+			os.WriteFile(filepath.Join(dir, "status.txt"), []byte(c.later), 0o644)
+			command := "if [ -e checked ]; then cat status.txt; else touch checked; echo running; fi"
 			var until *regexp.Regexp
 			if c.until != "" {
 				until = regexp.MustCompile(c.until)
 			}
 			b := &Builtins{}
-			out, err := b.poll(context.Background(), fakeSession{dir}, "cat status.txt", until, 50*time.Millisecond, c.timeout)
+			out, err := b.poll(context.Background(), fakeSession{dir}, command, until, 50*time.Millisecond, c.timeout)
 			if err != nil {
 				t.Fatal(err)
 			}

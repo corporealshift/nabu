@@ -48,7 +48,8 @@ daemon/
   workspace/              workspace key, trust, permission plumbing
   stats/                  how much work a session was, derived from its log
 cmd/nabu/                 the single binary (daemon + CLI subcommands)
-clients/                  go-tui/ android/ rust-gui/
+clients/                  go-tui/ android/ rust-gui/ goclient/
+                          github/ — watcher: polls GitHub, runs review sessions in worktrees, posts reviews
 docs/specs/               design specs: what was decided, and what was rejected
 docs/plans/               implementation plans, one per piece of work
 docs/proposals/           ideas not yet decided on
