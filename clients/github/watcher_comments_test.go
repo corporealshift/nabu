@@ -208,3 +208,25 @@ func TestWatcherFindsAReviewBeforeTheLastMessage(t *testing.T) {
 		t.Errorf("posts = %+v", r.gh.posts)
 	}
 }
+
+// Seen live: the poll that pushed a comments job's commit started a review
+// of the head the push had just replaced, because it listed the PRs first.
+func TestWatcherDoesNotReviewAHeadItJustPushedOver(t *testing.T) {
+	r := commentsRig(t)
+	on := true
+	r.w.Cfg.Review.Enabled = &on
+	r.w.Cfg.Quiet = new(Duration)
+	r.poll(t) // the comments job starts first; the review waits on max_jobs
+	r.git.heads = map[string]string{r.d.sessions["S1"].workspace: "newcommit99"}
+	r.d.finish("S1", repliesFinal, protocol.StateIdle)
+	if n := r.poll(t); n != 0 {
+		t.Fatalf("started %d jobs in the poll that pushed; the head it listed is gone", n)
+	}
+	moved := labeledPR
+	moved.HeadSHA = "newcommit99"
+	r.gh.prs[repoName] = []PR{moved}
+	r.poll(t)
+	if r.d.creates != 2 || !strings.Contains(r.d.sessions["S2"].workspace, "review-9-newcomm") {
+		t.Errorf("the new head was not reviewed: creates %d", r.d.creates)
+	}
+}

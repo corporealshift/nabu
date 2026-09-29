@@ -36,6 +36,10 @@ type Watcher struct {
 	Wait time.Duration
 
 	state *State
+	// moved is the PRs this poll pushed to, as "repo#n". The poll's list of
+	// PRs was read before the push, so it shows a head that is already gone,
+	// and reviewing that head would only be done again on the next poll.
+	moved map[string]bool
 }
 
 func (w *Watcher) statePath() string { return StatePath(w.Root, w.DryRun) }
@@ -75,6 +79,7 @@ func (w *Watcher) Poll(ctx context.Context) (int, error) {
 	}
 	defer d.Close()
 
+	w.moved = map[string]bool{}
 	var errs []error
 	var comments, reviews []candidate
 	for _, repo := range w.Cfg.Repos {
@@ -95,6 +100,9 @@ func (w *Watcher) Poll(ctx context.Context) (int, error) {
 		}
 		Observe(rs, prs, w.Now())
 		for _, p := range ReviewJobs(w.Cfg, rs, prs, w.Now()) {
+			if w.moved[fmt.Sprintf("%s#%d", repo.Name, p.Number)] {
+				continue
+			}
 			reviews = append(reviews, candidate{kind: KindReview, repo: repo, pr: p})
 		}
 		for _, p := range prs {
@@ -430,6 +438,7 @@ func (w *Watcher) postComments(ctx context.Context, repo Repo, job Job, answers 
 				return w.fail(repo, job, fmt.Sprintf("pushing to %s: %v", job.HeadRef, err))
 			} else {
 				w.logf("%s#%d: pushed %s to %s", repo.Name, job.PR, short(head), job.HeadRef)
+				w.moved[fmt.Sprintf("%s#%d", repo.Name, job.PR)] = true
 			}
 		}
 		job.Pushed = true
