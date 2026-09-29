@@ -127,10 +127,12 @@ no label. That includes PRs nabu opened itself.
 `events_after`. Then:
 
 - Parse the JSON block. Every comment whose `path` and `line` fall on the right side of a
-  hunk in the PR's diff (`gh pr diff <n>`) becomes a line comment. Every other comment is
-  added to the review body as `path:line — body`. GitHub rejects the entire review if one
-  line comment points outside the diff, and this keeps one bad line from losing all the
-  others.
+  hunk in the reviewed diff becomes a line comment. Every other comment is added to the
+  review body as `path:line — body`. GitHub rejects the entire review if one line comment
+  points outside the diff, and this keeps one bad line from losing all the others. The
+  diff is `git diff origin/<base>...<sha>`, taken in the worktree before it is removed,
+  and not `gh pr diff`. `gh pr diff` shows the PR's current head, which may not be the
+  SHA that was reviewed.
 - If there is no JSON block, or it does not parse, the whole final message becomes the
   review body.
 - Post one review with `gh api repos/<repo>/pulls/<n>/reviews`, using

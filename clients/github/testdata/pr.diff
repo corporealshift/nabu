@@ -1,0 +1,54 @@
+diff --git a/before.txt b/after.txt
+similarity index 89%
+rename from before.txt
+rename to after.txt
+index 572f3f5..b071d40 100644
+--- a/before.txt
++++ b/after.txt
+@@ -8,3 +8,4 @@ r 7
+ r 8
+ r 9
+ r 10
++r 11
+diff --git a/main.go b/main.go
+index ac9837c..f415981 100644
+--- a/main.go
++++ b/main.go
+@@ -1,8 +1,8 @@
+ line 1
+ line 2
++added three
+ line 3
+ line 4
+-line 5
+ line 6
+ line 7
+ line 8
+@@ -22,9 +22,10 @@ line 21
+ line 22
+ line 23
+ line 24
+-line 25
++changed 25
+ line 26
+ line 27
+ line 28
+ line 29
+ line 30
++line 31
+diff --git a/new.go b/new.go
+new file mode 100644
+index 0000000..9d8f9d4
+--- /dev/null
++++ b/new.go
+@@ -0,0 +1,2 @@
++fresh
++file
+diff --git a/old.txt b/old.txt
+deleted file mode 100644
+index 85e62d4..0000000
+--- a/old.txt
++++ /dev/null
+@@ -1,2 +0,0 @@
+-gone
+-soon
