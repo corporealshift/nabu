@@ -94,7 +94,7 @@ func TestOpenPRsDecodesGh(t *testing.T) {
 
 func TestReviewPrompt(t *testing.T) {
 	first := ReviewPrompt("kyle/bw", pr7, nil)
-	for _, s := range []string{`"Add the thing"`, "It adds the thing.", "git diff origin/main...abc1234def", "Change no files", "```json", `"comments"`} {
+	for _, s := range []string{`"Add the thing"`, "It adds the thing.", "git diff origin/main...abc1234def", "Change no files", "do not use the ask tool", "```json", `"comments"`} {
 		if !strings.Contains(first, s) {
 			t.Errorf("prompt lacks %q:\n%s", s, first)
 		}

@@ -105,10 +105,13 @@ func TestBuildReview(t *testing.T) {
 		}
 		placed = append(placed, c.Path+":"+strings.TrimSuffix(c.Body, "\n\n"+Marker))
 	}
-	if want := []string{"main.go:added line", "main.go:context line"}; !reflect.DeepEqual(placed, want) {
+	if want := []string{"main.go:" + Signature + ": added line", "main.go:" + Signature + ": context line"}; !reflect.DeepEqual(placed, want) {
 		t.Errorf("line comments = %v, want %v", placed, want)
 	}
-	for _, s := range []string{"Two things.", "`main.go:15` — between hunks", "`old.txt:1` — deleted file", "`nowhere.go:1` — not in the diff"} {
+	if want := "🤖 **nabu** reviewed `abc1234`\n\nTwo things."; !strings.HasPrefix(post.Body, want) {
+		t.Errorf("body does not open with the signed header:\n%s", post.Body)
+	}
+	for _, s := range []string{"`main.go:15` — between hunks", "`old.txt:1` — deleted file", "`nowhere.go:1` — not in the diff"} {
 		if !strings.Contains(post.Body, s) {
 			t.Errorf("body lacks %q:\n%s", s, post.Body)
 		}
@@ -123,14 +126,14 @@ func TestBuildReview(t *testing.T) {
 
 func TestBuildReviewWithoutAParsedReview(t *testing.T) {
 	post := BuildReview(Review{}, false, "  It looks fine.\n", "", "abc")
-	if post.Body != "It looks fine.\n\n"+Marker || len(post.Comments) != 0 || post.Event != "COMMENT" {
+	if post.Body != Signature+" reviewed `abc`\n\nIt looks fine.\n\n"+Marker || len(post.Comments) != 0 || post.Event != "COMMENT" {
 		t.Errorf("post = %+v", post)
 	}
 }
 
 func TestBuildReviewWithoutASummary(t *testing.T) {
 	post := BuildReview(Review{}, true, "", "", "abc1234def")
-	if post.Body != "Reviewed abc1234.\n\n"+Marker {
+	if post.Body != Signature+" reviewed `abc1234`\n\n"+Marker {
 		t.Errorf("body = %q", post.Body)
 	}
 }

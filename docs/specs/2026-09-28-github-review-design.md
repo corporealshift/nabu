@@ -116,6 +116,11 @@ no label. That includes PRs nabu opened itself.
   `git diff origin/<base>...<sha>` and tells the model not to change any files. If nabu
   reviewed this PR before, it also includes that review's summary and says what has
   changed since it (`git diff <old sha>...<sha>`), so the model does not repeat itself.
+- The prompt tells the model not to use `ask`, and to put anything it could not settle
+  into the summary as a question for the author. In the first live runs, a review model
+  asked "does this workspace have any go.mod or test files?", which it could have checked
+  itself. Nobody was subscribed, so the question waited out its 10-minute timeout before
+  the model carried on without an answer.
 - The prompt says the final message must end with a fenced `json` block:
 
 ```json
@@ -138,19 +143,32 @@ no label. That includes PRs nabu opened itself.
 - Post one review with `gh api repos/<repo>/pulls/<n>/reviews`, using
   `event: "COMMENT"` and `commit_id: <reviewed sha>`. Pinning the commit means that if
   the PR has moved on since, the comments still point at the code that was reviewed.
-- Every body ends with `<!-- nabu -->`.
+- The review body opens with `🤖 **nabu** reviewed \`<sha7>\``, and each line comment
+  opens with `🤖 **nabu**: `. Every body ends with `<!-- nabu -->`.
 - Record the SHA as reviewed and remove the worktree.
 
 **Why only `COMMENT`.** nabu posts as Kyle's `gh` login, and GitHub does not let an author
 approve or request changes on their own pull request. So nabu never approves or blocks
 anything, which is also the right amount of authority for it to have.
 
-### The marker
+### The signature and the marker
 
-Everything the watcher posts ends with `<!-- nabu -->`. Parts 2 and 3 never start a job
-from a comment that carries it. Kyle and nabu post as the same login, and without the
-marker a review from nabu would look like comments from Kyle, get addressed, and set off
-another review.
+Kyle and nabu post as the same login, so GitHub shows Kyle as the author of nabu's
+reviews. Two things tell them apart, one for people and one for the watcher:
+
+- **The signature**, `🤖 **nabu**`, opens every review body and every line comment. A line
+  comment carries its own because it is read in the diff, apart from the review it came
+  with.
+- **The marker**, `<!-- nabu -->`, ends everything the watcher posts, and is invisible
+  once rendered. Parts 2 and 3 never start a job from a comment that carries it. Without
+  the marker, a review from nabu would be read as comments from Kyle, get addressed, and
+  set off another review. The watcher keys on the marker rather than the signature
+  because Kyle might quote the signature himself.
+
+**Rejected: a separate GitHub identity.** A GitHub App (`nabu[bot]`) or a machine user
+would make nabu the real author. Its reviews could then approve or request changes, and
+the marker would not be needed. Kyle chose the signature: it needs no app, no account and
+no key, and it is enough to tell who wrote what.
 
 ## How it fails
 

@@ -14,6 +14,10 @@ import (
 // review from nabu would be answered by nabu.
 const Marker = "<!-- nabu -->"
 
+// Signature opens everything the watcher posts, so a reader can tell nabu's
+// words from Kyle's: they share a login, and the marker is invisible.
+const Signature = "🤖 **nabu**"
+
 // Review is what a review session's final message ends with.
 type Review struct {
 	Summary  string          `json:"summary"`
@@ -135,17 +139,22 @@ func mark(out map[string]map[int]bool, file string, line int) {
 // finding on a line the diff shows becomes a line comment; any other goes in
 // the body, so one bad line number does not lose the rest. Without a parsed
 // review the whole final message is the body.
+//
+// Everything is signed as nabu's, because it is posted under Kyle's login and
+// GitHub will show him as the author. A line comment is signed on its own,
+// since it is read in the diff apart from the review it came with.
 func BuildReview(r Review, ok bool, final, diff, sha string) ReviewPost {
 	post := ReviewPost{CommitID: sha, Event: "COMMENT"}
+	header := fmt.Sprintf("%s reviewed `%s`", Signature, short(sha))
 	if !ok {
-		post.Body = strings.TrimSpace(final) + "\n\n" + Marker
+		post.Body = header + "\n\n" + strings.TrimSpace(final) + "\n\n" + Marker
 		return post
 	}
 	lines := RightLines(diff)
 	var body strings.Builder
-	body.WriteString(strings.TrimSpace(r.Summary))
-	if body.Len() == 0 {
-		fmt.Fprintf(&body, "Reviewed %s.", short(sha))
+	body.WriteString(header)
+	if s := strings.TrimSpace(r.Summary); s != "" {
+		body.WriteString("\n\n" + s)
 	}
 	var loose []string
 	for _, c := range r.Comments {
@@ -153,7 +162,8 @@ func BuildReview(r Review, ok bool, final, diff, sha string) ReviewPost {
 			continue
 		}
 		if lines[c.Path][c.Line] {
-			post.Comments = append(post.Comments, ReviewComment{Path: c.Path, Line: c.Line, Side: "RIGHT", Body: c.Body + "\n\n" + Marker})
+			post.Comments = append(post.Comments, ReviewComment{Path: c.Path, Line: c.Line, Side: "RIGHT",
+				Body: Signature + ": " + c.Body + "\n\n" + Marker})
 			continue
 		}
 		loose = append(loose, fmt.Sprintf("- `%s:%d` — %s", c.Path, c.Line, c.Body))
