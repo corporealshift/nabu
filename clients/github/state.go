@@ -51,9 +51,12 @@ type Job struct {
 	Base string `json:"base"`
 	// SessionID is empty between recording the job and the daemon creating
 	// its session. A job found that way after a restart never got a session.
-	SessionID string    `json:"session_id,omitempty"`
-	Worktree  string    `json:"worktree"`
-	Started   time.Time `json:"started"`
+	SessionID string `json:"session_id,omitempty"`
+	// Prompted means the session has its prompt. Sending it again is safe
+	// (it carries a client_id), but a session left without one never starts.
+	Prompted bool      `json:"prompted,omitempty"`
+	Worktree string    `json:"worktree"`
+	Started  time.Time `json:"started"`
 	// Stopped means the session has been stopped and only the post is left,
 	// so a failed post is retried without touching the session again.
 	Stopped bool `json:"stopped,omitempty"`
