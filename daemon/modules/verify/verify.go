@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -40,7 +41,8 @@ type Module struct {
 	// Command is the project's canonical gate, run at the stop gate.
 	Command string
 	// Commands are gates for particular workspaces, keyed by workspaceKey. One
-	// replaces Command in its workspace; an empty one turns the gate off there.
+	// replaces Command in its workspace and in that repository's worktrees; an
+	// empty one turns the gate off there.
 	Commands map[string]string
 	// RequireCleanTree vetoes a stop while the tree has uncommitted changes.
 	RequireCleanTree bool
@@ -401,12 +403,47 @@ func workspaceKey(p string) string {
 	return strings.ToLower(filepath.ToSlash(filepath.Clean(p)))
 }
 
-// commandFor is the gate for a session's workspace.
+// commandFor is the gate for a session's workspace. An entry for a
+// repository also covers its worktrees: the GitHub watcher works in a
+// worktree beside the checkout, and a gate that did not follow it there
+// would let an unattended session push work nothing had built.
 func (m *Module) commandFor(s module.Session) string {
-	if cmd, ok := m.Commands[workspaceKey(s.Workspace().Path)]; ok {
+	ws := s.Workspace().Path
+	if cmd, ok := m.Commands[workspaceKey(ws)]; ok {
 		return cmd
 	}
+	if len(m.Commands) > 0 {
+		if main, ok := mainWorktree(ws); ok {
+			if cmd, ok := m.Commands[workspaceKey(main)]; ok {
+				return cmd
+			}
+			// git may spell the path differently from the config (a Windows
+			// short name, say), so fall back to asking whether it is the
+			// same directory.
+			if info, err := os.Stat(main); err == nil {
+				for key, cmd := range m.Commands {
+					if other, err := os.Stat(key); err == nil && os.SameFile(info, other) {
+						return cmd
+					}
+				}
+			}
+		}
+	}
 	return m.Command
+}
+
+// mainWorktree is the checkout a worktree belongs to: the parent of the
+// repository's common git directory. For the main checkout it is itself.
+func mainWorktree(dir string) (string, bool) {
+	out, err := git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return "", false
+	}
+	common := strings.TrimSpace(out)
+	if common == "" {
+		return "", false
+	}
+	return filepath.Dir(filepath.FromSlash(common)), true
 }
 
 // gateVeto runs the project's canonical gate and refuses a stop if it fails.
