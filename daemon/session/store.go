@@ -89,6 +89,26 @@ func (st *Store) Get(id string) (*Session, error) {
 	return s, nil
 }
 
+// Exists reports whether a session with this id is known, live or archived.
+// A parent may have been archived by the time a child names it.
+func (st *Store) Exists(id string) bool {
+	st.mu.Lock()
+	_, open := st.open[id]
+	st.mu.Unlock()
+	if open {
+		return true
+	}
+	if protocol.ValidateULID(id) != nil {
+		return false
+	}
+	for _, p := range []string{filepath.Join(st.root, id+".jsonl"), filepath.Join(st.archiveDir(), id+".jsonl")} {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 func load(id, path string) (*Session, error) {
 	rf, err := os.Open(path)
 	if err != nil {
@@ -162,6 +182,10 @@ type Summary struct {
 	LastPrompt string `json:"last_prompt,omitempty"`
 	// Archived is set in an archived listing (spec 7.19).
 	Archived bool `json:"archived,omitempty"`
+	// Parent and Labels are the projected options, so a list can group and
+	// label sessions without fetching each log.
+	Parent string   `json:"parent,omitempty"`
+	Labels []string `json:"labels,omitempty"`
 }
 
 // lastPromptRunes bounds LastPrompt. A list is a line per session; a pasted
@@ -178,6 +202,7 @@ func (s *Session) Summary() Summary {
 		EventCount: len(ev), CreatedAt: ev[0].Timestamp, UpdatedAt: ev[len(ev)-1].Timestamp,
 		Goal: st.Goal, TasksTotal: len(st.Tasks), TasksDone: st.DoneTasks(),
 		LastPrompt: lastPrompt(ev),
+		Parent:     st.Options.Parent, Labels: st.Options.Labels,
 	}
 }
 

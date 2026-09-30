@@ -151,6 +151,8 @@ type CreateOptions struct {
 	Model             string                  // "" = the configured default model
 	PermissionMode    protocol.PermissionMode // "" = ask
 	CompactionEnabled *bool                   // nil = on
+	Parent            string                  // "" = none; must name a known session
+	Labels            []string                // must pass protocol.ValidLabels
 }
 
 func (o CreateOptions) resolve(defaultModel string) protocol.Options {
@@ -173,11 +175,21 @@ func (o CreateOptions) resolve(defaultModel string) protocol.Options {
 	if o.CompactionEnabled != nil {
 		out.CompactionEnabled = *o.CompactionEnabled
 	}
+	out.Parent, out.Labels = o.Parent, o.Labels
 	return out
 }
 
 // Create resolves the workspace, starts a session, and dispatches SessionStart.
 func (m *Manager) Create(ctx context.Context, workspacePath string, co CreateOptions) (*session.Session, error) {
+	// The daemon records a parent and labels and gives them no meaning, but it
+	// does refuse ones that could never mean anything: a parent that is not a
+	// session, or labels outside the protocol's rules.
+	if co.Parent != "" && !m.deps.Store.Exists(co.Parent) {
+		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, "parent "+co.Parent+" is not a session")
+	}
+	if err := protocol.ValidLabels(co.Labels); err != nil {
+		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
+	}
 	ws, err := workspace.Resolve(workspacePath)
 	if err != nil {
 		return nil, err
@@ -379,6 +391,22 @@ func (m *Manager) SetOption(ctx context.Context, id, key string, value any) (pro
 			return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams,
 				"permission_mode must be ask, auto or bypass")
 		}
+	case "labels":
+		from = opts.Labels
+		if from == nil {
+			from = []string{}
+		}
+		labels, ok := stringList(value)
+		if !ok {
+			return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams, "labels must be an array of strings")
+		}
+		if err := protocol.ValidLabels(labels); err != nil {
+			return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
+		}
+		value = labels
+	case "parent":
+		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams,
+			"parent is set at creation and never changes")
 	default:
 		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams, "unknown option "+key)
 	}
@@ -890,4 +918,22 @@ func (m *Manager) ArchiveIdle(ctx context.Context, now time.Time, after time.Dur
 		out = append(out, s.SessionID)
 	}
 	return out
+}
+
+// stringList reads a decoded JSON value as a list of strings. An empty list
+// is a list; anything else is not.
+func stringList(v any) ([]string, bool) {
+	raw, ok := v.([]any)
+	if !ok {
+		return nil, false
+	}
+	out := make([]string, 0, len(raw))
+	for _, x := range raw {
+		s, ok := x.(string)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, s)
+	}
+	return out, true
 }

@@ -19,6 +19,8 @@ type action struct {
 
 	// text carries a prompt or a goal condition
 	text string
+	// labels are the whole new label list a /run sets.
+	labels []string
 }
 
 type actionKind int
@@ -38,6 +40,7 @@ const (
 	actArchive
 	actRestore
 	actStats
+	actRun
 )
 
 // commandResult is what a line of composer input means: something to do, or
@@ -56,6 +59,7 @@ type commandResult struct {
 var commands = []struct{ name, what string }{
 	{"/goal <text>", "set a goal"},
 	{"/goal", "clear it"},
+	{"/run [text]", "hand this session to the runner, the text as its brief"},
 	{"/compact", "summarise the history now"},
 	{"/stop", "end the session"},
 	{"/archive", "put this session away"},
@@ -118,9 +122,52 @@ func parseCommand(line string) commandResult {
 		return commandResult{open: rest}
 	case "/stats":
 		return commandResult{act: &action{kind: actStats}}
+	case "/run":
+		return commandResult{act: &action{kind: actRun, text: rest}}
 	case "/help":
 		return commandResult{note: helpText}
 	default:
 		return commandResult{note: "unknown command " + name + "\n" + helpText}
 	}
+}
+
+// runPrefix starts every label the runner reads or sets on a run's home
+// (docs/specs/2026-09-30-orchestrated-runs-design.md).
+const runPrefix = "run:"
+
+// runLabels is a session's labels once /run hands it to the runner: whatever
+// run:* label it had is replaced by run:requested, and the rest are kept. On a
+// failed run that is also how it is resumed.
+func runLabels(current []string) []string {
+	out := []string{}
+	for _, l := range current {
+		if !strings.HasPrefix(l, runPrefix) {
+			out = append(out, l)
+		}
+	}
+	return append(out, runPrefix+"requested")
+}
+
+// runStatus is how far a run is, read from its home's labels, as "run: fix
+// (3/10)". Empty for a session that is not a run's home.
+func runStatus(labels []string) string {
+	var step, attempt string
+	for _, l := range labels {
+		rest, ok := strings.CutPrefix(l, runPrefix)
+		if !ok {
+			continue
+		}
+		if a, ok := strings.CutPrefix(rest, "attempt:"); ok {
+			attempt = a
+		} else {
+			step = rest
+		}
+	}
+	if step == "" {
+		return ""
+	}
+	if attempt != "" {
+		return fmt.Sprintf("run: %s (%s)", step, attempt)
+	}
+	return "run: " + step
 }

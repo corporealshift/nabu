@@ -3,6 +3,7 @@ package protocol
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -76,6 +77,38 @@ type Options struct {
 	Model             string         `json:"model"`
 	CompactionEnabled bool           `json:"compaction_enabled"`
 	PermissionMode    PermissionMode `json:"permission_mode"`
+	// Parent is the session this one belongs to, set at creation and never
+	// changed. The daemon records it and attaches no meaning to it.
+	Parent string `json:"parent,omitempty"`
+	// Labels are short strings a client sets for other clients to read. The
+	// daemon records them and attaches no meaning to them.
+	Labels []string `json:"labels,omitempty"`
+}
+
+// Limits on labels (spec §3.1). A label is machine-readable and a list row
+// carries them, so they are short and few.
+const (
+	MaxLabels   = 16
+	MaxLabelLen = 64
+)
+
+// ValidLabels reports whether a set of labels is allowed: at most MaxLabels,
+// each 1 to MaxLabelLen characters from [a-z0-9:_./-].
+func ValidLabels(labels []string) error {
+	if len(labels) > MaxLabels {
+		return fmt.Errorf("at most %d labels, got %d", MaxLabels, len(labels))
+	}
+	for _, l := range labels {
+		if l == "" || len(l) > MaxLabelLen {
+			return fmt.Errorf("label %q must be 1 to %d characters", l, MaxLabelLen)
+		}
+		for _, r := range l {
+			if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || strings.ContainsRune(":_./-", r)) {
+				return fmt.Errorf("label %q may use only a-z, 0-9 and :_./-", l)
+			}
+		}
+	}
+	return nil
 }
 
 // SessionData is the payload of the first event of every log.

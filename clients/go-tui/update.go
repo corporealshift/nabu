@@ -133,7 +133,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case sessionsMsg:
-		m.sessions = msg.sessions
+		m.sessions = groupByParent(msg.sessions)
 		m.pickingArchived = msg.archived
 		if m.cursorAt >= len(m.sessions) {
 			m.cursorAt = 0
@@ -328,6 +328,8 @@ func (m model) submit() (tea.Model, tea.Cmd) {
 	switch act.kind {
 	case actPrompt:
 		m.note("› " + act.text)
+	case actRun:
+		act.labels = runLabels(m.labels)
 	case actCompact:
 		// It is a model call and the transcript does not move while it runs,
 		// so without this the client looks like it dropped the command. On a

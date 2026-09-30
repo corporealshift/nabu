@@ -33,6 +33,10 @@ func Project(log []Event) State {
 				_ = json.Unmarshal(d.To, &st.Options.CompactionEnabled)
 			case "permission_mode":
 				_ = json.Unmarshal(d.To, &st.Options.PermissionMode)
+			case "labels":
+				var labels []string
+				_ = json.Unmarshal(d.To, &labels)
+				st.Options.Labels = labels
 			}
 		case EventStateChange:
 			st.State = MustData[StateChangeData](e).To

@@ -1,6 +1,8 @@
 package com.nabu.client.protocol
 
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /**
  * A session's current state, derived by one left-to-right pass over its log.
@@ -41,7 +43,10 @@ fun project(log: List<Event>, from: State = State()): State {
 
             EventType.OPTIONS_CHANGE ->
                 e.payload<OptionsChangeData>()?.let { d ->
-                    val to = d.to?.jsonPrimitive
+                    // A labels change carries an array, so `to` is only read as a
+                    // primitive for the keys that have one; asking an array for its
+                    // primitive throws.
+                    val to = d.to as? JsonPrimitive
                     st = when (d.key) {
                         "model" -> st.copy(options = st.options.copy(model = to?.content ?: ""))
                         "compaction_enabled" ->
@@ -49,6 +54,11 @@ fun project(log: List<Event>, from: State = State()): State {
                                 compactionEnabled = to?.content?.toBoolean() ?: true))
                         "permission_mode" ->
                             st.copy(options = st.options.copy(permissionMode = to?.content ?: ""))
+                        "labels" ->
+                            st.copy(options = st.options.copy(
+                                labels = (d.to as? JsonArray)
+                                    ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                                    ?: emptyList()))
                         else -> st
                     }
                 }

@@ -47,8 +47,15 @@
       "properties": {
         "model": { "type": "string", "minLength": 1 },
         "compaction_enabled": { "type": "boolean" },
-        "permission_mode": { "$ref": "#/$defs/permission_mode" }
+        "permission_mode": { "$ref": "#/$defs/permission_mode" },
+        "parent": { "$ref": "#/$defs/ulid" },
+        "labels": { "$ref": "#/$defs/labels" }
       }
+    },
+    "labels": {
+      "type": "array",
+      "maxItems": 16,
+      "items": { "type": "string", "pattern": "^[a-z0-9:_./-]{1,64}$" }
     },
     "session": {
       "type": "object",
@@ -114,7 +121,7 @@
       "type": "object",
       "required": ["key", "from", "to", "source"],
       "properties": {
-        "key": { "type": "string", "enum": ["model", "compaction_enabled", "permission_mode"] },
+        "key": { "type": "string", "enum": ["model", "compaction_enabled", "permission_mode", "labels"] },
         "from": {},
         "to": {},
         "source": { "$ref": "#/$defs/source" }

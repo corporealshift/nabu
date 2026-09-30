@@ -139,11 +139,16 @@ func (m model) picker() string {
 	}
 	width := m.pickerWidth()
 	now := time.Now()
+	listed := map[string]bool{}
+	for _, s := range m.sessions {
+		listed[s.SessionID] = true
+	}
 	for i := from; i < to; i++ {
 		if i > from {
 			b.WriteString("\n")
 		}
-		b.WriteString(pickerRow(m.sessions[i], i == m.cursorAt, width, now))
+		s := m.sessions[i]
+		b.WriteString(pickerRow(s, i == m.cursorAt, listed[s.Parent], width, now))
 	}
 	b.WriteString("\n" + dim.Render(help))
 
@@ -157,10 +162,17 @@ func (m model) picker() string {
 // pickerRow is one session as the phone's list shows it (issue 101): what was
 // last asked, since several sessions share a workspace and an id tells nobody
 // anything, then the project, state and how long it has sat idle.
-func pickerRow(s goclient.SessionSummary, selected bool, width int, now time.Time) string {
-	lead := "  "
+//
+// A step of a run is drawn under its home, indented, when the home is listed.
+func pickerRow(s goclient.SessionSummary, selected, child bool, width int, now time.Time) string {
+	lead, indent := "  ", ""
 	if selected {
 		lead = "› "
+	}
+	if child {
+		indent = "   "
+		lead = indent + lead
+		width -= len(indent)
 	}
 	prompt := strings.Join(strings.Fields(s.LastPrompt), " ")
 	var first string
@@ -178,12 +190,40 @@ func pickerRow(s goclient.SessionSummary, selected bool, width int, now time.Tim
 		meta = shortID(s.SessionID)
 	}
 	meta += " · " + s.State
+	if run := runStatus(s.Labels); run != "" {
+		meta += " · " + run
+	}
 	if s.State == string(protocol.StateIdle) {
 		if age := idleAge(s.UpdatedAt, now); age != "" {
 			meta += " · " + age
 		}
 	}
-	return first + "\n" + dim.Render("    "+truncate(meta, width-5)) + "\n"
+	return first + "\n" + dim.Render(indent+"    "+truncate(meta, width-5)) + "\n"
+}
+
+// groupByParent orders a session list so that each session whose parent is
+// listed comes straight after it, keeping the daemon's order otherwise. The
+// picker's cursor walks this order, so it is fixed when the list arrives.
+func groupByParent(sessions []goclient.SessionSummary) []goclient.SessionSummary {
+	listed := map[string]bool{}
+	for _, s := range sessions {
+		listed[s.SessionID] = true
+	}
+	children := map[string][]goclient.SessionSummary{}
+	for _, s := range sessions {
+		if s.Parent != "" && listed[s.Parent] {
+			children[s.Parent] = append(children[s.Parent], s)
+		}
+	}
+	out := make([]goclient.SessionSummary, 0, len(sessions))
+	for _, s := range sessions {
+		if s.Parent != "" && listed[s.Parent] {
+			continue
+		}
+		out = append(out, s)
+		out = append(out, children[s.SessionID]...)
+	}
+	return out
 }
 
 // projectName is the last element of a workspace path, whichever separator
@@ -247,6 +287,12 @@ func (m model) status() string {
 	}
 	if g := m.goalBadge(); g != "" {
 		parts = append(parts, g)
+	}
+	if run := runStatus(m.labels); run != "" {
+		parts = append(parts, badgeWarn.Render(run))
+	}
+	if m.parent != "" {
+		parts = append(parts, dim.Render("↑ "+shortID(m.parent)))
 	}
 	if len(m.tasks) > 0 && !m.showTasks() {
 		// The pane is put away or has no room; the count still says how far.

@@ -344,6 +344,8 @@ type SessionSummary struct {
 	State      string    `json:"state"`
 	UpdatedAt  time.Time `json:"updated_at"`
 	LastPrompt string    `json:"last_prompt,omitempty"`
+	Parent     string    `json:"parent,omitempty"`
+	Labels     []string  `json:"labels,omitempty"`
 }
 
 // List fetches the sessions the daemon knows about.
