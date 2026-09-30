@@ -93,6 +93,14 @@ func ValidateEvent(e Event) error {
 	case *OptionsChangeData:
 		switch d.Key {
 		case "model", "compaction_enabled", "permission_mode":
+		case "labels":
+			var labels []string
+			if err := json.Unmarshal(d.To, &labels); err != nil {
+				return fail("labels must be an array of strings")
+			}
+			if err := ValidLabels(labels); err != nil {
+				return fail(err.Error())
+			}
 		default:
 			return fail(fmt.Sprintf("key %q invalid", d.Key))
 		}
@@ -220,9 +228,13 @@ func validateOptions(o Options) error {
 	}
 	switch o.PermissionMode {
 	case PermissionAsk, PermissionAuto, PermissionBypass:
-		return nil
+	default:
+		return fmt.Errorf("options.permission_mode %q invalid", o.PermissionMode)
 	}
-	return fmt.Errorf("options.permission_mode %q invalid", o.PermissionMode)
+	if err := ValidLabels(o.Labels); err != nil {
+		return fmt.Errorf("options.labels: %w", err)
+	}
+	return nil
 }
 
 // isSource accepts daemon|client|model|module:<name>; when allowInfra is false

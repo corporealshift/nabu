@@ -39,6 +39,10 @@ data class Options(
     val model: String = "",
     @SerialName("compaction_enabled") val compactionEnabled: Boolean = true,
     @SerialName("permission_mode") val permissionMode: String = "",
+    // Spec 3.1: the session this one belongs to, set only at creation.
+    val parent: String = "",
+    // Spec 3.1: strings clients set for each other; the daemon gives them no meaning.
+    val labels: List<String> = emptyList(),
 )
 
 @Serializable

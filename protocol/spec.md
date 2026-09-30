@@ -89,6 +89,16 @@ Every `source` field, where present, is one of `daemon`, `model`, `client`, or
 
 `permission_mode` ∈ `ask | auto | bypass`.
 
+`options` MAY also carry:
+
+- `parent`: the id of another session this one belongs to. It is set at creation and
+  never changes.
+- `labels`: an array of strings that clients set for other clients to read. A session has
+  at most 16 labels, and each is 1 to 64 characters from `[a-z0-9:_./-]`.
+
+The daemon records both and attaches no meaning to either: grouping sessions under a
+parent, or acting on a label, is for clients. An absent `parent` or `labels` means none.
+
 `context_window` is the model's context size in tokens, as configured when the session
 was created. It is recorded so a client can say how full the context is: the daemon
 knows the size and the log carries the usage, but without this a client holds only the
@@ -167,7 +177,9 @@ code, so its absence and a value of `0` are different facts.
 {"key":"permission_mode","from":"ask","to":"auto","source":"client"}
 ```
 
-`key` ∈ `model | compaction_enabled | permission_mode`.
+`key` ∈ `model | compaction_enabled | permission_mode | labels`. A `labels` change
+carries the whole new list in `to`, which replaces the old one; it is never a diff.
+`parent` never changes, so it is never a key.
 
 #### `state_change`
 
@@ -310,7 +322,7 @@ for the same log (vectors under `vectors/projection/`).
 | Field | Derived from |
 |---|---|
 | `state` | `to` of the last `state_change`; `idle` if none |
-| `options` | `session.options`, then each `options_change` applied in order |
+| `options` | `session.options`, then each `options_change` applied in order (`parent` only ever comes from `session`) |
 | `goal` | the last `goal` event, or none |
 | `tasks` | the `tasks` array of the last `tasks` event, or empty |
 | `budget` | the last `budget` event, or unlimited |
@@ -391,7 +403,10 @@ wherever shown.
 
 `SessionSummary = {session_id, workspace, workspace_key, state, event_count,
 created_at, updated_at, goal?: {condition, state}, tasks?: {total, done}, last_prompt?,
-archived?}`.
+archived?, parent?, labels?}`.
+
+`parent` and `labels` are the projected options (§5). They are carried so a list can
+group sessions under their parent, and show their labels, without fetching each log.
 
 `last_prompt` is the content of the session's most recent `user` `message`, trimmed and
 cut to at most 200 characters; absent when nothing has been asked. Sessions in one
@@ -404,7 +419,11 @@ any it holds that a full listing leaves out: they were archived.
 ### 7.3 `nabu.session.create {workspace, options?}` → `{session_id, event}`
 
 `options` defaults: model from config, `compaction_enabled: true`,
-`permission_mode: "ask"`. The returned `event` is the `session` event.
+`permission_mode: "ask"`, no `parent`, no `labels`. The returned `event` is the
+`session` event.
+
+A `parent` that names no session, live or archived, is `nabu_invalid_params`, and so are
+labels outside the rules in §3.1. In both cases no session is created.
 
 ### 7.4 `nabu.session.send_prompt {session_id, content, client_id?}` → `{event_id}`
 
@@ -479,7 +498,9 @@ Appends `goal {state: cleared}`; `nabu_invalid_transition` if no goal is active.
 
 ### 7.13 `nabu.session.set_option {session_id, key, value}` → `{event_id}`
 
-Appends `options_change`. `key` ∈ `model | compaction_enabled | permission_mode`.
+Appends `options_change`. `key` ∈ `model | compaction_enabled | permission_mode | labels`.
+For `labels`, `value` is the whole new list. `parent` is `nabu_invalid_params`, because it
+is set at creation. An invalid value appends nothing.
 
 ### 7.14 `nabu.session.update_tasks {session_id, tasks}` → `{event_id}`
 
