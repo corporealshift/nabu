@@ -21,10 +21,11 @@ that has no run yet.
 ### Starting a run
 
 1. **Create a home session** in the repository's clone. It is never prompted: it exists
-   so the run has somewhere to hang in the TUI and a goal to carry.
+   so the run has somewhere to hang in the TUI, and a description to carry the brief.
    - Its labels: `run:requested` and `issue:<owner>/<repo>/<n>`, lower-cased, because
      labels allow only `[a-z0-9:_./-]` (part 1).
-   - Its goal: the brief, as below.
+   - Its description: the brief, as below. It must not be the goal: setting a goal on an
+     idle session starts it working (protocol §7.11).
 2. **The brief** is the issue's title and body, then each comment on the issue that does
    not carry the marker, oldest first. It is committed as `brief.md` by the `brief` step,
    exactly as a `/run <text>` brief is. The text is cut at 16,000 characters, with a note
@@ -46,7 +47,7 @@ state, gets no second run, except:
 - **The run failed, and the issue was updated since** (`updated_at` is newer than the
   failure). The run resumes at its failed step, as `/run` on a failed run does. The
   issue's new comments are appended to `brief.md` as the first commit of the resumed run,
-  and the goal is set again.
+  and the description is set again.
 - **The run is done and its PR was closed without merging.** The run is over, and the
   issue needs a new run. It gets one only once it is updated after the close.
 
