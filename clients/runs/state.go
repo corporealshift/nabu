@@ -99,6 +99,18 @@ type Run struct {
 	Prompted bool   `json:"prompted,omitempty"`
 	Stopped  bool   `json:"stopped,omitempty"`
 
+	// Task is the task a work session is doing, by its index in tasks.md.
+	Task int `json:"task,omitempty"`
+	// Output is the end of the last check's output, for the fix session and
+	// for Claude.
+	Output string `json:"output,omitempty"`
+	// Advice is what Claude said when it refused to change the check, for
+	// the next fix session.
+	Advice string `json:"advice,omitempty"`
+	// Labelled is the run label last put on the home, so it is set only when
+	// it changes.
+	Labelled string `json:"labelled,omitempty"`
+
 	PR    int      `json:"pr,omitempty"`
 	PRURL string   `json:"pr_url,omitempty"`
 	Notes []string `json:"notes,omitempty"`
