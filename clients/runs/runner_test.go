@@ -32,6 +32,8 @@ type fakeSession struct {
 	// log is the session's messages: a user one per prompt, an assistant
 	// one per finish.
 	log []protocol.Event
+	// met is the session's goal judged met.
+	met bool
 }
 
 func (s *fakeSession) say(role, text string) {
@@ -108,7 +110,12 @@ func (d *fakeDaemon) SendPrompt(_ context.Context, id, text string) error {
 }
 
 func (d *fakeDaemon) State(_ context.Context, id string) (protocol.State, error) {
-	return protocol.State{State: d.sessions[id].state}, nil
+	s := d.sessions[id]
+	st := protocol.State{State: s.state}
+	if s.met {
+		st.Goal = &protocol.GoalData{Condition: s.goals[0], State: "met"}
+	}
+	return st, nil
 }
 
 func (d *fakeDaemon) Events(_ context.Context, id string) ([]protocol.Event, error) {
@@ -747,5 +754,46 @@ func TestAWorkSessionThatCommitsNothingIsToldOnce(t *testing.T) {
 	g.tick()
 	if r.Step != StepWork || r.Task != 1 {
 		t.Errorf("run = %+v", r)
+	}
+}
+
+// Seen live: the verify session wrote the feature and its tests as well, so
+// the check passed before any work. A planning step writes its own file only.
+func TestAPlanningStepMayWriteOnlyItsFile(t *testing.T) {
+	g := newRig(t)
+	g.ask("H1", "Add a Median function")
+	g.tick()
+	r := g.run("H1")
+	start := r.Start
+	g.finish(map[string]string{r.File(PlanFile): "p", "stats.go": "func Median() {}"})
+	g.tick()
+	if r.Step != StepPlan || r.Attempt != 1 || len(g.git.resets) != 1 || g.git.resets[0] != start {
+		t.Fatalf("run = %+v, resets %q", r, g.git.resets)
+	}
+	if !strings.Contains(g.log.String(), "may write only "+r.File(PlanFile)+", and the session also changed stats.go") {
+		t.Errorf("log:\n%s", g.log.String())
+	}
+	if p := g.d.sessions["S1"].prompts[0]; !strings.Contains(p, "Write only "+r.File(PlanFile)) {
+		t.Errorf("the plan prompt does not say so:\n%s", p)
+	}
+}
+
+// Seen live: a task an earlier session had already done. The work session
+// committed nothing and its goal was judged met; that task is done.
+func TestATaskAlreadyDoneIsDone(t *testing.T) {
+	g := newRig(t)
+	r := g.planned("H1")
+	_, s := g.d.last()
+	s.met = true
+	g.finish(nil)
+	g.tick()
+	if r.Step != StepWork || r.Task != 1 || len(g.git.resets) != 0 {
+		t.Fatalf("run = %+v, resets %q", r, g.git.resets)
+	}
+	if len(s.prompts) != 1 {
+		t.Errorf("a session whose goal was met was nudged: %q", s.prompts)
+	}
+	if msgs := g.git.messages(); msgs[len(msgs)-1] != "run: task 1 done" {
+		t.Errorf("commits = %q", msgs)
 	}
 }

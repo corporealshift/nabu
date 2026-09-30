@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+// planningOnly is told to every step that writes one of the run's files.
+func planningOnly(r Run, name string) string {
+	return fmt.Sprintf("\n- Write only %s. Change no other file: the work itself belongs to later steps, and the runner throws away a session that changes anything else.", r.File(name))
+}
+
 // rules go at the end of every session's prompt. The runner enforces the
 // first one; the others are what an unattended session needs to be told.
 func rules(r Run) string {
@@ -37,7 +42,7 @@ Write it to %s and commit it with the message "run: brief".
 ## The conversation
 
 %s
-%s`, r.File(BriefFile), transcript, rules(r))
+%s%s`, r.File(BriefFile), transcript, rules(r), planningOnly(r, BriefFile))
 }
 
 // PlanPrompt asks for plan.md.
@@ -52,7 +57,7 @@ Read as much of the repository as you need. Write the plan to %s. It says:
 - anything risky or uncertain.
 
 Plan exactly what the brief asks for, and nothing more. Commit it with the message "run: plan".
-%s`, r.File(BriefFile), r.File(PlanFile), rules(r))
+%s%s`, r.File(BriefFile), r.File(PlanFile), rules(r), planningOnly(r, PlanFile))
 }
 
 // TasksPrompt asks for tasks.md.
@@ -67,7 +72,7 @@ Write each task as a checkbox line, with indented lines under it saying what it 
   A read-through cache in reader/cache.go with get and put, and unit tests for both.
 
 Commit it with the message "run: tasks".
-%s`, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), rules(r))
+%s%s`, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), rules(r), planningOnly(r, TasksFile))
 }
 
 // VerifyPrompt asks for verify.sh. It is the one session allowed to write it.
@@ -86,6 +91,7 @@ This script is the definition of done for the whole run. Once it is committed, o
 ## Rules for this session
 
 - This session does one step of an automated run. Write the script and nothing else.
+- Write only %[4]s. Change no other file: do not write the feature or its tests, which belong to later steps, and the runner throws away a session that changes anything else.
 - Do not push, and do not open a pull request.
 - Nobody is watching, so do not use the ask tool.
 - Commit your work before you finish.

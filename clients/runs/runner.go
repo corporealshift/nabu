@@ -431,12 +431,13 @@ func (rn *Runner) observe(ctx context.Context, d Daemon, r *Run) (Outcome, bool,
 			// Not started yet, or not yet answered the nudge.
 			return Outcome{}, false, nil
 		}
+		met := st.Goal != nil && st.Goal.State == "met"
 		if !r.Stopped && r.NudgedAt == 0 {
 			// The local model sometimes ends its turn having written
 			// nothing. It is told once, in the same session, before that
 			// counts as a failure: it keeps what it read, and the runner
 			// knows exactly what is missing.
-			missing, err := rn.missing(ctx, r)
+			missing, err := rn.missing(ctx, r, met)
 			if err != nil {
 				return Outcome{}, false, err
 			}
@@ -465,7 +466,7 @@ func (rn *Runner) observe(ctx context.Context, d Daemon, r *Run) (Outcome, bool,
 	default:
 		return rn.discard(ctx, r, "the session ended "+string(st.State))
 	}
-	o, err := rn.produced(ctx, d, r)
+	o, err := rn.produced(ctx, d, r, st.Goal != nil && st.Goal.State == "met")
 	return o, true, err
 }
 
@@ -481,9 +482,8 @@ func (rn *Runner) discard(ctx context.Context, r *Run, why string) (Outcome, boo
 
 // missing is what a session that ended its turn still owes its step, as the
 // message that says so, or "" when it owes nothing the runner can see.
-func (rn *Runner) missing(ctx context.Context, r *Run) (string, error) {
-	own := map[Step]string{StepBrief: BriefFile, StepPlan: PlanFile, StepTasks: TasksFile, StepVerify: VerifyFile}[r.Step]
-	if own != "" {
+func (rn *Runner) missing(ctx context.Context, r *Run, goalMet bool) (string, error) {
+	if own := ownFile(r.Step); own != "" {
 		if text, ok := rn.read(r, own); !ok || strings.TrimSpace(text) == "" {
 			return fmt.Sprintf("You ended your turn without writing %s. Write it now, as the first message asked, and commit it.", r.File(own)), nil
 		}
@@ -494,11 +494,16 @@ func (rn *Runner) missing(ctx context.Context, r *Run) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if head == r.Start {
+		if head == r.Start && !goalMet {
 			return "You ended your turn without committing anything for this task. Do the task now, as the first message asked, and commit it.", nil
 		}
 	}
 	return "", nil
+}
+
+// ownFile is the one file a planning step writes, or "" for other steps.
+func ownFile(s Step) string {
+	return map[Step]string{StepBrief: BriefFile, StepPlan: PlanFile, StepTasks: TasksFile, StepVerify: VerifyFile}[s]
 }
 
 // answeredAfter reports whether the model has said anything since the log
@@ -525,7 +530,10 @@ func answered(events []protocol.Event) bool {
 
 // produced checks what a finished session left behind, which is what the
 // step is judged on, never what the session said.
-func (rn *Runner) produced(ctx context.Context, d Daemon, r *Run) (Outcome, error) {
+//
+// goalMet is whether the session's goal was judged met, which is how a work
+// session that found its task already done is told from one that did nothing.
+func (rn *Runner) produced(ctx context.Context, d Daemon, r *Run, goalMet bool) (Outcome, error) {
 	if r.Step != StepVerify {
 		changed, err := rn.Git.Changed(ctx, r.Worktree, r.Start)
 		if err != nil {
@@ -541,9 +549,34 @@ func (rn *Runner) produced(ctx context.Context, d Daemon, r *Run) (Outcome, erro
 		}
 	}
 
+	// A planning step writes its own file and nothing else. In a live run the
+	// verify session also wrote the feature and its tests, so the check passed
+	// before any work and task 1 found itself already done.
+	own := ownFile(r.Step)
+	if own != "" {
+		changed, err := rn.Git.Changed(ctx, r.Worktree, r.Start)
+		if err != nil {
+			return Outcome{}, err
+		}
+		dirty, err := rn.Git.Dirty(ctx, r.Worktree)
+		if err != nil {
+			return Outcome{}, err
+		}
+		var other []string
+		for _, f := range append(changed, dirty...) {
+			if f != r.File(own) && !slices.Contains(other, f) {
+				other = append(other, f)
+			}
+		}
+		if len(other) > 0 {
+			o, _, err := rn.discard(ctx, r, fmt.Sprintf("the %s step may write only %s, and the session also changed %s",
+				r.Step, r.File(own), strings.Join(other, ", ")))
+			return o, err
+		}
+	}
+
 	// The step's own file, committed by the runner if the session left it
 	// uncommitted: a smaller model forgets, and the file is what counts.
-	own := map[Step]string{StepBrief: BriefFile, StepPlan: PlanFile, StepTasks: TasksFile, StepVerify: VerifyFile}[r.Step]
 	if own != "" {
 		text, ok := rn.read(r, own)
 		if !ok || strings.TrimSpace(text) == "" {
@@ -581,10 +614,12 @@ func (rn *Runner) produced(ctx context.Context, d Daemon, r *Run) (Outcome, erro
 		if err != nil {
 			return Outcome{}, err
 		}
-		if head == r.Start {
+		if head == r.Start && !goalMet {
 			o, _, err := rn.discard(ctx, r, "the session committed nothing")
 			return o, err
 		}
+		// Committing nothing with the goal judged met is a task an earlier
+		// one already did, which is done.
 		md, _ := rn.read(r, TasksFile)
 		if err := rn.write(ctx, r, TasksFile, TickTask(md, r.Task), fmt.Sprintf("run: task %d done", r.Task+1)); err != nil {
 			return Outcome{}, err

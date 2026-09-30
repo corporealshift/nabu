@@ -137,6 +137,13 @@ point of the design, so they are never skipped.
   step session ends without its file (or, for `work`, without a commit), the runner
   sends it one message saying exactly what is missing. Only if it ends short again is
   that a failed attempt.
+- **A planning step writes its own file and nothing else.** A `brief`, `plan`, `tasks` or
+  `verify` session that changes any other file is reset and retried, and the prompts say
+  so. In the second live run, the `verify` session also wrote the feature and its tests.
+  So the check passed before any work, and task 1 found itself already done.
+- **A task already done is done.** A `work` session that commits nothing, when its goal
+  was judged met, has found its task already done by an earlier one. The box is ticked.
+  Committing nothing with the goal unmet is stopping short, as above.
 - **Plan steps check what was committed, not what was said.** The runner checks that the
   step's file exists and is committed. It does not ask a judge. `work` and `fix` sessions
   have goals, so the judge applies.
