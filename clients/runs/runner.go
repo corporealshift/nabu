@@ -427,8 +427,27 @@ func (rn *Runner) observe(ctx context.Context, d Daemon, r *Run) (Outcome, bool,
 		if err != nil {
 			return Outcome{}, false, err
 		}
-		if !answered(events) {
+		if !answeredAfter(events, r.NudgedAt) {
+			// Not started yet, or not yet answered the nudge.
 			return Outcome{}, false, nil
+		}
+		if !r.Stopped && r.NudgedAt == 0 {
+			// The local model sometimes ends its turn having written
+			// nothing. It is told once, in the same session, before that
+			// counts as a failure: it keeps what it read, and the runner
+			// knows exactly what is missing.
+			missing, err := rn.missing(ctx, r)
+			if err != nil {
+				return Outcome{}, false, err
+			}
+			if missing != "" {
+				if err := d.SendPrompt(ctx, r.Session, missing); err != nil {
+					return Outcome{}, false, err
+				}
+				r.NudgedAt = len(events)
+				rn.logf("run %s: %s session %s stopped short; told it so", r.Home, r.Step, r.Session)
+				return Outcome{}, false, rn.save(r)
+			}
 		}
 		if !r.Stopped {
 			r.Stopped = true
@@ -458,6 +477,37 @@ func (rn *Runner) discard(ctx context.Context, r *Run, why string) (Outcome, boo
 		}
 	}
 	return Outcome{Why: fmt.Sprintf("%s (session %s)", why, r.Session)}, true, nil
+}
+
+// missing is what a session that ended its turn still owes its step, as the
+// message that says so, or "" when it owes nothing the runner can see.
+func (rn *Runner) missing(ctx context.Context, r *Run) (string, error) {
+	own := map[Step]string{StepBrief: BriefFile, StepPlan: PlanFile, StepTasks: TasksFile, StepVerify: VerifyFile}[r.Step]
+	if own != "" {
+		if text, ok := rn.read(r, own); !ok || strings.TrimSpace(text) == "" {
+			return fmt.Sprintf("You ended your turn without writing %s. Write it now, as the first message asked, and commit it.", r.File(own)), nil
+		}
+		return "", nil
+	}
+	if r.Step == StepWork {
+		head, err := rn.Git.Head(ctx, r.Worktree)
+		if err != nil {
+			return "", err
+		}
+		if head == r.Start {
+			return "You ended your turn without committing anything for this task. Do the task now, as the first message asked, and commit it.", nil
+		}
+	}
+	return "", nil
+}
+
+// answeredAfter reports whether the model has said anything since the log
+// had n events.
+func answeredAfter(events []protocol.Event, n int) bool {
+	if n > len(events) {
+		return false
+	}
+	return answered(events[n:])
 }
 
 func answered(events []protocol.Event) bool {

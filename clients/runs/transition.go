@@ -118,7 +118,7 @@ func enter(r Run, s Step, fresh bool) Run {
 	if fresh {
 		r.Attempt = 0
 	}
-	r.Session, r.Start, r.Prompted, r.Stopped = "", "", false, false
+	r.Session, r.Start, r.Prompted, r.Stopped, r.NudgedAt = "", "", false, false, 0
 	r.Waiting = s.Session()
 	return r
 }

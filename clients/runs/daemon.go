@@ -2,6 +2,8 @@ package runs
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -100,13 +102,14 @@ func (c Client) Create(ctx context.Context, workspace, parent string, maxTurns i
 	return out.SessionID, err
 }
 
-// promptClientID makes a step session's one prompt idempotent across a
-// restart (spec §7.4).
-const promptClientID = "nabu-runner-prompt"
-
+// SendPrompt sends a message with a client_id made from its text, so sending
+// the same one again after a restart appends nothing (spec §7.4), while a
+// different one, such as a nudge after the first prompt, is a message of its
+// own.
 func (c Client) SendPrompt(ctx context.Context, id, text string) error {
+	sum := sha256.Sum256([]byte(text))
 	return c.C.CallInto(ctx, "nabu.session.send_prompt",
-		map[string]any{"session_id": id, "content": text, "client_id": promptClientID}, nil)
+		map[string]any{"session_id": id, "content": text, "client_id": "nabu-runner-" + hex.EncodeToString(sum[:8])}, nil)
 }
 
 func (c Client) State(ctx context.Context, id string) (protocol.State, error) {

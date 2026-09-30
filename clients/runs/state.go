@@ -98,6 +98,9 @@ type Run struct {
 	Start    string `json:"start,omitempty"`
 	Prompted bool   `json:"prompted,omitempty"`
 	Stopped  bool   `json:"stopped,omitempty"`
+	// NudgedAt is how long the session's log was when it was told it had
+	// stopped short; zero until then. A session is told once.
+	NudgedAt int `json:"nudged_at,omitempty"`
 
 	// Task is the task a work session is doing, by its index in tasks.md.
 	Task int `json:"task,omitempty"`

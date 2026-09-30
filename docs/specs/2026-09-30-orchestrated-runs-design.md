@@ -131,6 +131,12 @@ point of the design, so they are never skipped.
   sees the file and goes to `revise`, then deletes the file in its own commit.
 - **Every session runs in `auto` mode, is told not to use `ask`,** and has its own turn
   budget. Planning steps get 30 turns, `work` and `fix` get 60.
+- **A session that stops short is told so, once, in the same session.** The local model
+  sometimes ends its turn having written nothing. In the second live run, a `tasks`
+  session read the brief and the plan, then stopped, twice, and the run failed. When a
+  step session ends without its file (or, for `work`, without a commit), the runner
+  sends it one message saying exactly what is missing. Only if it ends short again is
+  that a failed attempt.
 - **Plan steps check what was committed, not what was said.** The runner checks that the
   step's file exists and is committed. It does not ask a judge. `work` and `fix` sessions
   have goals, so the judge applies.

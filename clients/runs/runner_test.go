@@ -29,7 +29,14 @@ type fakeSession struct {
 	turns             int
 	goals, prompts    []string
 	state             protocol.SessionState
-	answered          bool
+	// log is the session's messages: a user one per prompt, an assistant
+	// one per finish.
+	log []protocol.Event
+}
+
+func (s *fakeSession) say(role, text string) {
+	b, _ := json.Marshal(protocol.MessageData{Role: role, Content: text})
+	s.log = append(s.log, protocol.Event{Type: protocol.EventMessage, Data: b})
 }
 
 type fakeDaemon struct {
@@ -95,6 +102,7 @@ func (d *fakeDaemon) Create(_ context.Context, ws, parent string, turns int) (st
 func (d *fakeDaemon) SendPrompt(_ context.Context, id, text string) error {
 	s := d.sessions[id]
 	s.prompts = append(s.prompts, text)
+	s.say("user", text)
 	s.state = protocol.StateRunning
 	return nil
 }
@@ -104,11 +112,7 @@ func (d *fakeDaemon) State(_ context.Context, id string) (protocol.State, error)
 }
 
 func (d *fakeDaemon) Events(_ context.Context, id string) ([]protocol.Event, error) {
-	if !d.sessions[id].answered {
-		return nil, nil
-	}
-	b, _ := json.Marshal(protocol.MessageData{Role: "assistant", Content: "done"})
-	return []protocol.Event{{Type: protocol.EventMessage, Data: b}}, nil
+	return slices.Clone(d.sessions[id].log), nil
 }
 
 func (d *fakeDaemon) Stop(_ context.Context, id string) error {
@@ -358,7 +362,8 @@ func (g *rig) finish(files map[string]string) {
 	if len(paths) > 0 {
 		g.git.commit("session: "+strings.Join(paths, ","), paths...)
 	}
-	s.answered, s.state = true, protocol.StateIdle
+	s.say("assistant", "done")
+	s.state = protocol.StateIdle
 }
 
 func (g *rig) file(r *Run, name string) string { return r.File(name) }
@@ -679,5 +684,68 @@ func TestClaudeFailuresAreRetriedAtTheNextPoll(t *testing.T) {
 	g.tick() // approved (queue empty)
 	if run.Step != StepWork {
 		t.Errorf("run = %+v\nlog:\n%s", run, g.log.String())
+	}
+}
+
+// Seen live: a tasks session read the brief and the plan and ended its turn,
+// twice, and the run failed. A session that ends without what its step needs
+// is told so once, in the same session.
+func TestASessionThatStopsShortIsToldOnce(t *testing.T) {
+	g := newRig(t)
+	g.ask("H1", "Add a Median function")
+	g.tick()
+	r := g.run("H1")
+	g.finish(map[string]string{r.File(PlanFile): "p"})
+	g.tick() // plan-review, then the tasks session
+	g.finish(nil)
+	g.tick()
+	id, s := g.d.last()
+	if len(s.prompts) != 2 || !strings.Contains(s.prompts[1], "without writing "+r.File(TasksFile)) {
+		t.Fatalf("session %s prompts = %q", id, s.prompts)
+	}
+	if r.Step != StepTasks || r.Session != id || r.Attempt != 0 {
+		t.Fatalf("a nudge is not a failure: %+v", r)
+	}
+	g.tick() // it has not answered the nudge yet: nothing happens
+	if r.Step != StepTasks || len(s.prompts) != 2 {
+		t.Fatalf("after a quiet tick: %+v, %d prompts", r, len(s.prompts))
+	}
+	g.finish(map[string]string{r.File(TasksFile): twoTasks})
+	g.tick()
+	if r.Step != StepVerify || len(g.d.order) != 3 {
+		t.Errorf("run = %+v, sessions %d", r, len(g.d.order))
+	}
+}
+
+func TestANudgeIsGivenOnlyOnce(t *testing.T) {
+	g := newRig(t)
+	g.ask("H1", "Add a Median function")
+	g.tick()
+	r := g.run("H1")
+	g.finish(nil)
+	g.tick() // nudged
+	g.finish(nil)
+	g.tick() // still nothing: a failed attempt, and a fresh session
+	if r.Step != StepPlan || r.Attempt != 1 || len(g.d.order) != 2 {
+		t.Errorf("run = %+v, sessions %d", r, len(g.d.order))
+	}
+	if _, s := g.d.last(); len(s.prompts) != 1 {
+		t.Errorf("the retry was nudged before it began: %q", s.prompts)
+	}
+}
+
+func TestAWorkSessionThatCommitsNothingIsToldOnce(t *testing.T) {
+	g := newRig(t)
+	r := g.planned("H1")
+	g.finish(nil)
+	g.tick()
+	_, s := g.d.last()
+	if len(s.prompts) != 2 || !strings.Contains(s.prompts[1], "without committing anything") {
+		t.Fatalf("prompts = %q", s.prompts)
+	}
+	g.finish(map[string]string{"stats.go": "x"})
+	g.tick()
+	if r.Step != StepWork || r.Task != 1 {
+		t.Errorf("run = %+v", r)
 	}
 }
