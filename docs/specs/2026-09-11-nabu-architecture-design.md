@@ -542,6 +542,10 @@ veto_count}` and a session handle for reading the transcript.
   allow the stop. `verify.judge_model` selects the model, defaulting to the session's
   provider; on the local llama.cpp server the call serializes behind the loop through
   `max-in-flight`, which is fine because the loop is paused at the gate.
+  `verify.judge_max_tokens` (default 4096) caps the reply. The verdict is only one
+  line, but a reasoning model's thinking counts against the cap. At the original 400,
+  the local Qwen ran out before every verdict (it needed 767 to 1,066 tokens). The judge
+  therefore failed every time, and every goal session blocked (2026-09-29).
 - **Veto rendering.** Each veto is a `stop_veto` event. Request assembly renders
   outstanding vetoes as one fixed-template user-role message. The template is normative
   so replay is deterministic and the log never contains a forged user message.

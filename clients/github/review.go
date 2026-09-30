@@ -53,15 +53,20 @@ var jsonBlock = regexp.MustCompile("(?s)```json[ \t]*\r?\n(.*?)\r?\n[ \t]*```")
 // block tagged json counts: an untagged block is as likely to be a quoted
 // snippet of the code under review.
 func ParseReview(final string) (Review, bool) {
-	m := jsonBlock.FindAllStringSubmatch(final, -1)
-	if len(m) == 0 {
-		return Review{}, false
-	}
 	var r Review
-	if err := json.Unmarshal([]byte(m[len(m)-1][1]), &r); err != nil {
+	if !decodeLastBlock(final, &r) {
 		return Review{}, false
 	}
 	return r, true
+}
+
+// decodeLastBlock decodes the last fenced json block in a message into v.
+func decodeLastBlock(final string, v any) bool {
+	m := jsonBlock.FindAllStringSubmatch(final, -1)
+	if len(m) == 0 {
+		return false
+	}
+	return json.Unmarshal([]byte(m[len(m)-1][1]), v) == nil
 }
 
 var hunkHeader = regexp.MustCompile(`^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)

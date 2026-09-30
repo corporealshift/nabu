@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,10 +16,35 @@ import (
 )
 
 type fakeGH struct {
-	prs     map[string][]PR
-	listErr error
-	posts   []ReviewPost
-	postErr error
+	prs      map[string][]PR
+	listErr  error
+	posts    []ReviewPost
+	postErr  error
+	comments map[int][]Comment
+	replies  []string // "root: body"
+	convo    []string
+	replyErr error
+	convoErr error
+}
+
+func (g *fakeGH) PRComments(_ context.Context, _ string, n int) ([]Comment, error) {
+	return g.comments[n], nil
+}
+
+func (g *fakeGH) ReplyTo(_ context.Context, _ string, _ int, root int64, body string) error {
+	if g.replyErr != nil {
+		return g.replyErr
+	}
+	g.replies = append(g.replies, fmt.Sprintf("%d: %s", root, body))
+	return nil
+}
+
+func (g *fakeGH) Comment(_ context.Context, _ string, _ int, body string) error {
+	if g.convoErr != nil {
+		return g.convoErr
+	}
+	g.convo = append(g.convo, body)
+	return nil
 }
 
 func (g *fakeGH) OpenPRs(_ context.Context, repo string) ([]PR, error) {
@@ -34,8 +60,31 @@ func (g *fakeGH) PostReview(_ context.Context, _ string, _ int, post ReviewPost)
 }
 
 type fakeGit struct {
-	calls []string
-	diff  string
+	calls   []string
+	diff    string
+	heads   map[string]string // worktree path → HEAD; absent means where it was added
+	added   map[string]string
+	pushErr error
+}
+
+func (g *fakeGit) FetchBranch(_ context.Context, clone, ref string) error {
+	g.calls = append(g.calls, "fetch-branch "+clone+" "+ref)
+	return nil
+}
+
+func (g *fakeGit) Head(_ context.Context, dir string) (string, error) {
+	if h, ok := g.heads[dir]; ok {
+		return h, nil
+	}
+	return g.added[dir], nil
+}
+
+func (g *fakeGit) Push(_ context.Context, dir, ref string) error {
+	if g.pushErr != nil {
+		return g.pushErr
+	}
+	g.calls = append(g.calls, "push "+dir+" "+ref)
+	return nil
 }
 
 func (g *fakeGit) FetchPR(_ context.Context, clone string, n int, base string) error {
@@ -45,6 +94,10 @@ func (g *fakeGit) FetchPR(_ context.Context, clone string, n int, base string) e
 
 func (g *fakeGit) AddWorktree(_ context.Context, _, path, sha string) error {
 	g.calls = append(g.calls, "add "+path+" "+sha)
+	if g.added == nil {
+		g.added = map[string]string{}
+	}
+	g.added[path] = sha
 	return nil
 }
 
@@ -70,9 +123,12 @@ func (g *fakeGit) did(prefix string) int {
 type fakeSession struct {
 	workspace string
 	maxTurns  int
+	goals     []string
 	prompts   []string
 	state     protocol.SessionState
-	final     string
+	// earlier are assistant messages before the final one.
+	earlier []string
+	final   string
 }
 
 type fakeDaemon struct {
@@ -89,6 +145,11 @@ func (d *fakeDaemon) Create(_ context.Context, ws string, maxTurns int) (string,
 	id := fmt.Sprintf("S%d", d.creates)
 	d.sessions[id] = &fakeSession{workspace: ws, maxTurns: maxTurns, state: protocol.StateIdle}
 	return id, nil
+}
+
+func (d *fakeDaemon) SetGoal(_ context.Context, id, condition string) error {
+	d.sessions[id].goals = append(d.sessions[id].goals, condition)
+	return nil
 }
 
 func (d *fakeDaemon) SendPrompt(_ context.Context, id, text string) error {
@@ -122,8 +183,11 @@ func (d *fakeDaemon) Events(_ context.Context, id string) ([]protocol.Event, err
 		b, _ := json.Marshal(protocol.MessageData{Role: "user", Content: p})
 		evs = append(evs, protocol.Event{Type: protocol.EventMessage, Data: b})
 	}
-	if s.final != "" {
-		b, _ := json.Marshal(protocol.MessageData{Role: "assistant", Content: s.final})
+	for _, m := range append(slices.Clone(s.earlier), s.final) {
+		if m == "" && s.final == "" {
+			continue
+		}
+		b, _ := json.Marshal(protocol.MessageData{Role: "assistant", Content: m})
 		evs = append(evs, protocol.Event{Type: protocol.EventMessage, Data: b})
 	}
 	return evs, nil

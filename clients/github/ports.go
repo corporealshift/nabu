@@ -11,6 +11,13 @@ import (
 type GitHub interface {
 	OpenPRs(ctx context.Context, repo string) ([]PR, error)
 	PostReview(ctx context.Context, repo string, number int, post ReviewPost) error
+	// PRComments is every comment on a PR, of all three kinds, leaving out
+	// reviews not yet submitted and their comments.
+	PRComments(ctx context.Context, repo string, number int) ([]Comment, error)
+	// ReplyTo answers in the thread that starts with root.
+	ReplyTo(ctx context.Context, repo string, number int, root int64, body string) error
+	// Comment posts in the PR's conversation.
+	Comment(ctx context.Context, repo string, number int, body string) error
 }
 
 // Git is what the watcher does with git. Everything runs in Kyle's clone or
@@ -22,6 +29,12 @@ type Git interface {
 	// Diff is the change a PR makes: its head against where it left base.
 	Diff(ctx context.Context, dir, base, sha string) (string, error)
 	RemoveWorktree(ctx context.Context, clone, path string) error
+	// FetchBranch brings a branch into the clone as origin/<ref>.
+	FetchBranch(ctx context.Context, clone, ref string) error
+	// Head is the commit a worktree is at.
+	Head(ctx context.Context, dir string) (string, error)
+	// Push sends a worktree's HEAD to a branch, never forcing it.
+	Push(ctx context.Context, dir, ref string) error
 }
 
 // Daemon is the part of the protocol the watcher uses. It never subscribes:
@@ -29,6 +42,7 @@ type Git interface {
 // §7.18), so a session that reaches for the network learns so immediately.
 type Daemon interface {
 	Create(ctx context.Context, workspace string, maxTurns int) (string, error)
+	SetGoal(ctx context.Context, sessionID, condition string) error
 	SendPrompt(ctx context.Context, sessionID, text string) error
 	State(ctx context.Context, sessionID string) (protocol.State, error)
 	Stop(ctx context.Context, sessionID string) error

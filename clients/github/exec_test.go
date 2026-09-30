@@ -55,6 +55,23 @@ func TestExecArgs(t *testing.T) {
 		{name: "remove worktree",
 			call: func(r Runner) error { return GitCLI{r}.RemoveWorktree(ctx, "C:/bw", "C:/wt") },
 			want: []string{"git", "-C", "C:/bw", "worktree", "remove", "--force", "C:/wt"}},
+		{name: "reply in a thread",
+			call:  func(r Runner) error { return GH{r}.ReplyTo(ctx, "kyle/bw", 7, 42, "ok "+Marker) },
+			want:  []string{"gh", "api", "repos/kyle/bw/pulls/7/comments/42/replies", "--method", "POST", "--input", "-"},
+			stdin: `{"body":"ok <!-- nabu -->"}`},
+		{name: "comment",
+			call:  func(r Runner) error { return GH{r}.Comment(ctx, "kyle/bw", 7, "ok") },
+			want:  []string{"gh", "api", "repos/kyle/bw/issues/7/comments", "--method", "POST", "--input", "-"},
+			stdin: `{"body":"ok"}`},
+		{name: "fetch branch",
+			call: func(r Runner) error { return GitCLI{r}.FetchBranch(ctx, "C:/bw", "feat/x") },
+			want: []string{"git", "-C", "C:/bw", "fetch", "origin", "+refs/heads/feat/x:refs/remotes/origin/feat/x"}},
+		{name: "head",
+			call: func(r Runner) error { _, err := GitCLI{r}.Head(ctx, "C:/wt"); return err },
+			want: []string{"git", "-C", "C:/wt", "rev-parse", "HEAD"}},
+		{name: "push",
+			call: func(r Runner) error { return GitCLI{r}.Push(ctx, "C:/wt", "feat/x") },
+			want: []string{"git", "-C", "C:/wt", "push", "origin", "HEAD:refs/heads/feat/x"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -80,13 +97,14 @@ func TestOpenPRsDecodesGh(t *testing.T) {
 	out, _ := json.Marshal([]map[string]any{{
 		"number": 7, "headRefOid": "abc", "headRefName": "feat", "baseRefName": "main",
 		"isDraft": true, "isCrossRepository": true, "title": "T", "body": "B",
+		"labels": []map[string]any{{"name": "nabu", "color": "fff"}},
 	}})
 	r, _ := recorder(string(out))
 	prs, err := GH{r}.OpenPRs(context.Background(), "kyle/bw")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []PR{{Number: 7, HeadSHA: "abc", HeadRef: "feat", BaseRef: "main", Title: "T", Body: "B", Draft: true, Fork: true}}
+	want := []PR{{Number: 7, HeadSHA: "abc", HeadRef: "feat", BaseRef: "main", Title: "T", Body: "B", Draft: true, Fork: true, Labels: []string{"nabu"}}}
 	if !reflect.DeepEqual(prs, want) {
 		t.Errorf("prs = %+v", prs)
 	}
@@ -139,5 +157,39 @@ func TestBoundary(t *testing.T) {
 				t.Errorf("%s imports %s", f, imp.Path.Value)
 			}
 		}
+	}
+}
+
+// A pending review is visible to its author's login, which is the login gh
+// uses; neither it nor its comments count until it is submitted.
+func TestPRCommentsReadsAllThreeKindsAndSkipsPendingReviews(t *testing.T) {
+	pages := map[string]string{
+		"repos/kyle/bw/pulls/7/reviews": `[{"id":5,"user":{"login":"kyle"},"body":"ok","state":"COMMENTED","submitted_at":"2026-09-29T10:00:00Z","html_url":"r5"},` +
+			`{"id":6,"user":{"login":"kyle"},"body":"draft","state":"PENDING"}]`,
+		// Two pages, as --paginate prints them.
+		"repos/kyle/bw/pulls/7/comments": `[{"id":10,"pull_request_review_id":5,"user":{"login":"kyle"},"body":"here","path":"a.go","line":3,"diff_hunk":"@@","created_at":"2026-09-29T10:00:00Z","html_url":"c10"}]` +
+			`[{"id":11,"pull_request_review_id":5,"user":{"login":"kyle"},"body":"outdated","path":"a.go","line":null,"original_line":8,"in_reply_to_id":10,"created_at":"2026-09-29T10:01:00Z"},` +
+			`{"id":12,"pull_request_review_id":6,"user":{"login":"kyle"},"body":"pending","path":"a.go","line":4}]`,
+		"repos/kyle/bw/issues/7/comments": `[{"id":900,"user":{"login":"kyle"},"body":"readme","created_at":"2026-09-29T10:02:00Z","html_url":"i900"}]`,
+	}
+	run := func(_ context.Context, _ string, _ []byte, name string, args ...string) ([]byte, error) {
+		if name != "gh" || len(args) != 3 || args[0] != "api" || args[1] != "--paginate" {
+			t.Fatalf("unexpected call %s %q", name, args)
+		}
+		return []byte(pages[args[2]]), nil
+	}
+	got, err := GH{run}.PRComments(context.Background(), "kyle/bw", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for _, c := range got {
+		keys = append(keys, key(c))
+	}
+	if want := []string{"review-5", "line-10", "line-11", "issue-900"}; !reflect.DeepEqual(keys, want) {
+		t.Fatalf("comments = %v, want %v", keys, want)
+	}
+	if got[2].Line != 8 || got[2].InReplyTo != 10 || got[1].Path != "a.go" || got[1].DiffHunk != "@@" || got[3].URL != "i900" {
+		t.Errorf("fields: %+v", got)
 	}
 }

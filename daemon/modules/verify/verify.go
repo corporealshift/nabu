@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -23,6 +24,11 @@ const (
 	// DefaultJudgeTurns is how much transcript the judge sees. It is a model
 	// call on every stop attempt, so this is a recurring cost.
 	DefaultJudgeTurns = 10
+	// DefaultJudgeMaxTokens caps the judge's answer. The verdict is one line,
+	// but a reasoning model thinks first and the thinking counts: at 400 the
+	// local Qwen ran out every time, 767 to 1066 tokens into a verdict it
+	// would have given, and every goal session blocked on "did not answer".
+	DefaultJudgeMaxTokens = 4096
 	// maxCheckOutput is how much command output reaches a check event.
 	maxCheckOutput = 2000
 	// maxSummary is how much reaches a one-line summary.
@@ -40,7 +46,8 @@ type Module struct {
 	// Command is the project's canonical gate, run at the stop gate.
 	Command string
 	// Commands are gates for particular workspaces, keyed by workspaceKey. One
-	// replaces Command in its workspace; an empty one turns the gate off there.
+	// replaces Command in its workspace and in that repository's worktrees; an
+	// empty one turns the gate off there.
 	Commands map[string]string
 	// RequireCleanTree vetoes a stop while the tree has uncommitted changes.
 	RequireCleanTree bool
@@ -50,6 +57,8 @@ type Module struct {
 	CommandTimeout time.Duration
 	// JudgeTurns is how many turns of transcript the judge sees.
 	JudgeTurns int
+	// JudgeMaxTokens caps the judge's reply, thinking included.
+	JudgeMaxTokens int
 
 	host module.Host
 
@@ -133,6 +142,9 @@ func (m *Module) Init(h module.Host, cfg module.Config) error {
 		m.JudgeTurns = turns
 	} else {
 		m.JudgeTurns = DefaultJudgeTurns
+	}
+	if m.JudgeMaxTokens = cfg.Int("judge_max_tokens", 0); m.JudgeMaxTokens <= 0 {
+		m.JudgeMaxTokens = DefaultJudgeMaxTokens
 	}
 	return nil
 }
@@ -401,12 +413,47 @@ func workspaceKey(p string) string {
 	return strings.ToLower(filepath.ToSlash(filepath.Clean(p)))
 }
 
-// commandFor is the gate for a session's workspace.
+// commandFor is the gate for a session's workspace. An entry for a
+// repository also covers its worktrees: the GitHub watcher works in a
+// worktree beside the checkout, and a gate that did not follow it there
+// would let an unattended session push work nothing had built.
 func (m *Module) commandFor(s module.Session) string {
-	if cmd, ok := m.Commands[workspaceKey(s.Workspace().Path)]; ok {
+	ws := s.Workspace().Path
+	if cmd, ok := m.Commands[workspaceKey(ws)]; ok {
 		return cmd
 	}
+	if len(m.Commands) > 0 {
+		if main, ok := mainWorktree(ws); ok {
+			if cmd, ok := m.Commands[workspaceKey(main)]; ok {
+				return cmd
+			}
+			// git may spell the path differently from the config (a Windows
+			// short name, say), so fall back to asking whether it is the
+			// same directory.
+			if info, err := os.Stat(main); err == nil {
+				for key, cmd := range m.Commands {
+					if other, err := os.Stat(key); err == nil && os.SameFile(info, other) {
+						return cmd
+					}
+				}
+			}
+		}
+	}
 	return m.Command
+}
+
+// mainWorktree is the checkout a worktree belongs to: the parent of the
+// repository's common git directory. For the main checkout it is itself.
+func mainWorktree(dir string) (string, bool) {
+	out, err := git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return "", false
+	}
+	common := strings.TrimSpace(out)
+	if common == "" {
+		return "", false
+	}
+	return filepath.Dir(filepath.FromSlash(common)), true
 }
 
 // gateVeto runs the project's canonical gate and refuses a stop if it fails.
@@ -709,10 +756,14 @@ func (m *Module) judge(ctx context.Context, s module.Session, info module.StopIn
 		// A fresh context: the condition, the tasks, and a transcript window.
 		// The judge never sees the loop's own message history.
 		Messages:  []module.Message{{Role: "user", Content: prompt}},
-		MaxTokens: 400,
+		MaxTokens: m.JudgeMaxTokens,
 	})
 	if err != nil {
 		return "unmet", "judge call failed: " + err.Error()
+	}
+	if strings.TrimSpace(resp.Content) == "" {
+		// A reasoning model that thinks past the cap answers nothing at all.
+		return "unmet", fmt.Sprintf("the judge gave no answer; it may have run out of its %d tokens (verify.judge_max_tokens)", m.JudgeMaxTokens)
 	}
 	verdict, reason, ok := parseVerdict(resp.Content)
 	if !ok {

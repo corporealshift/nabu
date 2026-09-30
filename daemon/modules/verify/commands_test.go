@@ -2,6 +2,7 @@ package verify
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -64,5 +65,34 @@ func TestWorkspaceCommandsConfigErrors(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("commands=%v: want %q, got %v", tc.raw, tc.want, err)
 		}
+	}
+}
+
+// The GitHub watcher works in a worktree beside the checkout. A gate keyed by
+// the checkout's path has to follow it there, or an unattended session pushes
+// work nothing built.
+func TestARepositorysCommandCoversItsWorktrees(t *testing.T) {
+	repo := gitRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	cmd := exec.Command("git", "worktree", "add", "--detach", wt, "HEAD")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("git worktree add: %v\n%s", err, out)
+	}
+
+	m := newVerify(t, module.Config{"command": "exit 0", "require_clean_tree": false,
+		"commands": map[string]any{repo: "echo the repository gate; exit 4"}})
+	if v := m.BeforeStop(context.Background(), worked(t, wt), module.StopInfo{}); v.Allow || !strings.Contains(v.Reason, "the repository gate") {
+		t.Errorf("the worktree should get its repository's gate, got allow=%v %q", v.Allow, v.Reason)
+	}
+
+	own := newVerify(t, module.Config{"command": "exit 0", "require_clean_tree": false,
+		"commands": map[string]any{repo: "exit 4", wt: "exit 0"}})
+	if v := own.BeforeStop(context.Background(), worked(t, wt), module.StopInfo{}); !v.Allow {
+		t.Errorf("an entry for the worktree itself should win, got %q", v.Reason)
+	}
+
+	if v := m.BeforeStop(context.Background(), worked(t, t.TempDir()), module.StopInfo{}); !v.Allow {
+		t.Errorf("a directory outside any repository should get the global gate, got %q", v.Reason)
 	}
 }

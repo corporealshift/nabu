@@ -13,9 +13,9 @@ import (
 	"github.com/corporealshift/nabu/clients/github"
 )
 
-// cmdGitHub runs the GitHub watcher: it reviews open pull requests in the
-// repositories listed in <root>/github/config.json
-// (docs/specs/2026-09-28-github-review-design.md).
+// cmdGitHub runs the GitHub watcher: it reviews open pull requests, and
+// addresses comments on labeled ones, in the repositories listed in
+// <root>/github/config.json (docs/specs/2026-09-28-github-*-design.md).
 func cmdGitHub(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("github", flag.ContinueOnError)
 	fs.SetOutput(stderr)

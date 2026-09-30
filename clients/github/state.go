@@ -26,6 +26,12 @@ type RepoState struct {
 	// Failed is the head of each PR whose review job failed. It is not tried
 	// again until the PR has a new head.
 	Failed map[int]string `json:"failed,omitempty"`
+	// Handled is, for each PR, the newest comment of each kind that a posted
+	// comments job answered.
+	Handled map[int]Marks `json:"handled,omitempty"`
+	// FailedThrough is, for each PR, how far a failed comments job reached.
+	// Only a comment past it starts another.
+	FailedThrough map[int]Marks `json:"failed_through,omitempty"`
 	// Running is every job started and not yet finished.
 	Running []Job `json:"running,omitempty"`
 }
@@ -49,6 +55,21 @@ type Job struct {
 	PR   int    `json:"pr"`
 	SHA  string `json:"sha"`
 	Base string `json:"base"`
+	// HeadRef is the branch a comments job pushes to.
+	HeadRef string `json:"head_ref,omitempty"`
+	// Through is the newest comment of each kind a comments job answers, and
+	// Due is those comments, kept so the replies can be built after a restart.
+	Through Marks     `json:"through,omitzero"`
+	Due     []Comment `json:"due,omitempty"`
+	// Prompt, Goal and MaxTurns are what the session is started with. They
+	// are kept so a restart can start it without asking GitHub again.
+	Prompt   string `json:"prompt,omitempty"`
+	Goal     string `json:"goal,omitempty"`
+	MaxTurns int    `json:"max_turns,omitempty"`
+	// Pushed and Posted record how far a comments job's results got out, so
+	// a retry after a failed post neither pushes nor posts anything twice.
+	Pushed bool     `json:"pushed,omitempty"`
+	Posted []string `json:"posted,omitempty"`
 	// SessionID is empty between recording the job and the daemon creating
 	// its session. A job found that way after a restart never got a session.
 	SessionID string `json:"session_id,omitempty"`
@@ -62,8 +83,11 @@ type Job struct {
 	Stopped bool `json:"stopped,omitempty"`
 }
 
-// KindReview is the review job.
-const KindReview = "review"
+// The job kinds.
+const (
+	KindReview   = "review"
+	KindComments = "comments"
+)
 
 // Repo returns a repository's state, creating it.
 func (s *State) Repo(name string) *RepoState {
@@ -83,6 +107,12 @@ func (s *State) Repo(name string) *RepoState {
 	}
 	if r.Failed == nil {
 		r.Failed = map[int]string{}
+	}
+	if r.Handled == nil {
+		r.Handled = map[int]Marks{}
+	}
+	if r.FailedThrough == nil {
+		r.FailedThrough = map[int]Marks{}
 	}
 	return r
 }
