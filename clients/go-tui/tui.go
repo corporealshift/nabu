@@ -267,6 +267,20 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 	case actClearGoal:
 		_, err = c.Call(ctx, "nabu.session.clear_goal",
 			map[string]any{"session_id": a.sessionID})
+	case actRun:
+		// The brief goes in first, so the runner never sees the request
+		// without it.
+		if a.text != "" {
+			_, err = c.Call(ctx, "nabu.session.set_goal",
+				map[string]any{"session_id": a.sessionID, "condition": a.text})
+		}
+		if err == nil {
+			_, err = c.Call(ctx, "nabu.session.set_option",
+				map[string]any{"session_id": a.sessionID, "key": "labels", "value": a.labels})
+		}
+		if err == nil {
+			p.Send(noteMsg{text: "handed to the runner: this session is the run's home, and its steps are listed under it"})
+		}
 	case actListSessions:
 		var sessions []goclient.SessionSummary
 		if sessions, err = c.List(ctx); err == nil {

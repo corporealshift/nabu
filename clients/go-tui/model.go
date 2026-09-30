@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -104,6 +105,11 @@ type model struct {
 	// on every update would drown the conversation.
 	tasks []protocol.Task
 	goal  *protocol.GoalData
+
+	// parent and labels are the session's options (spec 3.1). A step of a
+	// run points at the run's home; the home's labels say how far it is.
+	parent string
+	labels []string
 
 	// artifacts are the pages the agent made, latest version of each by name,
 	// and lastArtifact the most recent: what o opens.
@@ -227,6 +233,16 @@ func (m *model) appendEventWithoutRefresh(ev protocol.Event) {
 		var d protocol.SessionData
 		if unmarshal(ev, &d) == nil {
 			m.contextWindow = d.ContextWindow
+			m.parent, m.labels = d.Options.Parent, d.Options.Labels
+		}
+	}
+	if ev.Type == protocol.EventOptionsChange {
+		var d protocol.OptionsChangeData
+		if unmarshal(ev, &d) == nil && d.Key == "labels" {
+			var labels []string
+			if json.Unmarshal(d.To, &labels) == nil {
+				m.labels = labels
+			}
 		}
 	}
 	if ev.Type == protocol.EventMessage {
@@ -318,6 +334,7 @@ func (m *model) reset(sessionID string) {
 	m.turnID = ""
 	m.tasks = nil
 	m.goal = nil
+	m.parent, m.labels = "", nil
 	m.artifacts, m.lastArtifact = nil, ""
 	m.contextWindow = 0
 	m.lastInput = 0
