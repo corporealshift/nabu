@@ -22,7 +22,8 @@ that has no run yet.
 
 1. **Create a home session** in the repository's clone. It is never prompted: it exists
    so the run has somewhere to hang in the TUI and a goal to carry.
-   - Its labels: `run:requested` and `issue:<owner>/<repo>#<n>`.
+   - Its labels: `run:requested` and `issue:<owner>/<repo>/<n>`, lower-cased, because
+     labels allow only `[a-z0-9:_./-]` (part 1).
    - Its goal: the brief, as below.
 2. **The brief** is the issue's title and body, then each comment on the issue that does
    not carry the marker, oldest first. It is committed as `brief.md` by the `brief` step,
