@@ -171,7 +171,9 @@ func TestTheModelTracksParentAndLabels(t *testing.T) {
 	}
 }
 
-// /run against a real daemon: the goal is the brief and the label is set.
+// /run against a real daemon: the brief is the description, the label is
+// set, and the session stays idle. The brief was once set as the goal, which
+// started the session working on it in the owner's checkout.
 func TestRunReachesTheDaemon(t *testing.T) {
 	addr := startDaemon(t)
 	id := createSession(t, addr)
@@ -206,7 +208,10 @@ func TestRunReachesTheDaemon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Goal == nil || st.Goal.Condition != "add a cache" || !reflect.DeepEqual(st.Options.Labels, []string{"run:requested"}) {
-		t.Errorf("goal %+v, labels %q", st.Goal, st.Options.Labels)
+	if st.Options.Description != "add a cache" || !reflect.DeepEqual(st.Options.Labels, []string{"run:requested"}) {
+		t.Errorf("description %q, labels %q", st.Options.Description, st.Options.Labels)
+	}
+	if st.Goal != nil || st.State != protocol.StateIdle {
+		t.Errorf("/run started the session: goal %+v, state %q", st.Goal, st.State)
 	}
 }

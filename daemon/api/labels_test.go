@@ -150,3 +150,29 @@ func TestSetOptionRefusesParentAndBadLabels(t *testing.T) {
 		t.Errorf("refused changes appended %d events", after-before)
 	}
 }
+
+// A description is how /run hands over a brief. Unlike a goal it must start
+// nothing: a home that ran would work on the brief in the owner's checkout.
+func TestSetOptionDescriptionStartsNothing(t *testing.T) {
+	hn := newHarness(t)
+	id := hn.mustCreate(t)
+	var out struct {
+		EventID string `json:"event_id"`
+	}
+	result(t, hn.call(t, 2, "nabu.session.set_option",
+		map[string]any{"session_id": id, "key": "description", "value": "Add a Median function."}), &out)
+	s, _ := hn.h.getSession(id)
+	st := s.State()
+	if st.Options.Description != "Add a Median function." {
+		t.Errorf("description = %q", st.Options.Description)
+	}
+	if st.State != protocol.StateIdle {
+		t.Errorf("setting a description moved the session to %q", st.State)
+	}
+	for _, v := range []any{3, strings.Repeat("a", protocol.MaxDescription+1)} {
+		resp := hn.call(t, 3, "nabu.session.set_option", map[string]any{"session_id": id, "key": "description", "value": v})
+		if code := rpcCode(t, resp); code != protocol.CodeInvalidParams {
+			t.Errorf("description %T: code %d", v, code)
+		}
+	}
+}

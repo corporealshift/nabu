@@ -19,9 +19,9 @@ import (
 // ---- fakes -------------------------------------------------------------
 
 type fakeHome struct {
-	workspace, goal, lastPrompt, transcript string
-	labels                                  []string
-	labelHistory                            [][]string
+	workspace, description, lastPrompt, transcript string
+	labels                                         []string
+	labelHistory                                   [][]string
 }
 
 type fakeSession struct {
@@ -57,7 +57,7 @@ func (d *fakeDaemon) Home(_ context.Context, id string) (Home, error) {
 	if !ok {
 		return Home{}, errors.New("no home")
 	}
-	return Home{ID: id, Workspace: h.workspace, Goal: h.goal, Labels: slices.Clone(h.labels), LastPrompt: h.lastPrompt}, nil
+	return Home{ID: id, Workspace: h.workspace, Brief: h.description, Labels: slices.Clone(h.labels), LastPrompt: h.lastPrompt}, nil
 }
 
 func (d *fakeDaemon) Transcript(_ context.Context, id string) (string, error) {
@@ -71,10 +71,15 @@ func (d *fakeDaemon) SetLabels(_ context.Context, id string, labels []string) er
 	return nil
 }
 
+func (d *fakeDaemon) SetDescription(_ context.Context, id, text string) error {
+	d.homes[id].description = text
+	return nil
+}
+
 func (d *fakeDaemon) SetGoal(_ context.Context, id, condition string) error {
-	if h, ok := d.homes[id]; ok {
-		h.goal = condition
-		return nil
+	if _, ok := d.homes[id]; ok {
+		// A goal on the home starts it working in the checkout.
+		return errors.New("a goal was set on a run's home")
 	}
 	d.sessions[id].goals = append(d.sessions[id].goals, condition)
 	return nil
@@ -314,7 +319,7 @@ func (g *rig) ask(id, brief string) {
 		g.d.homes[id] = h
 	}
 	if brief != "" {
-		h.goal = brief
+		h.description = brief
 	}
 	h.labels = withRun(h.labels, LabelRequested)
 }
@@ -460,8 +465,8 @@ func TestAPlainRunWritesItsBrief(t *testing.T) {
 	}
 	g.finish(map[string]string{r.File(BriefFile): "Add a Median function.\n"})
 	g.tick()
-	if r.Step != StepPlan || g.d.homes["H1"].goal != "Add a Median function." {
-		t.Errorf("step %q, home goal %q", r.Step, g.d.homes["H1"].goal)
+	if r.Step != StepPlan || g.d.homes["H1"].description != "Add a Median function." {
+		t.Errorf("step %q, home description %q", r.Step, g.d.homes["H1"].description)
 	}
 }
 

@@ -54,9 +54,11 @@ watcher's jobs too, and `nabu github` stays as an alias for it.
 
 The home carries the run's labels (`run:requested`, then `run:<step>`, then `run:done` or
 `run:failed`). Every step session is created with the home as its `parent`, so the TUI
-shows the run as one thing. The brief becomes the home's **goal**, through `set_goal`,
-which does not start the loop. A run's goal is what done means, and anywhere a goal is
-shown, the brief is shown.
+shows the run as one thing. The brief is the home's **description**
+(`2026-09-30-session-parent-and-labels-design.md`, amended). An earlier version of this
+spec made the brief the home's goal, and assumed `set_goal` does not start the loop. It
+does (protocol §7.11). In the first live run, the home began working on the brief in the
+clone, and committed there, in parallel with the run. A description starts nothing.
 
 ### The steps
 

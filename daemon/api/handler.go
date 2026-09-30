@@ -312,6 +312,7 @@ type CreateSessionOptions struct {
 	CompactionEnabled *bool    `json:"compaction_enabled,omitempty"`
 	Parent            string   `json:"parent,omitempty"`
 	Labels            []string `json:"labels,omitempty"`
+	Description       string   `json:"description,omitempty"`
 }
 
 // handleSessionCreate implements nabu.session.create (spec 7.3).
@@ -337,6 +338,7 @@ func (h *Handler) handleSessionCreate(ctx context.Context, _ *connState, params 
 		co.CompactionEnabled = p.Options.CompactionEnabled
 		co.Parent = p.Options.Parent
 		co.Labels = p.Options.Labels
+		co.Description = p.Options.Description
 	}
 
 	s, err := h.manager.Create(ctx, p.Workspace, co)

@@ -2,6 +2,8 @@
 
 **Date:** 2026-09-30
 **Status:** Approved by Kyle in conversation
+**Amended 2026-09-30:** the brief is the session's `description`, a third option, and
+never its goal. See "The brief" below.
 **Part 1 of 4** of orchestrated runs (`2026-09-30-orchestrated-runs-design.md`). This is
 the only part that changes the daemon or the protocol.
 
@@ -39,6 +41,15 @@ Two session options, added to the protocol the way options already work.
 - The runner uses `run:requested`, `run:<step>`, `run:done` and `run:failed`
   (part 2). Anything else can use its own prefix.
 
+### The brief: `description`
+
+- Text, at most 16,000 bytes.
+- It can be set at creation, and replaced with `set_option {key: "description"}`, which
+  appends `options_change`.
+- The daemon records it and attaches no meaning to it. In particular, unlike a goal, it
+  starts nothing.
+- An orchestrated run's brief is its home's description.
+
 ### The protocol
 
 In `protocol/spec.md`, the JSON schema and a conformance vector, together:
@@ -62,9 +73,9 @@ already tolerates unknown fields, and will be checked for it.
   label as its status, for example `run: fix (3/10)`. Attempt counts come from a label
   the runner sets alongside the step label, for example `run:attempt:3/10`.
 - **`/run`** is a new command:
-  - `/run <text>` labels the current session `run:requested` and sets its goal to the
-    text. The runner takes it from there.
-  - Plain `/run` labels it `run:requested` without a goal. The runner's `brief` step turns
+  - `/run <text>` sets the current session's `description` to the text and labels it
+    `run:requested`. The runner takes it from there.
+  - Plain `/run` labels it `run:requested` without a description. The runner's `brief` step turns
     the conversation into one.
   - On a session labeled `run:failed`, `/run` sets `run:requested` again, and the runner
     resumes the run (part 2).
@@ -95,8 +106,12 @@ already tolerates unknown fields, and will be checked for it.
   runner what it needs without the daemon knowing what a run is.
 - **Tags as a new event type.** Options already have creation, change events, projection
   and a method, so labels need no new event type.
-- **The brief as a label or option.** A brief can be pages long, and a label is a list
-  row. The brief already fits the session's goal: it is what done means for the run.
+- **The brief as a label.** A brief can be pages long, and a label is a list row.
+- **The brief as the session's goal.** This spec first chose it. But `set_goal` on an idle
+  session starts the loop (§7.11). In the first live run of part 2, the home session began
+  working on the brief in the clone and committed there, alongside the run's own
+  worktree. The brief is now `description`: an option the daemon records, never acts on,
+  and that is up to 16,000 bytes long.
 - **The TUI talking to the runner directly.** That would make a second process boundary
   for clients (invariant 7). Everything a client does goes through the daemon.
 
@@ -113,5 +128,6 @@ already tolerates unknown fields, and will be checked for it.
   - the list indents children under a parent that is in the list, and does not when the
     parent is absent;
   - the status label renders;
-  - `/run <text>` sends `set_goal` and `set_option labels`, and `/run` alone sends only
+  - `/run <text>` sends `set_option description` and `set_option labels`, and the session
+    stays idle. `/run` alone sends only
     the label.

@@ -83,6 +83,21 @@ type Options struct {
 	// Labels are short strings a client sets for other clients to read. The
 	// daemon records them and attaches no meaning to them.
 	Labels []string `json:"labels,omitempty"`
+	// Description is text a client sets for other clients to read, such as
+	// the brief of an orchestrated run. Unlike a goal it starts nothing, and
+	// the daemon attaches no meaning to it.
+	Description string `json:"description,omitempty"`
+}
+
+// MaxDescription is how long a description may be, in bytes (spec 3.1).
+const MaxDescription = 16000
+
+// ValidDescription reports whether a description is allowed.
+func ValidDescription(d string) error {
+	if len(d) > MaxDescription {
+		return fmt.Errorf("a description is at most %d bytes, got %d", MaxDescription, len(d))
+	}
+	return nil
 }
 
 // Limits on labels (spec §3.1). A label is machine-readable and a list row

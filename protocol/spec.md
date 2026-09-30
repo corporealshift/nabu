@@ -95,6 +95,10 @@ Every `source` field, where present, is one of `daemon`, `model`, `client`, or
   never changes.
 - `labels`: an array of strings that clients set for other clients to read. A session has
   at most 16 labels, and each is 1 to 64 characters from `[a-z0-9:_./-]`.
+- `description`: text that clients set for other clients to read, at most 16,000 bytes.
+  An orchestrated run's brief is its home's description. A goal cannot hold the brief,
+  because setting a goal on an idle session starts the loop (§7.11). The home would then
+  start working on the brief in the owner's own checkout.
 
 The daemon records both and attaches no meaning to either: grouping sessions under a
 parent, or acting on a label, is for clients. An absent `parent` or `labels` means none.
@@ -177,7 +181,7 @@ code, so its absence and a value of `0` are different facts.
 {"key":"permission_mode","from":"ask","to":"auto","source":"client"}
 ```
 
-`key` ∈ `model | compaction_enabled | permission_mode | labels`. A `labels` change
+`key` ∈ `model | compaction_enabled | permission_mode | labels | description`. A `labels` change
 carries the whole new list in `to`, which replaces the old one; it is never a diff.
 `parent` never changes, so it is never a key.
 
@@ -419,7 +423,7 @@ any it holds that a full listing leaves out: they were archived.
 ### 7.3 `nabu.session.create {workspace, options?}` → `{session_id, event}`
 
 `options` defaults: model from config, `compaction_enabled: true`,
-`permission_mode: "ask"`, no `parent`, no `labels`. The returned `event` is the
+`permission_mode: "ask"`, no `parent`, no `labels`, no `description`. The returned `event` is the
 `session` event.
 
 A `parent` that names no session, live or archived, is `nabu_invalid_params`, and so are
@@ -498,7 +502,8 @@ Appends `goal {state: cleared}`; `nabu_invalid_transition` if no goal is active.
 
 ### 7.13 `nabu.session.set_option {session_id, key, value}` → `{event_id}`
 
-Appends `options_change`. `key` ∈ `model | compaction_enabled | permission_mode | labels`.
+Appends `options_change`. `key` ∈ `model | compaction_enabled | permission_mode | labels |
+description`. Setting any option starts nothing: a description is not a goal.
 For `labels`, `value` is the whole new list. `parent` is `nabu_invalid_params`, because it
 is set at creation. An invalid value appends nothing.
 

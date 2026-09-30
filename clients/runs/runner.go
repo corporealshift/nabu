@@ -146,12 +146,12 @@ func (rn *Runner) pickUp(ctx context.Context, d Daemon) error {
 			if err != nil {
 				return err
 			}
-			name := full.Goal
+			name := full.Brief
 			if name == "" {
 				name = full.LastPrompt
 			}
 			slug := Slug(firstLine(name), h.ID)
-			r = &Run{Home: h.ID, Workspace: full.Workspace, Brief: full.Goal, Slug: slug, Branch: "nabu/" + slug,
+			r = &Run{Home: h.ID, Workspace: full.Workspace, Brief: full.Brief, Slug: slug, Branch: "nabu/" + slug,
 				Worktree: filepath.Join(rn.Root, "runner", "worktrees", slug), Step: StepSetup, Started: rn.Now()}
 			rn.runs[h.ID] = r
 			rn.logf("run %s: %s", h.ID, r.Branch)
@@ -515,8 +515,9 @@ func (rn *Runner) produced(ctx context.Context, d Daemon, r *Run) (Outcome, erro
 	case StepBrief:
 		text, _ := rn.read(r, BriefFile)
 		r.Brief = strings.TrimSpace(text)
-		// The brief is what done means for the run, and the home carries it.
-		if err := d.SetGoal(ctx, r.Home, r.Brief); err != nil {
+		// The home carries the brief as its description. Never as its goal,
+		// which would start the home working on it in the checkout.
+		if err := d.SetDescription(ctx, r.Home, r.Brief); err != nil {
 			return Outcome{}, err
 		}
 	case StepTasks:

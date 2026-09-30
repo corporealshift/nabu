@@ -38,3 +38,12 @@ func TestValidLabels(t *testing.T) {
 		})
 	}
 }
+
+func TestValidDescription(t *testing.T) {
+	if err := ValidDescription(strings.Repeat("a", MaxDescription)); err != nil {
+		t.Errorf("the longest description was refused: %v", err)
+	}
+	if err := ValidDescription(strings.Repeat("a", MaxDescription+1)); err == nil {
+		t.Error("a description one byte too long was allowed")
+	}
+}

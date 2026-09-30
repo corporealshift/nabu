@@ -1,0 +1,57 @@
+{
+  "name": "description",
+  "description": "A description is set by options_change like any option, and a later one replaces it. Setting it changes no state.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-30T00:00:01.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "auto"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-30T00:00:02.000Z",
+      "type": "options_change",
+      "data": {
+        "key": "description",
+        "from": "",
+        "to": "Add a Median function.",
+        "source": "client"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-30T00:00:03.000Z",
+      "type": "options_change",
+      "data": {
+        "key": "description",
+        "from": "Add a Median function.",
+        "to": "Add a Median function, with tests.",
+        "source": "client"
+      }
+    }
+  ],
+  "operation": {
+    "op": "project"
+  },
+  "expect": {
+    "state": "idle",
+    "options": {
+      "model": "qwen3.6-35b-a3b",
+      "compaction_enabled": true,
+      "permission_mode": "auto",
+      "description": "Add a Median function, with tests."
+    }
+  }
+}

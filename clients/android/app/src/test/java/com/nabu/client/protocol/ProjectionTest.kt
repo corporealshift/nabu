@@ -85,6 +85,9 @@ class ProjectionTest {
             assertEquals("$name permission_mode", it.jsonPrimitive.content, got.permissionMode)
         }
         want["parent"]?.let { assertEquals("$name parent", it.jsonPrimitive.content, got.parent) }
+        want["description"]?.let {
+            assertEquals("$name description", it.jsonPrimitive.content, got.description)
+        }
         want["labels"]?.let {
             assertEquals("$name labels", it.jsonArray.map { l -> l.jsonPrimitive.content }, got.labels)
         }

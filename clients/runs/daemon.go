@@ -45,9 +45,7 @@ func (c Client) Home(ctx context.Context, id string) (Home, error) {
 		if err != nil {
 			return Home{}, err
 		}
-		if st.Goal != nil && st.GoalActive() {
-			h.Goal = st.Goal.Condition
-		}
+		h.Brief = st.Options.Description
 		return h, nil
 	}
 	return Home{}, fmt.Errorf("runs: session %s is not listed", id)
@@ -78,6 +76,11 @@ func (c Client) SetLabels(ctx context.Context, id string, labels []string) error
 	}
 	return c.C.CallInto(ctx, "nabu.session.set_option",
 		map[string]any{"session_id": id, "key": "labels", "value": labels}, nil)
+}
+
+func (c Client) SetDescription(ctx context.Context, id, text string) error {
+	return c.C.CallInto(ctx, "nabu.session.set_option",
+		map[string]any{"session_id": id, "key": "description", "value": text}, nil)
 }
 
 func (c Client) SetGoal(ctx context.Context, id, condition string) error {

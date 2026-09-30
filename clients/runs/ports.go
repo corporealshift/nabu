@@ -11,8 +11,8 @@ import (
 type Home struct {
 	ID        string
 	Workspace string
-	// Goal is the brief, when /run was given one.
-	Goal   string
+	// Brief is the home's description: the brief, when /run was given one.
+	Brief  string
 	Labels []string
 	// LastPrompt names the run when there is no brief yet.
 	LastPrompt string
@@ -28,6 +28,8 @@ type Daemon interface {
 	// Transcript is a home's conversation, for writing the brief from.
 	Transcript(ctx context.Context, id string) (string, error)
 	SetLabels(ctx context.Context, id string, labels []string) error
+	// SetDescription sets a session's description, which starts nothing.
+	SetDescription(ctx context.Context, id, text string) error
 	SetGoal(ctx context.Context, id, condition string) error
 	Create(ctx context.Context, workspace, parent string, maxTurns int) (string, error)
 	SendPrompt(ctx context.Context, id, text string) error
