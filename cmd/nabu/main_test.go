@@ -586,3 +586,18 @@ func TestUsageListsGitHub(t *testing.T) {
 		t.Errorf("usage does not list github:\n%s", stdout)
 	}
 }
+
+func TestRunnerOnceWithNothingToDo(t *testing.T) {
+	root := startDaemon(t)
+	code, _, stderr := runCLI("runner", "--once", "--root", root)
+	if code != exitOK {
+		t.Errorf("exit: got %d, want 0; stderr %q", code, stderr)
+	}
+}
+
+func TestUsageListsRunner(t *testing.T) {
+	_, stdout, _ := runCLI("help")
+	if !strings.Contains(stdout, "  runner ") {
+		t.Errorf("usage does not list runner:\n%s", stdout)
+	}
+}

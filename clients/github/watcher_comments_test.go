@@ -230,3 +230,67 @@ func TestWatcherDoesNotReviewAHeadItJustPushedOver(t *testing.T) {
 		t.Errorf("the new head was not reviewed: creates %d", r.d.creates)
 	}
 }
+
+type fakeRuns struct {
+	busy    int
+	waiting int
+	asked   []int
+}
+
+func (f *fakeRuns) Busy() int { return f.busy }
+
+func (f *fakeRuns) Start(_ context.Context, n int) (int, error) {
+	f.asked = append(f.asked, n)
+	s := min(n, f.waiting)
+	f.waiting -= s
+	f.busy += s
+	return s, nil
+}
+
+// Slots go to comment jobs, then runs, then reviews.
+func TestRunsShareTheSlots(t *testing.T) {
+	setup := func(t *testing.T, comments bool, runsWaiting int) (*rig, *fakeRuns) {
+		r := commentsRig(t)
+		on := true
+		r.w.Cfg.Review.Enabled = &on
+		r.w.Cfg.Quiet = new(Duration)
+		prs := []PR{{Number: 8, HeadSHA: "eee", BaseRef: "main"}}
+		if comments {
+			prs = append(prs, labeledPR)
+		}
+		r.gh.prs[repoName] = prs
+		runs := &fakeRuns{waiting: runsWaiting}
+		r.w.Runs = runs
+		return r, runs
+	}
+
+	t.Run("a comment job first", func(t *testing.T) {
+		r, runs := setup(t, true, 1)
+		r.poll(t)
+		if r.d.creates != 1 || !strings.Contains(r.d.sessions["S1"].workspace, "comments-9-") || len(runs.asked) != 0 {
+			t.Errorf("creates %d, runs asked %v", r.d.creates, runs.asked)
+		}
+	})
+	t.Run("then a run", func(t *testing.T) {
+		r, runs := setup(t, false, 1)
+		r.poll(t)
+		if r.d.creates != 0 || len(runs.asked) != 1 || runs.asked[0] != 1 {
+			t.Errorf("creates %d, runs asked %v", r.d.creates, runs.asked)
+		}
+	})
+	t.Run("then a review", func(t *testing.T) {
+		r, runs := setup(t, false, 0)
+		r.poll(t)
+		if r.d.creates != 1 || !strings.Contains(r.d.sessions["S1"].workspace, "review-8-") || len(runs.asked) != 1 {
+			t.Errorf("creates %d, runs asked %v", r.d.creates, runs.asked)
+		}
+	})
+	t.Run("a busy run holds its slot", func(t *testing.T) {
+		r, runs := setup(t, true, 0)
+		runs.busy = 1
+		r.poll(t)
+		if r.d.creates != 0 || len(runs.asked) != 0 {
+			t.Errorf("creates %d, runs asked %v", r.d.creates, runs.asked)
+		}
+	})
+}

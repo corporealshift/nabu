@@ -50,6 +50,7 @@ daemon/
 cmd/nabu/                 the single binary (daemon + CLI subcommands)
 clients/                  go-tui/ android/ rust-gui/ goclient/
                           github/ — watcher: polls GitHub, runs sessions in worktrees, posts reviews and replies
+                          runs/ — the runner: takes a /run brief to a PR through fixed steps, a session per step
 docs/specs/               design specs: what was decided, and what was rejected
 docs/plans/               implementation plans, one per piece of work
 docs/proposals/           ideas not yet decided on
