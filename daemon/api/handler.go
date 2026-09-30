@@ -307,9 +307,11 @@ func (h *Handler) handleSessionList(_ context.Context, _ *connState, params json
 
 // CreateSessionOptions are the optional parameters of nabu.session.create.
 type CreateSessionOptions struct {
-	Model             string `json:"model,omitempty"`
-	PermissionMode    string `json:"permission_mode,omitempty"`
-	CompactionEnabled *bool  `json:"compaction_enabled,omitempty"`
+	Model             string   `json:"model,omitempty"`
+	PermissionMode    string   `json:"permission_mode,omitempty"`
+	CompactionEnabled *bool    `json:"compaction_enabled,omitempty"`
+	Parent            string   `json:"parent,omitempty"`
+	Labels            []string `json:"labels,omitempty"`
 }
 
 // handleSessionCreate implements nabu.session.create (spec 7.3).
@@ -333,11 +335,13 @@ func (h *Handler) handleSessionCreate(ctx context.Context, _ *connState, params 
 		co.Model = p.Options.Model
 		co.PermissionMode = protocol.PermissionMode(p.Options.PermissionMode)
 		co.CompactionEnabled = p.Options.CompactionEnabled
+		co.Parent = p.Options.Parent
+		co.Labels = p.Options.Labels
 	}
 
 	s, err := h.manager.Create(ctx, p.Workspace, co)
 	if err != nil {
-		return nil, protocol.NewRPCError(protocol.CodeInternalError, err.Error())
+		return nil, rpcErrOf(err)
 	}
 
 	if p.Budget != nil {
