@@ -1,7 +1,7 @@
 {
   "id": "09-the-race",
   "tier": "hard",
-  "prompt": "go test ./... fails with a concurrent map write. Fix the data race in counter.go. Keep the same API: Counter must still have Add and Total. Do not change the test.",
+  "prompt": "go test ./... fails: the Counter loses counts, or crashes with a concurrent map write, when goroutines use it at once. Fix the data race in counter.go. Keep the same API: Counter must still have Add and Total. Do not change the test.",
   "verify": [
     "go",
     "test",
