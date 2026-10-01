@@ -178,3 +178,14 @@ func TestBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestCommentIssue(t *testing.T) {
+	run, calls := recorder("")
+	if err := (GHCLI{run}).CommentIssue(context.Background(), "C:/w", 12, "done"); err != nil {
+		t.Fatal(err)
+	}
+	c := (*calls)[0]
+	if !reflect.DeepEqual(c.args, []string{"gh", "issue", "comment", "12", "--body-file", "-"}) || c.stdin != "done" || c.dir != "C:/w" {
+		t.Errorf("call = %+v", c)
+	}
+}

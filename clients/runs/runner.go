@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,6 +129,10 @@ func (rn *Runner) pickUp(ctx context.Context, d Daemon) error {
 		switch {
 		case known && r.Step == StepFailed:
 			*r = Resume(*r)
+			r.Reported = false
+			if err := rn.rebrief(ctx, d, r); err != nil {
+				return err
+			}
 			rn.logf("run %s resumed at %s", h.ID, r.Step)
 		case known && r.Step == StepDone:
 			rn.logf("run %s is already done (%s); /run on a finished run does nothing", h.ID, r.PRURL)
@@ -150,9 +155,13 @@ func (rn *Runner) pickUp(ctx context.Context, d Daemon) error {
 			if name == "" {
 				name = full.LastPrompt
 			}
+			issue := IssueOf(full.Labels)
+			if issue != 0 {
+				name = fmt.Sprintf("issue %d %s", issue, firstLine(name))
+			}
 			slug := Slug(firstLine(name), h.ID)
 			r = &Run{Home: h.ID, Workspace: full.Workspace, Brief: full.Brief, Slug: slug, Branch: "nabu/" + slug,
-				Worktree: filepath.Join(rn.Root, "runner", "worktrees", slug), Step: StepSetup, Started: rn.Now()}
+				Worktree: filepath.Join(rn.Root, "runner", "worktrees", slug), Step: StepSetup, Started: rn.Now(), Issue: issue}
 			rn.runs[h.ID] = r
 			rn.logf("run %s: %s", h.ID, r.Branch)
 		}
@@ -240,6 +249,13 @@ func (rn *Runner) advance(ctx context.Context, d Daemon, r *Run) error {
 		}
 		if r.Step == StepFailed {
 			rn.logf("run %s failed at %s: %s; worktree %s", r.Home, r.FailedAt, r.Why, r.Worktree)
+		}
+		if r.Step.Over() && r.Issue != 0 && !r.Reported {
+			if err := rn.report(ctx, r); err != nil {
+				rn.logf("run %s: telling issue #%d: %v", r.Home, r.Issue, err)
+			} else {
+				r.Reported = true
+			}
 		}
 		if err := rn.save(r); err != nil {
 			return err
@@ -884,6 +900,9 @@ func prTitle(brief string) string {
 
 func (rn *Runner) prBody(r *Run) string {
 	var b strings.Builder
+	if r.Issue != 0 {
+		fmt.Fprintf(&b, "Closes #%d\n\n", r.Issue)
+	}
 	fmt.Fprintf(&b, "%s opened this from an orchestrated run.\n\n## Brief\n\n%s\n\n", github.Signature, strings.TrimSpace(r.Brief))
 	fmt.Fprintf(&b, "The plan is `%s` and the tasks are `%s`. `%s` passes", r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile))
 	if r.Fixes > 0 {
@@ -898,4 +917,52 @@ func (rn *Runner) prBody(r *Run) string {
 	}
 	b.WriteString("\n" + github.Marker + "\n")
 	return b.String()
+}
+
+// IssueOf is the issue number in a home's issue:<owner>/<repo>/<n> label, or
+// zero when the run was not asked for by an issue.
+func IssueOf(labels []string) int {
+	for _, l := range labels {
+		rest, ok := strings.CutPrefix(l, "issue:")
+		if !ok {
+			continue
+		}
+		if n, err := strconv.Atoi(rest[strings.LastIndex(rest, "/")+1:]); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 0
+}
+
+// rebrief takes up a changed brief when a run is resumed: the issue it came
+// from was edited or commented on, which is what resumed it.
+func (rn *Runner) rebrief(ctx context.Context, d Daemon, r *Run) error {
+	full, err := d.Home(ctx, r.Home)
+	if err != nil {
+		return err
+	}
+	if full.Brief == "" || full.Brief == r.Brief {
+		return nil
+	}
+	r.Brief = full.Brief
+	if _, err := os.Stat(r.Worktree); err != nil {
+		return nil // setup has not run; it will write the new brief
+	}
+	return rn.write(ctx, r, BriefFile, strings.TrimSpace(r.Brief)+"\n", "run: brief updated from the issue")
+}
+
+// report tells the run's issue how the run ended.
+func (rn *Runner) report(ctx context.Context, r *Run) error {
+	var body string
+	if r.Step == StepDone {
+		body = fmt.Sprintf("%s finished a run for this issue: %s", github.Signature, r.PRURL)
+	} else {
+		body = fmt.Sprintf("%s stopped working on this issue at the `%s` step: %s\n\nEdit this issue, or comment on it, to start again from there.",
+			github.Signature, r.FailedAt, r.Why)
+	}
+	dir := r.Worktree
+	if _, err := os.Stat(dir); err != nil {
+		dir = r.Workspace
+	}
+	return rn.GH.CommentIssue(ctx, dir, r.Issue, body+"\n\n"+github.Marker)
 }
