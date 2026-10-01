@@ -139,6 +139,16 @@ interface EventDao {
     )
     suspend fun recentPrompts(sessionId: String, limit: Int = 5): List<String>
 
+    /**
+     * The events a session's options come from: the first, and every change
+     * since. Enough to project its parent and labels without the whole log.
+     */
+    @Query(
+        "SELECT raw FROM events WHERE session_id = :sessionId " +
+            "AND type IN ('session', 'options_change') ORDER BY ordinal ASC"
+    )
+    suspend fun optionEvents(sessionId: String): List<String>
+
     /** An event is immutable, so a repeat is a no-op. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(rows: List<EventRow>)

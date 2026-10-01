@@ -17,6 +17,8 @@ data class TranscriptView(
     val contextUsed: Float? = null,
     /** Whether any event has been mirrored at all. */
     val fetched: Boolean = false,
+    /** Its options: the parent and labels that place it in a run. */
+    val options: com.nabu.client.protocol.Options = com.nabu.client.protocol.Options(),
 )
 
 /**
@@ -72,6 +74,7 @@ class TranscriptFeed {
         tasks = state.tasks,
         contextUsed = contextFraction(window, lastInput),
         fetched = lastOrdinal > 0,
+        options = state.options,
     )
 }
 

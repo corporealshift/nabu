@@ -184,6 +184,38 @@ class SessionRepository(
         return ""
     }
 
+    /**
+     * A session's options as mirrored: its parent and labels are what make a
+     * run's sessions one thing in the list. Defaults when nothing is mirrored.
+     */
+    suspend fun latestOptions(sessionId: String): com.nabu.client.protocol.Options {
+        val events = db.events().optionEvents(sessionId).mapNotNull {
+            runCatching { NabuJson.decodeFromString(Event.serializer(), it) }.getOrNull()
+        }
+        return com.nabu.client.protocol.project(events).options
+    }
+
+    /**
+     * Hands a session to the runner, as /run does in the terminal client: the
+     * brief, when there is one, as its description, then its labels with
+     * run:requested. Never the goal: setting one starts the session working on
+     * it, in the owner's checkout, beside the run.
+     */
+    suspend fun startRun(client: DaemonClient, sessionId: String, brief: String, labels: List<String>) {
+        if (brief.isNotBlank()) {
+            client.callOrThrow("nabu.session.set_option", buildJsonObject {
+                put("session_id", sessionId)
+                put("key", "description")
+                put("value", brief.trim())
+            })
+        }
+        client.callOrThrow("nabu.session.set_option", buildJsonObject {
+            put("session_id", sessionId)
+            put("key", "labels")
+            put("value", kotlinx.serialization.json.JsonArray(labels.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+        })
+    }
+
     /** Queues a prompt. It exists locally before any send is attempted. */
     suspend fun queuePrompt(sessionId: String, content: String, clientId: String) {
         db.outbox().put(

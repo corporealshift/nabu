@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import com.nabu.client.ui.parseRun
 import com.nabu.client.ui.theme.Mode
 import com.nabu.client.ui.theme.NabuTheme
 import com.nabu.client.ui.theme.Scheme
@@ -212,7 +213,12 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
                 tasks = tasks,
                 compacting = compacting,
                 error = error,
-                onSend = { vm.sendPrompt(s.id, it) },
+                // /run is a command, as in the terminal client, not a prompt.
+                onSend = { text ->
+                    val brief = parseRun(text)
+                    if (brief != null) vm.startRun(s.id, brief, view.options.labels)
+                    else vm.sendPrompt(s.id, text)
+                },
                 onTaskDone = { vm.completeTask(s.id, tasks, it) },
                 onResume = { vm.resumeSession(s.id) },
                 onInterrupt = { vm.interruptSession(s.id) },
@@ -221,6 +227,12 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
                 onRetryBlocked = { vm.retryBlocked(it) },
                 onDiscardBlocked = { vm.discardBlocked(it) },
                 onBack = { screen = Screen.Sessions },
+                onRun = { vm.startRun(s.id, it, view.options.labels) },
+                parentTitle = view.options.parent.takeIf { it.isNotBlank() }?.let { parent ->
+                    val home = sessions.firstOrNull { it.row.id == parent }
+                    home?.title?.ifBlank { null } ?: home?.row?.workspace?.let { projectName(it) } ?: parent.takeLast(6)
+                },
+                onOpenParent = { if (view.options.parent.isNotBlank()) screen = Screen.Transcript(view.options.parent) },
             )
         }
     }
