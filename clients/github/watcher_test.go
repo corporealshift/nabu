@@ -16,15 +16,23 @@ import (
 )
 
 type fakeGH struct {
-	prs      map[string][]PR
-	listErr  error
-	posts    []ReviewPost
-	postErr  error
-	comments map[int][]Comment
-	replies  []string // "root: body"
-	convo    []string
-	replyErr error
-	convoErr error
+	prs           map[string][]PR
+	listErr       error
+	posts         []ReviewPost
+	postErr       error
+	comments      map[int][]Comment
+	replies       []string // "root: body"
+	convo         []string
+	replyErr      error
+	convoErr      error
+	issues        []Issue
+	issueComments map[int][]Comment
+}
+
+func (g *fakeGH) OpenIssues(context.Context, string, string) ([]Issue, error) { return g.issues, nil }
+
+func (g *fakeGH) IssueComments(_ context.Context, _ string, n int) ([]Comment, error) {
+	return g.issueComments[n], nil
 }
 
 func (g *fakeGH) PRComments(_ context.Context, _ string, n int) ([]Comment, error) {
@@ -136,6 +144,32 @@ type fakeDaemon struct {
 	creates   int
 	stops     int
 	promptErr error
+	homes     map[string]*fakeHome
+	reruns    int
+}
+
+type fakeHome struct {
+	workspace, description string
+	labels                 []string
+}
+
+func (d *fakeDaemon) CreateHome(_ context.Context, ws, description string, labels []string) (string, error) {
+	if d.homes == nil {
+		d.homes = map[string]*fakeHome{}
+	}
+	id := fmt.Sprintf("H%d", len(d.homes)+1)
+	d.homes[id] = &fakeHome{workspace: ws, description: description, labels: labels}
+	return id, nil
+}
+
+func (d *fakeDaemon) Labels(_ context.Context, id string) ([]string, error) {
+	return d.homes[id].labels, nil
+}
+
+func (d *fakeDaemon) Rerun(_ context.Context, id, description string, labels []string) error {
+	d.reruns++
+	d.homes[id].description, d.homes[id].labels = description, labels
+	return nil
 }
 
 func newFakeDaemon() *fakeDaemon { return &fakeDaemon{sessions: map[string]*fakeSession{}} }

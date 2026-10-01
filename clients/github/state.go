@@ -34,6 +34,16 @@ type RepoState struct {
 	FailedThrough map[int]Marks `json:"failed_through,omitempty"`
 	// Running is every job started and not yet finished.
 	Running []Job `json:"running,omitempty"`
+	// Issues is, for each labeled issue, the run made for it.
+	Issues map[int]IssueRun `json:"issues,omitempty"`
+}
+
+// IssueRun is the run an issue was given: its home session, and the issue's
+// fingerprint when the run was last asked for, so an edit or a new comment
+// can ask again after a failure.
+type IssueRun struct {
+	Home string `json:"home"`
+	Seen string `json:"seen"`
 }
 
 // Seen is a head and when it was first seen.
@@ -113,6 +123,9 @@ func (s *State) Repo(name string) *RepoState {
 	}
 	if r.FailedThrough == nil {
 		r.FailedThrough = map[int]Marks{}
+	}
+	if r.Issues == nil {
+		r.Issues = map[int]IssueRun{}
 	}
 	return r
 }

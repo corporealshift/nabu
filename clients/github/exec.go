@@ -244,3 +244,34 @@ func (g GitCLI) Push(ctx context.Context, dir, ref string) error {
 	_, err := g.Run(ctx, "", nil, "git", "-C", dir, "push", "origin", "HEAD:refs/heads/"+ref)
 	return err
 }
+
+func (g GH) OpenIssues(ctx context.Context, repo, label string) ([]Issue, error) {
+	out, err := g.Run(ctx, "", nil, "gh", "issue", "list", "--repo", repo, "--label", label, "--state", "open",
+		"--limit", "100", "--json", "number,title,body,url")
+	if err != nil {
+		return nil, err
+	}
+	var issues []Issue
+	if err := json.Unmarshal(out, &issues); err != nil {
+		return nil, fmt.Errorf("gh issue list: %w", err)
+	}
+	return issues, nil
+}
+
+func (g GH) IssueComments(ctx context.Context, repo string, number int) ([]Comment, error) {
+	var raw []struct {
+		ID        int64     `json:"id"`
+		User      ghUser    `json:"user"`
+		Body      string    `json:"body"`
+		CreatedAt time.Time `json:"created_at"`
+		HTMLURL   string    `json:"html_url"`
+	}
+	if err := g.pages(ctx, "repos/"+repo+"/issues/"+strconv.Itoa(number)+"/comments", &raw); err != nil {
+		return nil, err
+	}
+	out := make([]Comment, 0, len(raw))
+	for _, c := range raw {
+		out = append(out, Comment{Kind: CommentIssue, ID: c.ID, Author: c.User.Login, Body: c.Body, Created: c.CreatedAt, URL: c.HTMLURL})
+	}
+	return out, nil
+}

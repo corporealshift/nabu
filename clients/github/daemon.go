@@ -68,3 +68,29 @@ func (c Client) Events(ctx context.Context, sessionID string) ([]protocol.Event,
 }
 
 func (c Client) Close() { c.C.Close() }
+
+func (c Client) CreateHome(ctx context.Context, workspace, description string, labels []string) (string, error) {
+	var out struct {
+		SessionID string `json:"session_id"`
+	}
+	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
+		"workspace": workspace,
+		"options":   map[string]any{"description": description, "labels": labels},
+	}, &out)
+	return out.SessionID, err
+}
+
+func (c Client) Labels(ctx context.Context, sessionID string) ([]string, error) {
+	st, err := c.C.State(ctx, sessionID)
+	return st.Options.Labels, err
+}
+
+func (c Client) Rerun(ctx context.Context, sessionID, description string, labels []string) error {
+	// The brief first, so the runner never sees the request without it.
+	if err := c.C.CallInto(ctx, "nabu.session.set_option",
+		map[string]any{"session_id": sessionID, "key": "description", "value": description}, nil); err != nil {
+		return err
+	}
+	return c.C.CallInto(ctx, "nabu.session.set_option",
+		map[string]any{"session_id": sessionID, "key": "labels", "value": labels}, nil)
+}

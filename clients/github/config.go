@@ -44,6 +44,11 @@ type CommentsConfig struct {
 	MaxTurns int   `json:"max_turns"`
 }
 
+// IssuesConfig is the issues job's section: labeled issues become runs.
+type IssuesConfig struct {
+	Enabled *bool `json:"enabled"`
+}
+
 // Config is <root>/github/config.json.
 type Config struct {
 	Repos []Repo   `json:"repos"`
@@ -55,6 +60,7 @@ type Config struct {
 	MaxJobs  int            `json:"max_jobs"`
 	Review   ReviewConfig   `json:"review"`
 	Comments CommentsConfig `json:"comments"`
+	Issues   IssuesConfig   `json:"issues"`
 }
 
 // QuietFor is the quiet period.
@@ -70,6 +76,9 @@ func (c Config) ReviewEnabled() bool { return c.Review.Enabled == nil || *c.Revi
 
 // CommentsEnabled reports whether comment jobs run.
 func (c Config) CommentsEnabled() bool { return c.Comments.Enabled == nil || *c.Comments.Enabled }
+
+// IssuesEnabled reports whether labeled issues become runs.
+func (c Config) IssuesEnabled() bool { return c.Issues.Enabled == nil || *c.Issues.Enabled }
 
 // ReviewPushes reports whether each new head gets its own review.
 func (c Config) ReviewPushes() bool { return c.Review.Pushes == nil || *c.Review.Pushes }

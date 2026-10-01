@@ -18,6 +18,10 @@ type GitHub interface {
 	ReplyTo(ctx context.Context, repo string, number int, root int64, body string) error
 	// Comment posts in the PR's conversation.
 	Comment(ctx context.Context, repo string, number int, body string) error
+	// OpenIssues is every open issue carrying a label.
+	OpenIssues(ctx context.Context, repo, label string) ([]Issue, error)
+	// IssueComments is every comment on an issue.
+	IssueComments(ctx context.Context, repo string, number int) ([]Comment, error)
 }
 
 // Git is what the watcher does with git. Everything runs in Kyle's clone or
@@ -42,6 +46,13 @@ type Git interface {
 // §7.18), so a session that reaches for the network learns so immediately.
 type Daemon interface {
 	Create(ctx context.Context, workspace string, maxTurns int) (string, error)
+	// CreateHome makes a run's home: a session that is never prompted,
+	// carrying the brief as its description and the labels the runner reads.
+	CreateHome(ctx context.Context, workspace, description string, labels []string) (string, error)
+	// Labels is a session's labels.
+	Labels(ctx context.Context, sessionID string) ([]string, error)
+	// Rerun gives a home a new brief and asks the runner again.
+	Rerun(ctx context.Context, sessionID, description string, labels []string) error
 	SetGoal(ctx context.Context, sessionID, condition string) error
 	SendPrompt(ctx context.Context, sessionID, text string) error
 	State(ctx context.Context, sessionID string) (protocol.State, error)

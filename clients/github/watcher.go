@@ -102,6 +102,11 @@ func (w *Watcher) Poll(ctx context.Context) (int, error) {
 			continue
 		}
 		Observe(rs, prs, w.Now())
+		if w.Cfg.IssuesEnabled() {
+			if err := w.issues(ctx, d, repo, rs); err != nil {
+				errs = append(errs, err)
+			}
+		}
 		for _, p := range ReviewJobs(w.Cfg, rs, prs, w.Now()) {
 			if w.moved[fmt.Sprintf("%s#%d", repo.Name, p.Number)] {
 				continue
