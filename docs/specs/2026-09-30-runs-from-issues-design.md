@@ -36,7 +36,8 @@ that has no run yet.
 From then on it is an ordinary run: the plan, the Claude gates, the tasks and the fix
 loop. It follows the `issue:` label only at two points:
 - **At `pr`:** the PR body starts with `Closes #<n>`, and the PR carries the `nabu` label.
-- **At the end:** the watcher comments on the issue once. At `done` the comment links the
+- **At the end:** the runner comments on the issue once. The runner is what sees the run
+  end, so it posts; the watcher would have to poll every run to find out. At `done` the comment links the
   PR. At `failed` it says which step the run stopped at, and that editing the issue or
   commenting on it starts it again. Both end with the signature and the marker.
 
@@ -49,7 +50,8 @@ state, gets no second run, except:
   issue's new comments are appended to `brief.md` as the first commit of the resumed run,
   and the description is set again.
 - **The run is done and its PR was closed without merging.** The run is over, and the
-  issue needs a new run. It gets one only once it is updated after the close.
+  issue needs a new run. It gets one only once it is updated after the close. *Deferred:
+  not in the first version. Until it is built, such an issue gets nothing.*
 
 ## How it fails
 
