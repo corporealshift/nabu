@@ -16,6 +16,10 @@ import (
 // LabelRequested is the label /run puts on a home.
 const LabelRequested = "run:requested"
 
+// NoPushLabel makes the guard refuse a session anything that publishes: a
+// push, or a post to GitHub.
+const NoPushLabel = "guard:no-push"
+
 // Client is the Daemon over a goclient connection.
 type Client struct{ C *goclient.Client }
 
@@ -96,8 +100,11 @@ func (c Client) Create(ctx context.Context, workspace, parent string, maxTurns i
 	}
 	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
 		"workspace": workspace,
-		"options":   map[string]any{"permission_mode": string(protocol.PermissionAuto), "parent": parent},
-		"budget":    map[string]any{"max_turns": maxTurns, "source": "client"},
+		// guard:no-push: a step session commits, and the runner pushes and
+		// posts once the work is checked.
+		"options": map[string]any{"permission_mode": string(protocol.PermissionAuto), "parent": parent,
+			"labels": []string{NoPushLabel}},
+		"budget": map[string]any{"max_turns": maxTurns, "source": "client"},
 	}, &out)
 	return out.SessionID, err
 }

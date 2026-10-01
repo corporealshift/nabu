@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/corporealshift/nabu/daemon/module"
@@ -123,6 +124,25 @@ func (m *Module) GateTool(_ context.Context, s module.Session, call protocol.Too
 	if s != nil {
 		if got := s.State().Options.PermissionMode; got != "" {
 			mode = got
+		}
+	}
+
+	// A session its client labeled guard:no-push may not publish anything,
+	// whatever its mode. The runner and the watcher label their sessions so:
+	// they push and post themselves, once the work is checked, and a step
+	// session that pushed and opened its own PR (seen in a live run) breaks
+	// that. Pushing is otherwise medium risk, which auto mode allows.
+	if s != nil && slices.Contains(s.State().Options.Labels, NoPushLabel) && strings.EqualFold(call.Tool, "bash") {
+		var args struct {
+			Command string `json:"command"`
+		}
+		if json.Unmarshal(call.Arguments, &args) == nil {
+			for _, seg := range commandSegments(args.Command) {
+				if what := publishes(seg); what != "" {
+					return module.Verdict{Decision: module.Deny, Reason: "this session may not " + what +
+						": the runner pushes and posts itself once the work is checked. Commit, and leave the rest to it."}
+				}
+			}
 		}
 	}
 
@@ -642,4 +662,76 @@ func ruleFromMap(obj map[string]any) (Rule, error) {
 		r.Match.MinRisk = &tier
 	}
 	return r, nil
+}
+
+// NoPushLabel marks a session that may not publish: push, or post to GitHub.
+const NoPushLabel = "guard:no-push"
+
+// publishes says what a command segment would publish, or "" if nothing: a
+// git push, or a gh command that writes to GitHub.
+func publishes(seg segment) string {
+	switch seg.program {
+	case "git":
+		if verb := gitVerb(seg.args); verb == "push" {
+			return "push"
+		}
+	case "gh":
+		if len(seg.args) == 0 {
+			return ""
+		}
+		sub, verb := seg.args[0], ""
+		if len(seg.args) > 1 {
+			verb = seg.args[1]
+		}
+		writes := map[string][]string{
+			"pr":      {"create", "merge", "close", "reopen", "edit", "comment", "review", "ready"},
+			"issue":   {"create", "close", "reopen", "edit", "comment", "delete", "transfer", "lock"},
+			"release": {"create", "delete", "edit", "upload"},
+			"repo":    {"create", "delete", "edit", "fork", "rename", "archive"},
+			"label":   {"create", "delete", "edit", "clone"},
+		}
+		if slices.Contains(writes[sub], verb) {
+			return "run gh " + sub + " " + verb
+		}
+		if sub == "api" && ghAPIWrites(seg.args[1:]) {
+			return "write through gh api"
+		}
+	}
+	return ""
+}
+
+// gitVerb is git's subcommand, past its global options.
+func gitVerb(args []string) string {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-C" || a == "-c" || a == "--git-dir" || a == "--work-tree":
+			i++
+		case strings.HasPrefix(a, "-"):
+		default:
+			return a
+		}
+	}
+	return ""
+}
+
+// ghAPIWrites reports whether a gh api call writes: an explicit method other
+// than GET, or fields or input, which make gh send a POST.
+func ghAPIWrites(args []string) bool {
+	for i, a := range args {
+		lower := strings.ToLower(a)
+		switch {
+		case lower == "-x" || lower == "--method":
+			if i+1 < len(args) && !strings.EqualFold(args[i+1], "GET") {
+				return true
+			}
+		case strings.HasPrefix(lower, "-x") && len(a) > 2 && !strings.EqualFold(a[2:], "GET"),
+			strings.HasPrefix(lower, "--method=") && !strings.EqualFold(a[len("--method="):], "GET"):
+			return true
+		case a == "-f" || a == "-F" || a == "--field" || a == "--raw-field" || a == "--input",
+			strings.HasPrefix(a, "--field=") || strings.HasPrefix(a, "--raw-field=") || strings.HasPrefix(a, "--input="):
+			return true
+		}
+	}
+	return false
 }

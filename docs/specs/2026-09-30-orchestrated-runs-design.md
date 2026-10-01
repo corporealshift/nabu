@@ -125,6 +125,12 @@ point of the design, so they are never skipped.
   touched it is reset to its starting commit (`git reset --hard <start>` in the
   worktree), and the step is retried once with the refusal in the prompt. Only the runner
   changes the script, with Claude's text.
+- **No step session can publish.** Every session the runner or the watcher starts is
+  labeled `guard:no-push`, and the guard denies such a session any `git push` and any
+  `gh` command that writes to GitHub, in every mode. A push is otherwise medium risk,
+  which `auto` allows. In a live run, a `verify` session pushed its branch and opened its
+  own PR, so the run's `pr` step found one already there and failed. The prompts asked it
+  not to; the guard now makes sure.
 - **A fix session asks for a revision by writing a file, not by editing the script.** A
   fix session that concludes the check is wrong writes
   `.nabu/runs/<slug>/verify-revision.md` with its reason, and commits it. The runner
