@@ -108,12 +108,14 @@ func (w *Watcher) issues(ctx context.Context, d Daemon, repo Repo, rs *RepoState
 				return fmt.Errorf("github: %s#%d: %w", repo.Name, is.Number, err)
 			}
 			rs.Issues[is.Number] = IssueRun{Home: home, Seen: seen}
+			w.handed++
 			w.logf("%s#%d: issue handed to the runner as run %s", repo.Name, is.Number, home)
 		} else if seen != rec.Seen {
 			if err := d.Rerun(ctx, rec.Home, brief, runLabels(labels, "run:requested")); err != nil {
 				return err
 			}
 			rs.Issues[is.Number] = IssueRun{Home: rec.Home, Seen: seen}
+			w.handed++
 			w.logf("%s#%d: issue changed since its run failed; run %s asked for again", repo.Name, is.Number, rec.Home)
 		}
 		if err := w.save(); err != nil {

@@ -103,3 +103,15 @@ func TestIssueLabelFitsTheLabelRules(t *testing.T) {
 		t.Errorf("label = %q", got)
 	}
 }
+
+func TestHandedCountsIssuesGivenToTheRunner(t *testing.T) {
+	r := issuesRig(t)
+	r.poll(t)
+	if r.w.Handed() != 1 {
+		t.Errorf("handed = %d, want 1", r.w.Handed())
+	}
+	r.poll(t)
+	if r.w.Handed() != 0 {
+		t.Errorf("handed = %d on a poll that handed nothing", r.w.Handed())
+	}
+}

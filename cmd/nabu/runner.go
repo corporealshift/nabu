@@ -75,6 +75,16 @@ func cmdRunner(args []string, stdout, stderr io.Writer) int {
 			w.Dial = func(context.Context) (github.Daemon, error) { return shared{github.Client{C: c}}, nil }
 			w.Runs = runsSlots{rn, rd}
 			started, pollErr = w.Poll(ctx)
+			if w.Handed() > 0 {
+				// Issues just handed over are the runner's this tick, not
+				// the next one.
+				advErr = errors.Join(advErr, rn.Advance(ctx, rd))
+				if free := cfg.MaxJobs - rn.Busy() - w.Running(); free > 0 {
+					n, err := rn.Start(ctx, rd, free)
+					started += n
+					pollErr = errors.Join(pollErr, err)
+				}
+			}
 		} else if free := cfg.MaxJobs - rn.Busy(); free > 0 {
 			started, pollErr = rn.Start(ctx, rd, free)
 		}

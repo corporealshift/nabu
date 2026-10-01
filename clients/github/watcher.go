@@ -43,7 +43,14 @@ type Watcher struct {
 
 	// Runs, when set, shares the slots: see Poll.
 	Runs Runs
+
+	// handed is how many issues the last poll handed to the runner.
+	handed int
 }
+
+// Handed is how many issues the last poll handed to the runner, new or asked
+// for again, so the caller can let the runner take them up in the same tick.
+func (w *Watcher) Handed() int { return w.handed }
 
 func (w *Watcher) statePath() string { return StatePath(w.Root, w.DryRun) }
 
@@ -83,6 +90,7 @@ func (w *Watcher) Poll(ctx context.Context) (int, error) {
 	defer d.Close()
 
 	w.moved = map[string]bool{}
+	w.handed = 0
 	var errs []error
 	var comments, reviews []candidate
 	for _, repo := range w.Cfg.Repos {
