@@ -394,32 +394,32 @@ func TestAFrozenSubscriberDoesNotStallTheOthers(t *testing.T) {
 	cs, rc := hn.attach(t)
 	hn.subscribeVia(t, cs, id)
 
-	// More than the store lets a pump fall behind by, read as they come:
-	// the recorder holds fewer than this.
+	// More than the store lets a pump fall behind by, each read before the
+	// next is made. Produced in a burst, on one core the burst filled the
+	// store's buffer before the pump ran at all, and the store dropped every
+	// subscriber to resync, as it should: that is a pump falling behind, not
+	// a frozen client holding the others up, which is what this is about.
 	const n = 2 * eventBuffer
-	heard := make(chan int)
+	var heard atomic.Int64
 	go func() {
-		got := 0
-		for got < n {
-			select {
-			case m := <-rc.out:
-				if m.Method == "nabu.session.event" {
-					got++
-				}
-			case <-time.After(5 * time.Second):
-				heard <- got
-				return
+		for m := range rc.out {
+			if m.Method == "nabu.session.event" {
+				heard.Add(1)
 			}
 		}
-		heard <- got
 	}()
 	for i := range n {
+		before := heard.Load()
 		if _, err := hn.m.SetGoal(context.Background(), id, fmt.Sprintf("goal %d", i)); err != nil {
 			t.Fatal(err)
 		}
-	}
-	if got := <-heard; got != n {
-		t.Fatalf("the attentive client heard %d of %d events", got, n)
+		deadline := time.Now().Add(5 * time.Second)
+		for heard.Load() == before {
+			if time.Now().After(deadline) {
+				t.Fatalf("the attentive client stopped hearing after %d of %d goals", i, n)
+			}
+			time.Sleep(time.Millisecond)
+		}
 	}
 
 	// And a client arriving afterwards hears the session too.
