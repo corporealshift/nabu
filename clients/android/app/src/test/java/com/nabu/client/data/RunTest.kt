@@ -98,4 +98,21 @@ class RunTest {
         assertEquals(listOf("run:fix", "run:attempt:2/10"), options.labels)
         assertEquals("", repo.latestOptions("nothing-mirrored").parent)
     }
+
+    // Seen on the emulator: a run's work sessions, made after the phone
+    // connected, never appeared under its home until a reconnect.
+    @Test
+    fun `refreshing finds the sessions made since connecting`() = runBlocking {
+        daemon.listed = listOf("HOME", "PLAN")
+        repo.recordSessions(repo.listSessions(client))
+
+        daemon.listed = listOf("HOME", "PLAN", "WORK1", "WORK2")
+        assertEquals(listOf("WORK1", "WORK2"), repo.refreshSessions(client))
+        assertEquals(setOf("HOME", "PLAN", "WORK1", "WORK2"), db.sessions().ids().toSet())
+
+        assertEquals(emptyList<String>(), repo.refreshSessions(client))
+        daemon.listed = listOf("HOME", "WORK1", "WORK2")
+        repo.refreshSessions(client)
+        assertEquals("an archived session leaves the mirror", setOf("HOME", "WORK1", "WORK2"), db.sessions().ids().toSet())
+    }
 }

@@ -47,6 +47,9 @@ class FakeDaemon {
      */
     val refuseMethod = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, String>>()
 
+    /** What nabu.session.list answers: session ids, each in C:/proj and idle. */
+    @Volatile var listed: List<String> = emptyList()
+
     /** Held open to prove a notification arrives while a call is in flight. */
     @Volatile var holdCall: CountDownLatch? = null
 
@@ -122,6 +125,10 @@ class FakeDaemon {
             """{"jsonrpc":"2.0","id":${id},"result":{"event_id":"01SENT${sent.incrementAndGet()}"}}"""
         "nabu.session.compact" ->
             """{"jsonrpc":"2.0","id":${id},"result":{"event_id":"01COMPACTED","mode":"$compactMode"}}"""
+        "nabu.session.list" -> {
+            val sessions = listed.joinToString(",") { """{"session_id":"$it","workspace":"C:/proj","state":"idle"}""" }
+            """{"jsonrpc":"2.0","id":${id},"result":{"sessions":[$sessions],"ok":true,"method":"$method"}}"""
+        }
         else -> """{"jsonrpc":"2.0","id":${id},"result":{"ok":true,"method":"$method"}}"""
     }
 

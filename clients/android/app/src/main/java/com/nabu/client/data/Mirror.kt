@@ -99,6 +99,10 @@ interface SessionDao {
     @Query("DELETE FROM sessions WHERE id = :id")
     suspend fun delete(id: String)
 
+    /** Every session mirrored. */
+    @Query("SELECT id FROM sessions")
+    suspend fun ids(): List<String>
+
     /** Drops every session but these, and their events with them. */
     @Query("DELETE FROM sessions WHERE id NOT IN (:keep)")
     suspend fun deleteAllExcept(keep: List<String>)

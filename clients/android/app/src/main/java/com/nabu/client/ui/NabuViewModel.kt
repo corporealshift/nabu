@@ -16,6 +16,7 @@ import com.nabu.client.protocol.NabuJson
 import com.nabu.client.settings.Settings
 import com.nabu.client.settings.SettingsStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -219,9 +220,21 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { repo.sync(c, summary.sessionId) }
         }
 
+        // Sessions made after this point are only heard of by asking again: a
+        // run makes one for every step, and they should appear as it works.
+        val refresher = launch {
+            while (true) {
+                delay(SESSION_REFRESH_MS)
+                runCatching { repo.refreshSessions(c) }.onSuccess { fresh ->
+                    for (id in fresh) runCatching { repo.sync(c, id) }
+                }
+            }
+        }
+
         // incoming never completes, so the drop is what this waits on.
         val reason = c.awaitClosed()
         pump.cancel()
+        refresher.cancel()
         throw DaemonException(reason)
     }
 
@@ -616,3 +629,6 @@ internal fun compactFailure(e: Throwable): String =
     if (e is com.nabu.client.net.DaemonException && e.code == null)
         "lost the connection while summarising — the daemon carries on, and the summary will appear here when it is written"
     else e.message ?: "could not compact the session"
+
+/** How often the session list is asked for again while connected. */
+private const val SESSION_REFRESH_MS = 15_000L

@@ -58,6 +58,20 @@ class SessionRepository(
         db.sessions().deleteAllExcept(summaries.map { it.sessionId })
     }
 
+    /**
+     * Asks the daemon for its sessions again while connected, and says which
+     * are new. A run makes a session for every step while the phone watches,
+     * and listing only on connecting left every step after the first unseen
+     * until the next reconnect.
+     */
+    suspend fun refreshSessions(client: DaemonClient): List<String> {
+        val listed = listSessions(client)
+        val known = db.sessions().ids().toSet()
+        forgetUnlisted(listed)
+        recordSessions(listed)
+        return listed.map { it.sessionId }.filterNot { it in known }
+    }
+
     /** Records the sessions the daemon knows about, without their events. */
     suspend fun recordSessions(summaries: List<SessionSummary>) {
         for (s in summaries) {
