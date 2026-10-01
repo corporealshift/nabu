@@ -43,6 +43,8 @@ data class Options(
     val parent: String = "",
     // Spec 3.1: strings clients set for each other; the daemon gives them no meaning.
     val labels: List<String> = emptyList(),
+    // Spec 3.1: text clients set for each other, such as a run's brief.
+    val description: String = "",
 )
 
 @Serializable

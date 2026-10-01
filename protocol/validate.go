@@ -101,6 +101,14 @@ func ValidateEvent(e Event) error {
 			if err := ValidLabels(labels); err != nil {
 				return fail(err.Error())
 			}
+		case "description":
+			var desc string
+			if err := json.Unmarshal(d.To, &desc); err != nil {
+				return fail("description must be a string")
+			}
+			if err := ValidDescription(desc); err != nil {
+				return fail(err.Error())
+			}
 		default:
 			return fail(fmt.Sprintf("key %q invalid", d.Key))
 		}
@@ -233,6 +241,9 @@ func validateOptions(o Options) error {
 	}
 	if err := ValidLabels(o.Labels); err != nil {
 		return fmt.Errorf("options.labels: %w", err)
+	}
+	if err := ValidDescription(o.Description); err != nil {
+		return fmt.Errorf("options.description: %w", err)
 	}
 	return nil
 }

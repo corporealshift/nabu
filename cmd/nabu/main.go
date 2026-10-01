@@ -43,6 +43,8 @@ usage: nabu [flags]              open the interactive UI on a new session
   github            review open pull requests, and address comments on ones labeled nabu,
                     in the repos in <root>/github/config.json;
                     --once polls once and exits, --dry-run prints instead of posting
+  runner            take /run briefs to pull requests, and do the github jobs too
+                    when <root>/github/config.json exists; --once finishes and exits
 
 A daemon is started automatically if none is listening.
 
@@ -104,6 +106,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdStats(args[1:], stdout, stderr)
 	case "github":
 		return cmdGitHub(args[1:], stdout, stderr)
+	case "runner":
+		return cmdRunner(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "nabu: unknown command %q\n\n%s", args[0], usage)
 		return exitUsage

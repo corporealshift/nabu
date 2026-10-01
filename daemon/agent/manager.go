@@ -153,6 +153,7 @@ type CreateOptions struct {
 	CompactionEnabled *bool                   // nil = on
 	Parent            string                  // "" = none; must name a known session
 	Labels            []string                // must pass protocol.ValidLabels
+	Description       string                  // must pass protocol.ValidDescription
 }
 
 func (o CreateOptions) resolve(defaultModel string) protocol.Options {
@@ -175,7 +176,7 @@ func (o CreateOptions) resolve(defaultModel string) protocol.Options {
 	if o.CompactionEnabled != nil {
 		out.CompactionEnabled = *o.CompactionEnabled
 	}
-	out.Parent, out.Labels = o.Parent, o.Labels
+	out.Parent, out.Labels, out.Description = o.Parent, o.Labels, o.Description
 	return out
 }
 
@@ -188,6 +189,9 @@ func (m *Manager) Create(ctx context.Context, workspacePath string, co CreateOpt
 		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, "parent "+co.Parent+" is not a session")
 	}
 	if err := protocol.ValidLabels(co.Labels); err != nil {
+		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
+	}
+	if err := protocol.ValidDescription(co.Description); err != nil {
 		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
 	}
 	ws, err := workspace.Resolve(workspacePath)
@@ -404,6 +408,15 @@ func (m *Manager) SetOption(ctx context.Context, id, key string, value any) (pro
 			return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
 		}
 		value = labels
+	case "description":
+		from = opts.Description
+		desc, ok := value.(string)
+		if !ok {
+			return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams, "description must be a string")
+		}
+		if err := protocol.ValidDescription(desc); err != nil {
+			return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
+		}
 	case "parent":
 		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams,
 			"parent is set at creation and never changes")

@@ -269,10 +269,11 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 			map[string]any{"session_id": a.sessionID})
 	case actRun:
 		// The brief goes in first, so the runner never sees the request
-		// without it.
+		// without it. It is the description, never the goal: a goal starts
+		// the loop, and this session would begin the work in the checkout.
 		if a.text != "" {
-			_, err = c.Call(ctx, "nabu.session.set_goal",
-				map[string]any{"session_id": a.sessionID, "condition": a.text})
+			_, err = c.Call(ctx, "nabu.session.set_option",
+				map[string]any{"session_id": a.sessionID, "key": "description", "value": a.text})
 		}
 		if err == nil {
 			_, err = c.Call(ctx, "nabu.session.set_option",

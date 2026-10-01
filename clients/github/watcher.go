@@ -40,6 +40,9 @@ type Watcher struct {
 	// PRs was read before the push, so it shows a head that is already gone,
 	// and reviewing that head would only be done again on the next poll.
 	moved map[string]bool
+
+	// Runs, when set, shares the slots: see Poll.
+	Runs Runs
 }
 
 func (w *Watcher) statePath() string { return StatePath(w.Root, w.DryRun) }
@@ -123,8 +126,30 @@ func (w *Watcher) Poll(ctx context.Context) (int, error) {
 		return 0, err
 	}
 
+	// Slots go to comment jobs first, since someone is waiting on a reply,
+	// then to runs, then to reviews.
+	busy := w.state.RunningCount()
+	if w.Runs != nil {
+		busy += w.Runs.Busy()
+	}
 	started := 0
-	for _, c := range Admit(w.Cfg.MaxJobs, w.state.RunningCount(), append(comments, reviews...)) {
+	for _, c := range Admit(w.Cfg.MaxJobs, busy, comments) {
+		if err := w.start(ctx, d, c); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		started++
+	}
+	if w.Runs != nil {
+		if free := w.Cfg.MaxJobs - busy - started; free > 0 {
+			n, err := w.Runs.Start(ctx, free)
+			if err != nil {
+				errs = append(errs, err)
+			}
+			started += n
+		}
+	}
+	for _, c := range Admit(w.Cfg.MaxJobs, busy+started, reviews) {
 		if err := w.start(ctx, d, c); err != nil {
 			errs = append(errs, err)
 			continue
@@ -132,6 +157,23 @@ func (w *Watcher) Poll(ctx context.Context) (int, error) {
 		started++
 	}
 	return started, errors.Join(errs...)
+}
+
+// Running is how many of the watcher's own jobs are running.
+func (w *Watcher) Running() int {
+	if w.state == nil {
+		return 0
+	}
+	return w.state.RunningCount()
+}
+
+// Runs is the orchestrated-runs runner, as the watcher sees it when both run
+// in one process: something else that holds slots and wants more.
+type Runs interface {
+	// Busy is how many slots runs hold.
+	Busy() int
+	// Start begins up to n waiting run sessions and says how many.
+	Start(ctx context.Context, n int) (int, error)
 }
 
 // running reports whether a job of a kind is running on a PR.
