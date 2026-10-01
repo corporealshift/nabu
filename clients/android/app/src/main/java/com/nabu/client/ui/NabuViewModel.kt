@@ -596,7 +596,10 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         loop.stop()
         client?.close()
-        db.close()
+        // Not db.close(): the mirror is one instance for the whole process,
+        // shared with the outbox worker. Closing it here, when the activity
+        // went away with back, left the next activity in the same process a
+        // closed database, and it reconnected, offline, forever.
         super.onCleared()
     }
 }

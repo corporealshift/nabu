@@ -232,6 +232,19 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     exportSchema = false,
 )
 abstract class MirrorDb : RoomDatabase() {
+    /**
+     * Whether this instance has been closed. Room's isOpen is false until the
+     * first query too, so it cannot tell a closed mirror from a fresh one.
+     */
+    @Volatile
+    var closed = false
+        private set
+
+    override fun close() {
+        closed = true
+        super.close()
+    }
+
     abstract fun sessions(): SessionDao
     abstract fun events(): EventDao
     abstract fun outbox(): OutboxDao
@@ -261,8 +274,10 @@ abstract class MirrorDb : RoomDatabase() {
          * about what is in flight.
          */
         fun get(context: android.content.Context): MirrorDb =
-            instance ?: synchronized(this) {
-                instance ?: androidx.room.Room
+            instance?.takeIf { !it.closed } ?: synchronized(this) {
+                // A closed instance is no instance: hand out a new one rather
+                // than one that fails every query.
+                instance?.takeIf { !it.closed } ?: androidx.room.Room
                     .databaseBuilder(
                         context.applicationContext,
                         MirrorDb::class.java,
