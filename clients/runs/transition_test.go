@@ -70,7 +70,39 @@ func TestTransition(t *testing.T) {
 				}
 			}},
 		{name: "final review clean", from: at(StepFinalReview), o: ok, want: StepPR},
-		{name: "pr", from: at(StepPR), o: ok, want: StepDone},
+		{name: "pr goes to ci", from: at(StepPR), o: ok, want: StepCI},
+		{name: "ci passes", from: at(StepCI), o: Outcome{OK: true, CI: CIPass}, want: StepDone},
+		{name: "ci merged", from: at(StepCI), o: Outcome{OK: true, CI: CIMerged}, want: StepDone},
+		{name: "ci closed", from: at(StepCI), o: Outcome{OK: true, CI: CIClosed}, want: StepFailed,
+			check: func(t *testing.T, r Run) {
+				if r.FailedAt != StepCI {
+					t.Errorf("failed at %q", r.FailedAt)
+				}
+			}},
+		{name: "ci pending waits", from: Run{Step: StepCI, Attempt: 2}, o: Outcome{Wait: true}, want: StepCI,
+			check: func(t *testing.T, r Run) {
+				if r.Attempt != 2 {
+					t.Errorf("a wait cost an attempt: %d", r.Attempt)
+				}
+			}},
+		{name: "ci fails", from: at(StepCI), o: Outcome{OK: true, CI: CIFail}, want: StepCIFix,
+			check: func(t *testing.T, r Run) {
+				if r.CIFixes != 1 || !r.Waiting {
+					t.Errorf("run = %+v", r)
+				}
+			}},
+		{name: "ci fails at the cap", from: Run{Step: StepCI, CIFixes: MaxCIFixes}, o: Outcome{OK: true, CI: CIFail}, want: StepFailed,
+			check: func(t *testing.T, r Run) {
+				if r.FailedAt != StepCIFix {
+					t.Errorf("failed at %q", r.FailedAt)
+				}
+			}},
+		{name: "a ci poll that errors is tried ten times", from: Run{Step: StepCI, Attempt: 8}, o: failed, want: StepCI},
+		{name: "and fails on the tenth", from: Run{Step: StepCI, Attempt: 9}, o: failed, want: StepFailed},
+		{name: "ci-fix goes to check", from: at(StepCIFix), o: ok, want: StepCheck},
+		{name: "ci-fix may ask for a revision", from: at(StepCIFix), o: Outcome{OK: true, Revision: true}, want: StepRevise},
+		{name: "check passes with a PR open", from: Run{Step: StepCheck, PR: 7, FinalReviewed: true}, o: Outcome{OK: true, CheckPassed: true}, want: StepPush},
+		{name: "push goes to ci", from: at(StepPush), o: ok, want: StepCI},
 
 		{name: "a session step is retried once", from: at(StepPlan), o: failed, want: StepPlan,
 			check: func(t *testing.T, r Run) {
@@ -132,6 +164,11 @@ func TestResume(t *testing.T) {
 				t.Errorf("fixes = %d", r.Fixes)
 			}
 		}},
+		{StepCIFix, StepCI, func(t *testing.T, r Run) {
+			if r.CIFixes != 0 {
+				t.Errorf("ci fixes = %d", r.CIFixes)
+			}
+		}},
 		{StepRevise, StepRevise, func(t *testing.T, r Run) {
 			if r.Revisions != 0 {
 				t.Errorf("revisions = %d", r.Revisions)
@@ -139,7 +176,7 @@ func TestResume(t *testing.T) {
 		}},
 	}
 	for _, tt := range tests {
-		r := Run{Step: StepFailed, FailedAt: tt.failedAt, Why: "x", Attempt: 2, Fixes: MaxFixes, Revisions: MaxRevisions}
+		r := Run{Step: StepFailed, FailedAt: tt.failedAt, Why: "x", Attempt: 2, Fixes: MaxFixes, Revisions: MaxRevisions, CIFixes: MaxCIFixes}
 		got := Resume(r)
 		if got.Step != tt.want || got.FailedAt != "" || got.Why != "" || got.Attempt != 0 || got.Waiting != tt.want.Session() {
 			t.Errorf("resume from %q = %+v", tt.failedAt, got)

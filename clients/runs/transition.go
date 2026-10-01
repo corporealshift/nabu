@@ -14,6 +14,11 @@ const (
 	// otherTries is how many times a Claude gate or the PR is tried before
 	// the run fails, one poll apart.
 	otherTries = 3
+	// ciTries is how many polls of the checks may fail in a row: ci is a
+	// poll, so one failed gh call is not much.
+	ciTries = 10
+	// MaxCIFixes is how many ci-fix sessions a run gets.
+	MaxCIFixes = 5
 )
 
 // Outcome is what came of doing a run's current step.
@@ -32,20 +37,28 @@ type Outcome struct {
 	TasksLeft int
 	// Blockers is how many blockers the final review found.
 	Blockers int
+	// CI is what a poll of the PR's checks found.
+	CI string
+	// Wait is a step with nothing to do yet, such as checks still running.
+	// It changes nothing and costs no attempt.
+	Wait bool
 }
 
 // Transition is the whole workflow: given where a run is and what came of
 // its step, where it goes next. It is pure, so every arrow of the spec's
 // table is a test row.
 func Transition(r Run, o Outcome) Run {
-	if r.Step.Over() {
+	if r.Step.Over() || o.Wait {
 		return r
 	}
 	if !o.OK {
 		r.Attempt++
 		tries := otherTries
-		if r.Step.Session() {
+		switch {
+		case r.Step.Session():
 			tries = sessionTries
+		case r.Step == StepCI:
+			tries = ciTries
 		}
 		if r.Attempt >= tries {
 			return fail(r, r.Step, o.Why)
@@ -77,6 +90,10 @@ func Transition(r Run, o Outcome) Run {
 		return enter(r, StepCheck, true)
 	case StepCheck:
 		if o.CheckPassed {
+			if r.PR != 0 {
+				// A fix after the PR opened goes up to it.
+				return enter(r, StepPush, true)
+			}
 			if r.FinalReviewed {
 				return enter(r, StepPR, true)
 			}
@@ -87,7 +104,7 @@ func Transition(r Run, o Outcome) Run {
 		}
 		r.Fixes++
 		return enter(r, StepFix, true)
-	case StepFix:
+	case StepFix, StepCIFix:
 		if o.Revision {
 			if r.Revisions >= MaxRevisions {
 				return fail(r, StepRevise, fmt.Sprintf("a fix asked for a revision of verify.sh after %d already", MaxRevisions))
@@ -104,8 +121,22 @@ func Transition(r Run, o Outcome) Run {
 			return enter(r, StepWork, true)
 		}
 		return enter(r, StepPR, true)
-	case StepPR:
-		return enter(r, StepDone, true)
+	case StepPR, StepPush:
+		return enter(r, StepCI, true)
+	case StepCI:
+		switch o.CI {
+		case CIPass, CIMerged:
+			return enter(r, StepDone, true)
+		case CIClosed:
+			return fail(r, StepCI, "the PR was closed")
+		case CIFail:
+			if r.CIFixes >= MaxCIFixes {
+				return fail(r, StepCIFix, fmt.Sprintf("CI still fails after %d fixes", MaxCIFixes))
+			}
+			r.CIFixes++
+			return enter(r, StepCIFix, true)
+		}
+		return r
 	}
 	return r
 }
@@ -144,6 +175,10 @@ func Resume(r Run) Run {
 	case StepRevise:
 		r.Revisions = 0
 		r = enter(r, StepRevise, true)
+	case StepCIFix:
+		// It failed on CI, so it resumes by looking at CI again.
+		r.CIFixes = 0
+		r = enter(r, StepCI, true)
 	default:
 		r = enter(r, r.FailedAt, true)
 	}

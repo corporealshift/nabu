@@ -3,6 +3,7 @@ package runs
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -243,4 +244,56 @@ func (Bash) Verify(ctx context.Context, dir, script string, timeout time.Duratio
 		return false, text, fmt.Errorf("running %s: %w", script, err)
 	}
 	return true, text, nil
+}
+
+// PRChecks is a PR's state (OPEN, MERGED or CLOSED) and its checks. It reads
+// them with gh pr view, which, unlike gh pr checks, does not exit non-zero
+// while a check is pending or failing.
+func (g GHCLI) PRChecks(ctx context.Context, dir string, n int) (string, []Check, error) {
+	out, err := g.Run(ctx, dir, nil, "gh", "pr", "view", strconv.Itoa(n), "--json", "state,statusCheckRollup")
+	if err != nil {
+		return "", nil, err
+	}
+	var v struct {
+		State  string `json:"state"`
+		Checks []struct {
+			Typename   string `json:"__typename"`
+			Name       string `json:"name"`
+			Status     string `json:"status"`
+			Conclusion string `json:"conclusion"`
+			DetailsURL string `json:"detailsUrl"`
+			Context    string `json:"context"`
+			State      string `json:"state"`
+			TargetURL  string `json:"targetUrl"`
+		} `json:"statusCheckRollup"`
+	}
+	if err := json.Unmarshal(out, &v); err != nil {
+		return "", nil, fmt.Errorf("gh pr view: %w", err)
+	}
+	var checks []Check
+	for _, c := range v.Checks {
+		if c.Typename == "StatusContext" {
+			checks = append(checks, Check{Name: c.Context, State: c.State, Link: c.TargetURL})
+			continue
+		}
+		state := c.Conclusion
+		if !strings.EqualFold(c.Status, "COMPLETED") {
+			state = c.Status
+		}
+		checks = append(checks, Check{Name: c.Name, State: state, Link: c.DetailsURL})
+	}
+	return v.State, checks, nil
+}
+
+// FailedLog is the end of the failed steps' output of an Actions run.
+func (g GHCLI) FailedLog(ctx context.Context, dir, runID string) (string, error) {
+	out, err := g.Run(ctx, dir, nil, "gh", "run", "view", runID, "--log-failed")
+	if err != nil {
+		return "", err
+	}
+	text := string(out)
+	if len(text) > maxCheckOutput {
+		text = "(earlier log cut)\n" + text[len(text)-maxCheckOutput:]
+	}
+	return text, nil
 }

@@ -233,3 +233,19 @@ Reply with one fenced json block:
 
 For good work the right answer has no blockers.`, r.File(VerifyFile), r.File(BriefFile), r.File(PlanFile), r.Base, "- "+strings.Join(changed, "\n- "))
 }
+
+// CIFixPrompt asks for the PR's failing checks to be fixed. failures is each
+// failed check with the end of its log.
+func CIFixPrompt(r Run, failures string) (prompt, goal string) {
+	prompt = fmt.Sprintf(`The run's pull request is open, and its CI fails. These are the failed checks, with the end of each log:
+
+%[1]s
+
+Find the cause and fix it, then commit. The brief is %[2]s and the plan is %[3]s, if you need them. CI may check things %[4]s does not, such as formatting, another platform or a linter; fix what it reports. Then run %[4]s yourself with bash: a CI fix that breaks the brief is no fix.
+
+If you are sure the failure shows %[4]s is wrong, do not touch it. Write %[5]s instead, saying exactly what is wrong with the check, commit it, and stop.
+%[6]s`, strings.TrimSpace(tail(failures)), r.File(BriefFile), r.File(PlanFile), r.File(VerifyFile), r.File(RevisionFile), rules(r))
+	goal = fmt.Sprintf("The CI failures listed in the first message are fixed and committed, %s still passes, and %s is untouched.",
+		r.File(VerifyFile), r.File(VerifyFile))
+	return prompt, goal
+}

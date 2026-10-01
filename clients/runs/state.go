@@ -40,6 +40,9 @@ const (
 	StepRevise       Step = "revise"
 	StepFinalReview  Step = "final-review"
 	StepPR           Step = "pr"
+	StepCI           Step = "ci"
+	StepCIFix        Step = "ci-fix"
+	StepPush         Step = "push"
 	StepDone         Step = "done"
 	StepFailed       Step = "failed"
 )
@@ -47,7 +50,7 @@ const (
 // Session reports whether a step is done by a model session.
 func (s Step) Session() bool {
 	switch s {
-	case StepBrief, StepPlan, StepTasks, StepVerify, StepWork, StepFix:
+	case StepBrief, StepPlan, StepTasks, StepVerify, StepWork, StepFix, StepCIFix:
 		return true
 	}
 	return false
@@ -87,6 +90,7 @@ type Run struct {
 	// task during work. It starts again whenever the step or task changes.
 	Attempt       int  `json:"attempt,omitempty"`
 	Fixes         int  `json:"fixes,omitempty"`
+	CIFixes       int  `json:"ci_fixes,omitempty"`
 	Revisions     int  `json:"revisions,omitempty"`
 	FinalReviewed bool `json:"final_reviewed,omitempty"`
 
@@ -113,6 +117,10 @@ type Run struct {
 	// Labelled is the run label last put on the home, so it is set only when
 	// it changes.
 	Labelled string `json:"labelled,omitempty"`
+
+	// CISince is when the run started watching its PR's checks, to give up
+	// waiting on a repository that has none.
+	CISince time.Time `json:"ci_since,omitzero"`
 
 	PR    int      `json:"pr,omitempty"`
 	PRURL string   `json:"pr_url,omitempty"`
