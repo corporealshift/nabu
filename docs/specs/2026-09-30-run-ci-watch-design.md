@@ -16,12 +16,16 @@ and fix it the same way it fixes a failing `check`.
 After `pr`, the run is at `ci`, and the runner polls the PR's checks each poll:
 
 ```
-gh pr checks <n> --repo <repo> --json name,state,bucket,link
+gh pr view <n> --json state,statusCheckRollup
 ```
 
-- **All checks pass** (`bucket` is `pass` or `skipping` throughout): the run is `done`.
-  The home is labeled `run:done`.
-- **Any check pending:** wait for the next poll.
+`gh pr checks` exits non-zero whenever a check is pending or failing, which reads as the
+command failing. `gh pr view` answers with the PR's state and every check in one call.
+
+- **All checks pass** (a check run that completed as `SUCCESS`, `SKIPPED` or `NEUTRAL`, or
+  a status of `SUCCESS`): the run is `done`. The home is labeled `run:done`.
+- **Any check pending:** wait for the next poll. A run waits until nothing is pending,
+  even when something has already failed, so one fix session sees every failure at once.
 - **A PR with no checks at all:** after 10 minutes with none reported, the run is `done`.
   A repository without CI has nothing to wait for.
 - **Any check failed:** go to `ci-fix`.
@@ -30,7 +34,7 @@ gh pr checks <n> --repo <repo> --json name,state,bucket,link
 
 1. **Collect the failure.** For each failed check that is a GitHub Actions run:
    `gh run view <run id> --log-failed`, with the tail kept to 20,000 characters per check.
-   The run ID comes from the check's `link`. A check that isn't Actions gives its name
+   The run ID comes from the check's `detailsUrl`. A check that isn't Actions gives its name
    and link only.
 2. **A fix session in the run's worktree.** The prompt gives the failure logs. The goal
    is: "The CI failures listed in the first message are fixed and committed, and
