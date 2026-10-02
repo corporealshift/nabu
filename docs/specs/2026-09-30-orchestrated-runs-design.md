@@ -194,6 +194,7 @@ runs, and none while it only runs commands.
 | Claude's answer cannot be parsed | Treated as "no change" for `plan-review`, and as a failure for `verify-review`, `revise` and `final-review`, which then retry as above |
 | The runner restarts | It resumes from the saved state |
 | `git push` or `gh pr create` fails | Retried at the next poll. After 3 tries, `failed` at `pr` |
+| A PR is already open for the run's branch | The run takes it over at `pr`: it sets the run's title and body, adds the label, and carries on. It is the run's branch, so it is the run's PR. With the guard, no session can open one; this covers a PR opened before the guard existed, or by an earlier `pr` attempt that failed before recording it. |
 | The default branch moves during the run | Nothing happens. The PR is against the default branch, and a conflict is for CI and Kyle. Rebasing a run is not in scope. |
 
 ## Not doing

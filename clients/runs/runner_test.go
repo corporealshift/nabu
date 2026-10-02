@@ -311,6 +311,22 @@ type fakeGH struct {
 	logs  []string
 	// issueComments are "#n: body".
 	issueComments []string
+	// existing is a PR already open for the run's branch, by number; zero
+	// means none. edits are "n|title|label|body".
+	existing int
+	edits    []string
+}
+
+func (g *fakeGH) OpenPRFor(context.Context, string, string) (int, string, bool, error) {
+	if g.existing == 0 {
+		return 0, "", false, nil
+	}
+	return g.existing, fmt.Sprintf("https://github.com/kyle/x/pull/%d", g.existing), true, nil
+}
+
+func (g *fakeGH) EditPR(_ context.Context, _ string, n int, title, body, label string) error {
+	g.edits = append(g.edits, strings.Join([]string{fmt.Sprint(n), title, label, body}, "|"))
+	return nil
 }
 
 func (g *fakeGH) CommentIssue(_ context.Context, _ string, n int, body string) error {
@@ -1077,5 +1093,29 @@ func TestIssueOf(t *testing.T) {
 		if got := IssueOf(tt.labels); got != tt.want {
 			t.Errorf("IssueOf(%q) = %d, want %d", tt.labels, got, tt.want)
 		}
+	}
+}
+
+// Seen live: a session pushed its branch and opened its own PR, and the run's
+// pr step failed on "a pull request already exists". The guard now stops a
+// session doing that, but a PR open for the run's branch is the run's PR: it is
+// taken over, with the run's title, body and label, and the run goes on.
+func TestAnOpenPRForTheBranchIsTakenOver(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	g.gh.existing = 5
+	r := g.opened("H1")
+	if len(g.gh.prs) != 0 {
+		t.Errorf("a second PR was opened: %q", g.gh.prs)
+	}
+	if len(g.gh.edits) != 1 || !strings.HasPrefix(g.gh.edits[0], "5|Add a Median function to stats|nabu|") ||
+		!strings.Contains(g.gh.edits[0], "<!-- nabu -->") {
+		t.Errorf("edits = %q", g.gh.edits)
+	}
+	if r.PR != 5 || r.PRURL != "https://github.com/kyle/x/pull/5" || r.Step != StepDone {
+		t.Errorf("run = %+v", r)
+	}
+	if !strings.Contains(g.log.String(), "took over https://github.com/kyle/x/pull/5") {
+		t.Errorf("log:\n%s", g.log.String())
 	}
 }

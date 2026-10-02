@@ -189,3 +189,30 @@ func TestCommentIssue(t *testing.T) {
 		t.Errorf("call = %+v", c)
 	}
 }
+
+func TestOpenPRForAndEditPR(t *testing.T) {
+	ctx := context.Background()
+	none, calls := recorder("[]")
+	if _, _, found, err := (GHCLI{none}).OpenPRFor(ctx, "C:/w", "nabu/x-1"); found || err != nil {
+		t.Errorf("no PR: found %v, %v", found, err)
+	}
+	if got := (*calls)[0].args; !reflect.DeepEqual(got, []string{"gh", "pr", "list", "--head", "nabu/x-1", "--state", "open", "--json", "number,url"}) {
+		t.Errorf("args = %q", got)
+	}
+	one, _ := recorder(`[{"number":5,"url":"https://github.com/kyle/x/pull/5"}]`)
+	if n, url, found, err := (GHCLI{one}).OpenPRFor(ctx, "C:/w", "nabu/x-1"); n != 5 || url != "https://github.com/kyle/x/pull/5" || !found || err != nil {
+		t.Errorf("one PR = %d, %q, %v, %v", n, url, found, err)
+	}
+
+	run, calls := recorder("")
+	if err := (GHCLI{run}).EditPR(ctx, "C:/w", 5, "Add x", "the body", "nabu"); err != nil {
+		t.Fatal(err)
+	}
+	if (*calls)[0].args[1] != "label" {
+		t.Errorf("the label is not made first: %q", (*calls)[0].args)
+	}
+	c := (*calls)[1]
+	if !reflect.DeepEqual(c.args, []string{"gh", "pr", "edit", "5", "--title", "Add x", "--body-file", "-", "--add-label", "nabu"}) || c.stdin != "the body" {
+		t.Errorf("edit = %+v", c)
+	}
+}
