@@ -58,6 +58,20 @@ class SessionRepository(
         db.sessions().deleteAllExcept(summaries.map { it.sessionId })
     }
 
+    /**
+     * Asks the daemon for its sessions again while connected, and says which
+     * are new. A run makes a session for every step while the phone watches,
+     * and listing only on connecting left every step after the first unseen
+     * until the next reconnect.
+     */
+    suspend fun refreshSessions(client: DaemonClient): List<String> {
+        val listed = listSessions(client)
+        val known = db.sessions().ids().toSet()
+        forgetUnlisted(listed)
+        recordSessions(listed)
+        return listed.map { it.sessionId }.filterNot { it in known }
+    }
+
     /** Records the sessions the daemon knows about, without their events. */
     suspend fun recordSessions(summaries: List<SessionSummary>) {
         for (s in summaries) {
@@ -182,6 +196,38 @@ class SessionRepository(
             if (message.role == "user") return message.content.trim()
         }
         return ""
+    }
+
+    /**
+     * A session's options as mirrored: its parent and labels are what make a
+     * run's sessions one thing in the list. Defaults when nothing is mirrored.
+     */
+    suspend fun latestOptions(sessionId: String): com.nabu.client.protocol.Options {
+        val events = db.events().optionEvents(sessionId).mapNotNull {
+            runCatching { NabuJson.decodeFromString(Event.serializer(), it) }.getOrNull()
+        }
+        return com.nabu.client.protocol.project(events).options
+    }
+
+    /**
+     * Hands a session to the runner, as /run does in the terminal client: the
+     * brief, when there is one, as its description, then its labels with
+     * run:requested. Never the goal: setting one starts the session working on
+     * it, in the owner's checkout, beside the run.
+     */
+    suspend fun startRun(client: DaemonClient, sessionId: String, brief: String, labels: List<String>) {
+        if (brief.isNotBlank()) {
+            client.callOrThrow("nabu.session.set_option", buildJsonObject {
+                put("session_id", sessionId)
+                put("key", "description")
+                put("value", brief.trim())
+            })
+        }
+        client.callOrThrow("nabu.session.set_option", buildJsonObject {
+            put("session_id", sessionId)
+            put("key", "labels")
+            put("value", kotlinx.serialization.json.JsonArray(labels.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+        })
     }
 
     /** Queues a prompt. It exists locally before any send is attempted. */

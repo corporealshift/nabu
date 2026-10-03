@@ -16,6 +16,7 @@ import com.nabu.client.protocol.NabuJson
 import com.nabu.client.settings.Settings
 import com.nabu.client.settings.SettingsStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +36,22 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 
 /** A session as the list shows it: the mirror's row plus what was last asked. */
-data class SessionCard(val row: SessionRow, val prompt: String)
+data class SessionCard(
+    val row: SessionRow,
+    val prompt: String,
+    /** Its parent and labels: what places it in a run. */
+    val options: com.nabu.client.protocol.Options = com.nabu.client.protocol.Options(),
+) {
+    /**
+     * What names it in a list: the last thing asked, or for a run's home,
+     * which is never asked anything, the first line of its brief.
+     */
+    val title: String
+        get() = prompt.ifBlank { options.description.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty() }
+            // One line of words: a step's prompt opens "Do task 2 of 4:" and a
+            // blank line, which left the card saying nothing but that.
+            .replace(Regex("\\s+"), " ").trim()
+}
 
 class NabuViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -76,7 +92,7 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     /** The screens read the mirror, never the socket. */
     val sessions: StateFlow<List<SessionCard>> =
         repo.watchSessions()
-            .map { rows -> rows.map { SessionCard(it, repo.latestPrompt(it.id)) } }
+            .map { rows -> rows.map { SessionCard(it, repo.latestPrompt(it.id), repo.latestOptions(it.id)) } }
             // Every event in every session touches the sessions table, and each
             // pass parses a prompt per session: not work for the main thread.
             .flowOn(Dispatchers.Default)
@@ -204,9 +220,21 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { repo.sync(c, summary.sessionId) }
         }
 
+        // Sessions made after this point are only heard of by asking again: a
+        // run makes one for every step, and they should appear as it works.
+        val refresher = launch {
+            while (true) {
+                delay(SESSION_REFRESH_MS)
+                runCatching { repo.refreshSessions(c) }.onSuccess { fresh ->
+                    for (id in fresh) runCatching { repo.sync(c, id) }
+                }
+            }
+        }
+
         // incoming never completes, so the drop is what this waits on.
         val reason = c.awaitClosed()
         pump.cancel()
+        refresher.cancel()
         throw DaemonException(reason)
     }
 
@@ -502,6 +530,19 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     /** The daemon's archive, or null until it has been asked for. */
     val archived: StateFlow<List<SessionSummary>?> = _archived.asStateFlow()
 
+    /**
+     * Hands a session to the runner with an optional brief. It needs the
+     * daemon: a run started offline would be a label nobody set.
+     */
+    fun startRun(sessionId: String, brief: String, labels: List<String>) {
+        viewModelScope.launch {
+            val c = client ?: run { _error.value = "not connected: a run is started on the daemon"; return@launch }
+            runCatching { repo.startRun(c, sessionId, brief, runLabels(labels)) }
+                .onSuccess { _error.value = null }
+                .onFailure { _error.value = it.message ?: "could not start the run" }
+        }
+    }
+
     /** Puts a session away (issue 56). It leaves the list here and on the daemon. */
     fun archiveSession(sessionId: String) {
         viewModelScope.launch {
@@ -568,7 +609,10 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         loop.stop()
         client?.close()
-        db.close()
+        // Not db.close(): the mirror is one instance for the whole process,
+        // shared with the outbox worker. Closing it here, when the activity
+        // went away with back, left the next activity in the same process a
+        // closed database, and it reconnected, offline, forever.
         super.onCleared()
     }
 }
@@ -585,3 +629,6 @@ internal fun compactFailure(e: Throwable): String =
     if (e is com.nabu.client.net.DaemonException && e.code == null)
         "lost the connection while summarising — the daemon carries on, and the summary will appear here when it is written"
     else e.message ?: "could not compact the session"
+
+/** How often the session list is asked for again while connected. */
+private const val SESSION_REFRESH_MS = 15_000L

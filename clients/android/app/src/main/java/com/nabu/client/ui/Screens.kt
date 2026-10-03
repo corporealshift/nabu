@@ -241,12 +241,14 @@ fun SessionListScreen(
                     )
                 }
             }
-            items(sessions, key = { it.row.id }) { card ->
+            items(groupByParent(sessions), key = { it.card.row.id }) { placed ->
+                val card = placed.card
                 val s = card.row
                 Card(
                     colors = CardDefaults.cardColors(containerColor = NabuTheme.colors.surface),
                     // Held to archive (issue 56): the list is where sessions pile up.
-                    modifier = Modifier.fillMaxWidth().combinedClickable(
+                    // A run's steps sit under its home, indented.
+                    modifier = Modifier.fillMaxWidth().padding(start = if (placed.child) 20.dp else 0.dp).combinedClickable(
                         onClick = { onOpen(s.id) },
                         onLongClick = { archiving = card },
                         onLongClickLabel = "Archive",
@@ -259,9 +261,9 @@ fun SessionListScreen(
                         // Several sessions can share one workspace, so the last
                         // prompt leads: it is what tells them apart.
                         Text(
-                            card.prompt.ifBlank { "Nothing asked yet" },
+                            card.title.ifBlank { "Nothing asked yet" },
                             style = MaterialTheme.typography.titleSmall,
-                            color = if (card.prompt.isBlank()) NabuTheme.colors.muted
+                            color = if (card.title.isBlank()) NabuTheme.colors.muted
                             else NabuTheme.colors.ink,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -272,6 +274,13 @@ fun SessionListScreen(
                                 style = MaterialTheme.typography.labelMedium,
                                 color = NabuTheme.colors.muted,
                             )
+                            runStatus(card.options.labels)?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = NabuTheme.colors.accent,
+                                )
+                            }
                             if (!s.synced) {
                                 // Spec 4 obliges a client to disclose this.
                                 Text(
@@ -318,7 +327,15 @@ fun TranscriptScreen(
     onRetryBlocked: (String) -> Unit,
     onDiscardBlocked: (String) -> Unit,
     onBack: () -> Unit,
+    onRun: (String) -> Unit = {},
+    /** What to call this session's run home, when it is a step of one. */
+    parentTitle: String? = null,
+    onOpenParent: () -> Unit = {},
 ) {
+    var running by remember { mutableStateOf(false) }
+    if (running) {
+        RunDialog(onRun = { onRun(it); running = false }, onDismiss = { running = false })
+    }
     val lines = remember(view, synced) { withGap(view.lines, synced, view.fetched) }
     val listState = rememberLazyListState()
 
@@ -343,6 +360,12 @@ fun TranscriptScreen(
                 title = { Text(title, style = MaterialTheme.typography.titleSmall) },
                 actions = {
                     ContextBadge(view.contextUsed)
+                    // A step of a run is the runner's, not a thing to hand over.
+                    if (view.options.parent.isBlank()) {
+                        TextButton(onClick = { running = true }) {
+                            Text("Run", style = MaterialTheme.typography.labelMedium, color = NabuTheme.colors.accent)
+                        }
+                    }
                     CompactButton(compacting, onCompact)
                     TextButton(onClick = onStats) {
                         Text("Stats", style = MaterialTheme.typography.labelMedium, color = NabuTheme.colors.accent)
@@ -362,6 +385,18 @@ fun TranscriptScreen(
             // The daemon's refusals land here: compacting a running session is
             // turned down, and a reason nobody sees is not a reason.
             error?.let { RefusalBanner(it) }
+            RunBar(runStatus(view.options.labels), parentTitle, onOpenParent)
+            // A run's home is never prompted, so its brief is what it says.
+            if (view.options.description.isNotBlank() && view.options.parent.isBlank()) {
+                Text(
+                    view.options.description.trim(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NabuTheme.colors.muted,
+                    maxLines = 6,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -1023,4 +1058,33 @@ private fun NewFolderDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/**
+ * Where this session stands in a run: the status a home carries, and for a
+ * step, the home it belongs to, which a tap opens.
+ */
+@Composable
+private fun RunBar(status: String?, parentTitle: String?, onOpenParent: () -> Unit) {
+    if (status == null && parentTitle == null) return
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        status?.let {
+            Text(it, style = MaterialTheme.typography.labelMedium, color = NabuTheme.colors.accent)
+        }
+        parentTitle?.let {
+            TextButton(onClick = onOpenParent) {
+                Text(
+                    "Step of: $it",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = NabuTheme.colors.muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
 }

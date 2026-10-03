@@ -99,6 +99,10 @@ interface SessionDao {
     @Query("DELETE FROM sessions WHERE id = :id")
     suspend fun delete(id: String)
 
+    /** Every session mirrored. */
+    @Query("SELECT id FROM sessions")
+    suspend fun ids(): List<String>
+
     /** Drops every session but these, and their events with them. */
     @Query("DELETE FROM sessions WHERE id NOT IN (:keep)")
     suspend fun deleteAllExcept(keep: List<String>)
@@ -138,6 +142,16 @@ interface EventDao {
             "AND raw LIKE '%\"role\":\"user\"%' ORDER BY ordinal DESC LIMIT :limit"
     )
     suspend fun recentPrompts(sessionId: String, limit: Int = 5): List<String>
+
+    /**
+     * The events a session's options come from: the first, and every change
+     * since. Enough to project its parent and labels without the whole log.
+     */
+    @Query(
+        "SELECT raw FROM events WHERE session_id = :sessionId " +
+            "AND type IN ('session', 'options_change') ORDER BY ordinal ASC"
+    )
+    suspend fun optionEvents(sessionId: String): List<String>
 
     /** An event is immutable, so a repeat is a no-op. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -222,6 +236,19 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     exportSchema = false,
 )
 abstract class MirrorDb : RoomDatabase() {
+    /**
+     * Whether this instance has been closed. Room's isOpen is false until the
+     * first query too, so it cannot tell a closed mirror from a fresh one.
+     */
+    @Volatile
+    var closed = false
+        private set
+
+    override fun close() {
+        closed = true
+        super.close()
+    }
+
     abstract fun sessions(): SessionDao
     abstract fun events(): EventDao
     abstract fun outbox(): OutboxDao
@@ -251,8 +278,10 @@ abstract class MirrorDb : RoomDatabase() {
          * about what is in flight.
          */
         fun get(context: android.content.Context): MirrorDb =
-            instance ?: synchronized(this) {
-                instance ?: androidx.room.Room
+            instance?.takeIf { !it.closed } ?: synchronized(this) {
+                // A closed instance is no instance: hand out a new one rather
+                // than one that fails every query.
+                instance?.takeIf { !it.closed } ?: androidx.room.Room
                     .databaseBuilder(
                         context.applicationContext,
                         MirrorDb::class.java,
