@@ -42,6 +42,7 @@ import com.nabu.client.ui.PermissionSheet
 import com.nabu.client.ui.BriefScreen
 import com.nabu.client.ui.BrowseScreen
 import com.nabu.client.ui.Purpose
+import com.nabu.client.ui.recentWorkspaces
 import com.nabu.client.ui.SessionListScreen
 import com.nabu.client.ui.SettingsScreen
 import com.nabu.client.ui.TranscriptScreen
@@ -161,6 +162,7 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
                 },
                 onCreateDirectory = { vm.createDirectory(it) },
                 onBack = { screen = Screen.Sessions },
+                recent = remember(sessions) { recentWorkspaces(sessions) },
             )
         }
 
