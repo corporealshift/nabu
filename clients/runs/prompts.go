@@ -79,12 +79,14 @@ Commit it with the message "run: tasks".
 func VerifyPrompt(r Run) string {
 	return fmt.Sprintf(`Read the brief in %[1]s, the plan in %[2]s and the tasks in %[3]s, then write the check that proves the brief is done.
 
-Write %[4]s: a bash script that exits 0 only when the brief is done, and non-zero otherwise. It runs from the repository root with bash, on Windows under Git Bash. It should:
-- build what the brief changes;
-- run the tests that prove the brief, including the ones the tasks will add, by name where you can;
-- check anything else the brief requires.
+Write %[4]s: a bash script that exits 0 only when the brief is done, and non-zero otherwise. It runs from the repository root with bash, on Windows under Git Bash. Write it the way CI is written:
+- build, and run what the repository's CI runs: read its CI configuration, such as .github/workflows, if it has one;
+- run, by name, the tests that prove the new behavior: the ones the tasks will add. Fail if any of them fails or did not run at all. Most test runners pass when a name matches no test, so check their output for each named test passing. Above each one, say in a comment what that test must show, so the session that writes it knows what it is for;
+- check anything else the brief requires by running it, as a user or a test would.
 
-Use "set -euo pipefail". It must fail now, before the work is done, unless the brief is already met: a check that passes on untouched code proves nothing.
+Check behavior, never the text of the code. Do not grep source files for function names, strings or patterns, count tests, or check that files exist: those checks dictate how the work is written, and fail correct work that is written differently. A test of the new behavior is what proves it.
+
+Use "set -euo pipefail". It must fail now, before the work is done, unless the brief is already met: a check that passes on untouched code proves nothing. The named tests, which do not exist yet, are what make it fail.
 
 This script is the definition of done for the whole run. Once it is committed, only the runner may change it. Commit it with the message "run: verify".
 
@@ -108,8 +110,8 @@ func WorkPrompt(r Run, i, n int, t Task) (prompt, goal string) {
 
 **%s**%s
 
-For context, the brief is %s, the plan is %s and the whole task list is %s. Do this task and only this task: later tasks belong to later sessions. Build and test what you change. Commit with a message that says what the task did. Do not edit %s; the runner ticks the box when you finish.
-%s`, i+1, n, t.Title, detail, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(TasksFile), rules(r))
+For context, the brief is %s, the plan is %s and the whole task list is %s. Do this task and only this task: later tasks belong to later sessions. The run is done when %s passes, so read it: where it names a test this task should write, write that test, under that name. Build and test what you change. Commit with a message that says what the task did. Do not edit %s; the runner ticks the box when you finish.
+%s`, i+1, n, t.Title, detail, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile), r.File(TasksFile), rules(r))
 	goal = fmt.Sprintf("Task %d of %s (%q) is done and committed, and %s is untouched.", i+1, r.File(TasksFile), t.Title, r.File(VerifyFile))
 	return prompt, goal
 }
@@ -168,7 +170,7 @@ If it is good as it is, reply with exactly: NO CHANGES`, r.File(BriefFile), r.Fi
 func VerifyReviewPrompt(r Run, passedBefore bool, output string) string {
 	before := "fails"
 	if passedBefore {
-		before = "PASSES, which proves nothing unless the brief is already met"
+		before = "PASSES, which proves nothing unless the brief is already met. If the brief is not met, make the script fail by running tests of the new behavior by name, not by checking the source"
 	}
 	return reviewer + fmt.Sprintf(`The brief is %[1]s, the plan %[2]s and the tasks %[3]s. The check, written by a smaller model, is %[4]s.
 
@@ -178,9 +180,11 @@ That script defines done for the whole run. The model doing the work may not cha
 %[6]s
 ~~~
 
-Check that it proves the brief is done:
-- it builds, and runs tests that would fail if the brief were not met;
-- it cannot pass trivially or be satisfied by a stub;
+Check that it proves the brief is done, the way CI would:
+- it builds, and runs what the repository's CI runs;
+- it runs, by name, tests of the new behavior, and fails if any of them fails or did not run;
+- it checks behavior only. It does not grep source files for names, strings or patterns, count tests, or check that files exist: those dictate how the work is written and fail correct work written differently. Take out any such check, and do not add one;
+- it cannot pass on the code as it is now;
 - it runs from the repository root under bash, on Windows with Git Bash.
 
 If it falls short, reply with a complete replacement between these two lines:
@@ -206,7 +210,7 @@ Decide who is right. If the check is wrong, reply with the corrected, complete s
 %[5]s
 %[6]s
 
-Keep it as strict as the brief requires. Do not weaken it to let broken work pass.
+Keep it as strict as the brief requires. Do not weaken it to let broken work pass. Keep it a check of behavior, as CI is: run tests and commands, and do not add checks on the text of the source.
 
 If the check is right and the work is wrong, reply with REFUSED, followed by one paragraph telling the next fix session what is actually wrong.`,
 		r.File(VerifyFile), r.File(RevisionFile), r.File(BriefFile), strings.TrimSpace(tail(output)), Begin(VerifyFile), End(VerifyFile))

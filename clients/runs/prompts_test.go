@@ -20,8 +20,9 @@ func TestSessionPrompts(t *testing.T) {
 		{"brief", BriefPrompt(r, "user: add a median"), []string{r.File(BriefFile), "user: add a median", `"run: brief"`}, true},
 		{"plan", PlanPrompt(r), []string{r.File(BriefFile), r.File(PlanFile), `"run: plan"`}, true},
 		{"tasks", TasksPrompt(r), []string{r.File(PlanFile), r.File(TasksFile), "3 to 8", "- [ ]", `"run: tasks"`}, true},
-		{"verify", VerifyPrompt(r), []string{verify, "exits 0 only when the brief is done", "must fail now", `"run: verify"`}, false},
-		{"work", work, []string{"task 2 of 4", "Add Median", "In stats.go, with tests.", "only this task"}, true},
+		{"verify", VerifyPrompt(r), []string{verify, "exits 0 only when the brief is done", "must fail now", `"run: verify"`,
+			"the way CI is written", "did not run at all", "never the text of the code"}, false},
+		{"work", work, []string{"task 2 of 4", "Add Median", "In stats.go, with tests.", "only this task", "done when " + verify + " passes"}, true},
 		{"fix", fix, []string{"FAIL TestMedian", r.File(RevisionFile), "must not sort its input in place"}, true},
 	}
 	for _, tt := range tests {
@@ -60,9 +61,10 @@ func TestClaudePrompts(t *testing.T) {
 		want         []string
 	}{
 		{"plan-review", PlanReviewPrompt(r), []string{r.File(PlanFile), Begin(PlanFile), End(PlanFile), "NO CHANGES"}},
-		{"verify-review, failing before", VerifyReviewPrompt(r, false, "exit 1"), []string{"it fails", Begin(VerifyFile), "APPROVED", "Git Bash"}},
-		{"verify-review, passing before", VerifyReviewPrompt(r, true, "ok"), []string{"PASSES, which proves nothing"}},
-		{"revise", RevisePrompt(r, "FAIL"), []string{r.File(RevisionFile), "REFUSED", "Do not weaken it"}},
+		{"verify-review, failing before", VerifyReviewPrompt(r, false, "exit 1"), []string{"it fails", Begin(VerifyFile), "APPROVED", "Git Bash",
+			"the way CI would", "checks behavior only", "Take out any such check"}},
+		{"verify-review, passing before", VerifyReviewPrompt(r, true, "ok"), []string{"PASSES, which proves nothing", "not by checking the source"}},
+		{"revise", RevisePrompt(r, "FAIL"), []string{r.File(RevisionFile), "REFUSED", "Do not weaken it", "checks on the text of the source"}},
 		{"final-review", FinalReviewPrompt(r, []string{"stats.go", "stats_test.go"}), []string{
 			"- stats.go\n- stats_test.go", "Report only blockers", "are NOT blockers", `"blockers"`, "no blockers"}},
 	}
