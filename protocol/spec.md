@@ -543,19 +543,22 @@ the reply, not the summary. `nabu.session.interrupt` and `nabu.session.stop` end
 call then fails with `nabu_invalid_transition` and the history is unchanged, rather than
 falling back to `clear_results`.
 
-### 7.16 `nabu.workspace.browse {path?}` → `{path, parent, entries}`
+### 7.16 `nabu.workspace.browse {path?}` → `{path, parent, entries, is_repo}`
 
 Lists the directories a client may start a session in. `path` absent returns the
 configured roots; otherwise it returns the directories inside `path`.
 
 ```jsonc
-{"path":"C:/Users/kyle/projects","parent":"C:/Users/kyle",
+{"path":"C:/Users/kyle/projects","parent":"C:/Users/kyle","is_repo":false,
  "entries":[{"name":"nabu","path":"C:/Users/kyle/projects/nabu","is_repo":true}]}
 ```
 
 `entries` holds directories only, sorted case-insensitively by name. Dotted directories
 and build output (`node_modules`, `build`, `target`, `vendor`, `dist`, …) are omitted.
-`is_repo` reports a `.git` entry of either kind, so a worktree counts.
+`is_repo` reports a `.git` entry of either kind, so a worktree counts. On an entry it
+describes that entry. Beside `path` it describes the listed directory itself, so a
+client that arrived without the parent's listing still knows whether it is in a
+repository; it is `false` when `path` is absent, since the roots are not one directory.
 
 `parent` is `null` at a root, so a client knows where climbing stops rather than
 learning it from a refusal one level later.

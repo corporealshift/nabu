@@ -88,6 +88,39 @@ func TestBrowseMarksRepositories(t *testing.T) {
 	if byName["plain"].IsRepo {
 		t.Error("a plain directory should not be marked a repo")
 	}
+	if l.IsRepo {
+		t.Error("the listed directory has no .git, so it is not a repo")
+	}
+}
+
+// A picker that lands somewhere without coming from its parent, such as a
+// recent directory, still needs to know whether "here" is a repository: a run
+// can only start in one.
+func TestBrowseMarksTheListedDirectory(t *testing.T) {
+	root := tree(t, "repo/.git", "repo/src", "plain")
+	for _, tt := range []struct {
+		dir  string
+		want bool
+	}{
+		{"repo", true},
+		{"repo/src", false},
+		{"plain", false},
+	} {
+		l, err := Browse([]string{root}, filepath.Join(root, tt.dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if l.IsRepo != tt.want {
+			t.Errorf("%s: is_repo = %v, want %v", tt.dir, l.IsRepo, tt.want)
+		}
+	}
+	top, err := Browse([]string{root}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if top.IsRepo {
+		t.Error("the top level lists roots, not a directory, so it is never a repo")
+	}
 }
 
 // A client needs to know where climbing stops. Finding out by being refused one
