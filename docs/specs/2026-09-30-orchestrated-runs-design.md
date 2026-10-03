@@ -107,6 +107,16 @@ It returns text, and the runner writes the file and commits it, with messages li
     proves nothing, unless the brief is already met.
   - Claude returns the full script in a fenced `bash` block, or `APPROVED` (for
     `revise`: `REFUSED` with a reason).
+  - **`verify.sh` is written like CI** (amended 2026-10-03). It runs what the
+    repository's CI runs, plus the tests of the new behavior, by name, and fails if any
+    of them fails or did not run. What makes it fail before the work is that those
+    tests do not exist yet. It never checks the text of the code: no grepping source
+    for names or patterns, counting tests, or checking that files exist. In the first
+    breezeway run, the `verify` session wrote only the CI gates, which passed on
+    untouched code, and `verify-review` made it fail by adding 38 greps of the source.
+    Those dictate how the work is written, and fail correct work written differently.
+    The `verify`, `verify-review` and `revise` prompts all say so. `work` sessions are
+    told to read `verify.sh` and write the tests it names, under those names.
 - **`final-review`**, once. The prompt defines a blocker narrowly: the work does not do
   what the brief asks, it has a bug, or `verify.sh` does not actually prove it. Style,
   suggestions and "consider" are explicitly not blockers.
