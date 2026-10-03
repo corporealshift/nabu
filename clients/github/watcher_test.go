@@ -305,7 +305,7 @@ func TestWatcherStartsAReviewAfterTheQuietPeriod(t *testing.T) {
 		t.Fatalf("started %d jobs, want 1", n)
 	}
 	s := r.d.sessions["S1"]
-	if !strings.Contains(s.workspace, "review-7-abc1234") || s.maxTurns != 30 {
+	if !strings.Contains(s.workspace, "review-7-abc1234") || s.maxTurns != 100 {
 		t.Errorf("session in %q with %d turns", s.workspace, s.maxTurns)
 	}
 	if len(s.prompts) != 1 || !strings.Contains(s.prompts[0], "Add the thing") {
