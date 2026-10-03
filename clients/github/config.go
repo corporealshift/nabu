@@ -34,8 +34,11 @@ type ReviewConfig struct {
 	Enabled *bool `json:"enabled"`
 	// Pushes reviews each new head of a PR; false reviews only the first head
 	// a PR has.
-	Pushes   *bool `json:"pushes"`
-	MaxTurns int   `json:"max_turns"`
+	Pushes *bool `json:"pushes"`
+	// MaxTurns caps a review session's turns. Zero, the default, is no cap:
+	// a review stops when it has said its piece, and a cap of 30 cut real
+	// reviews off before they finished.
+	MaxTurns int `json:"max_turns"`
 }
 
 // CommentsConfig is the comments job's section.
@@ -155,8 +158,8 @@ func (c *Config) withDefaults() {
 	if c.MaxJobs < 1 {
 		c.MaxJobs = 1
 	}
-	if c.Review.MaxTurns <= 0 {
-		c.Review.MaxTurns = 30
+	if c.Review.MaxTurns < 0 {
+		c.Review.MaxTurns = 0
 	}
 	if c.Comments.MaxTurns <= 0 {
 		c.Comments.MaxTurns = 60

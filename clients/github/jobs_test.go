@@ -39,9 +39,14 @@ func TestLoadConfig(t *testing.T) {
 		{name: "bad duration", body: `{` + repo + `,"poll":"soon"}`, wantErr: `"soon"`},
 		{name: "defaults", body: `{` + repo + `}`, check: func(t *testing.T, c Config) {
 			if c.Label != "nabu" || time.Duration(c.Poll) != 2*time.Minute || c.QuietFor() != 5*time.Minute ||
-				c.MaxJobs != 1 || !c.ReviewEnabled() || !c.ReviewPushes() || c.Review.MaxTurns != 30 ||
+				c.MaxJobs != 1 || !c.ReviewEnabled() || !c.ReviewPushes() || c.Review.MaxTurns != 0 ||
 				!c.CommentsEnabled() || c.Comments.MaxTurns != 60 {
 				t.Errorf("defaults = %+v", c)
+			}
+		}},
+		{name: "a review turn cap is kept", body: `{` + repo + `,"review":{"max_turns":45}}`, check: func(t *testing.T, c Config) {
+			if c.Review.MaxTurns != 45 {
+				t.Errorf("review max_turns = %d, want 45", c.Review.MaxTurns)
 			}
 		}},
 		{name: "zero quiet is kept", body: `{` + repo + `,"quiet":"0s"}`, check: func(t *testing.T, c Config) {
