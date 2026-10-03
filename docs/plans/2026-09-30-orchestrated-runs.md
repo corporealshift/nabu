@@ -23,7 +23,7 @@ boundary test like the watcher's enforces that.
   background is left until it is needed.
 - **Config lives in `<root>/runner/config.json`, and it is optional.** It holds `poll`,
   `max_jobs`, `label` (`nabu`), `verify_timeout` (30m), the `claude` settings (`path`,
-  `model`, `timeout` 15m) and the turn budgets (planning steps 30, `work` and `fix` 60).
+  `model`, `timeout` 15m) and the turn budgets (planning steps 50, `work` and `fix` 100).
   `nabu runner` also runs the GitHub watcher when `<root>/github/config.json` exists. The
   runner's `max_jobs` and `poll` then govern both.
 - **The slug** comes from the brief, or from the home's last prompt for a plain `/run`:

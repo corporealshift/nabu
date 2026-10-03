@@ -70,7 +70,7 @@ The watcher pushes with `git push origin HEAD:refs/heads/<head>`. It never uses 
 
 ### Session
 
-- `permission_mode: "auto"`. The budget is `comments.max_turns` (default 60).
+- `permission_mode: "auto"`. The budget is `comments.max_turns` (default 100; 60 until 2026-10-03).
 - The goal condition: "Every comment listed in the first message has been addressed by a
   change or answered by a reply, the changes are committed, and nothing is pushed." With
   a goal set, the stop gate runs the judge and the repeated checks from the architecture
