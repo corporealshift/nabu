@@ -367,8 +367,8 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Resets the picker to the roots, so reopening it does not resume mid-tree. */
-    fun startBrowsing() {
-        _browse.value = BrowseState()
+    fun startBrowsing(purpose: Purpose = Purpose.Session) {
+        _browse.value = BrowseState(purpose = purpose)
         openDirectory(null)
     }
 
@@ -529,6 +529,21 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The daemon's archive, or null until it has been asked for. */
     val archived: StateFlow<List<SessionSummary>?> = _archived.asStateFlow()
+
+    /**
+     * Starts a run in [workspace] from the list: a home session made with the
+     * brief as its description and labeled for the runner in the same call, so
+     * the runner never finds a requested run without its brief. Its id goes to
+     * [onCreated], and a failure's reason to [onFailed].
+     */
+    fun createRun(workspace: String, brief: String, onCreated: (String) -> Unit, onFailed: (String) -> Unit) {
+        viewModelScope.launch {
+            val c = client ?: run { onFailed("not connected: a run is started on the daemon"); return@launch }
+            runCatching { repo.createSession(c, workspace, description = brief.trim(), labels = runLabels(emptyList())) }
+                .onSuccess { id -> if (id.isNotEmpty()) onCreated(id) else onFailed("the daemon made no session") }
+                .onFailure { onFailed(it.message ?: "could not start the run") }
+        }
+    }
 
     /**
      * Hands a session to the runner with an optional brief. It needs the

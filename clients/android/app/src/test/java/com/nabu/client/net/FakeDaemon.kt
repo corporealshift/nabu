@@ -123,6 +123,8 @@ class FakeDaemon {
     private fun resultFor(id: kotlinx.serialization.json.JsonElement, method: String) = when (method) {
         "nabu.session.send_prompt" ->
             """{"jsonrpc":"2.0","id":${id},"result":{"event_id":"01SENT${sent.incrementAndGet()}"}}"""
+        "nabu.session.create" ->
+            """{"jsonrpc":"2.0","id":${id},"result":{"session_id":"01NEWSESSION"}}"""
         "nabu.session.compact" ->
             """{"jsonrpc":"2.0","id":${id},"result":{"event_id":"01COMPACTED","mode":"$compactMode"}}"""
         "nabu.session.list" -> {

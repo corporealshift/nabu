@@ -151,6 +151,7 @@ fun SessionListScreen(
     onNewSession: () -> Unit,
     onArchive: (String) -> Unit = {},
     onArchived: () -> Unit = {},
+    onNewRun: () -> Unit = {},
 ) {
     var archiving by remember { mutableStateOf<SessionCard?>(null) }
     archiving?.let { card ->
@@ -164,11 +165,21 @@ fun SessionListScreen(
         // Only when connected: starting a session needs the daemon, and a
         // button that cannot work is worse than no button.
         if (connection == Connection.Connected) {
-            ExtendedFloatingActionButton(
-                onClick = onNewSession,
-                containerColor = NabuTheme.colors.accent,
-                contentColor = NabuTheme.colors.onAccent,
-            ) { Text("New session") }
+            // A run starts from here too, rather than from inside a session
+            // made only to hand over: picking a repository and writing a brief
+            // is the whole of it.
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ExtendedFloatingActionButton(
+                    onClick = onNewRun,
+                    containerColor = NabuTheme.colors.surface,
+                    contentColor = NabuTheme.colors.accent,
+                ) { Text("New run") }
+                ExtendedFloatingActionButton(
+                    onClick = onNewSession,
+                    containerColor = NabuTheme.colors.accent,
+                    contentColor = NabuTheme.colors.onAccent,
+                ) { Text("New session") }
+            }
         }
     }, topBar = {
         TopAppBar(
@@ -923,8 +934,17 @@ fun BrowseScreen(
                     Button(
                         onClick = { onStartHere(state.at) },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Start here") }
+                    ) { Text(if (state.purpose == Purpose.Run) "Run here" else "Start here") }
                 }
+            } else if (state.needsRepo) {
+                // Said rather than a button that is simply missing, which
+                // would leave the reader wondering what they did wrong.
+                Text(
+                    "A run needs a git repository. Open one to run there.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.muted,
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
+                )
             }
         },
     ) { padding ->

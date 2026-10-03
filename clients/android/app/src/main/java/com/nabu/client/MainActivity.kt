@@ -39,7 +39,9 @@ import com.nabu.client.ui.Line
 import com.nabu.client.ui.LocalOpenArtifact
 import com.nabu.client.ui.StatsScreen
 import com.nabu.client.ui.PermissionSheet
+import com.nabu.client.ui.BriefScreen
 import com.nabu.client.ui.BrowseScreen
+import com.nabu.client.ui.Purpose
 import com.nabu.client.ui.SessionListScreen
 import com.nabu.client.ui.SettingsScreen
 import com.nabu.client.ui.TranscriptScreen
@@ -58,6 +60,7 @@ private sealed interface Screen {
     data object Sessions : Screen
     data object Settings : Screen
     data object Browse : Screen
+    data class Brief(val workspace: String) : Screen
     data object Archived : Screen
     data class Transcript(val id: String) : Screen
     data class Artifact(val sessionId: String, val line: Line.Artifact) : Screen
@@ -150,12 +153,26 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
                 // Straight into the new session: starting one and then being
                 // returned to a list to find it is a step for nothing.
                 onStartHere = { path ->
-                    vm.createSession(path) { id -> screen = Screen.Transcript(id) }
+                    if (browse.purpose == Purpose.Run) {
+                        screen = Screen.Brief(path)
+                    } else {
+                        vm.createSession(path) { id -> screen = Screen.Transcript(id) }
+                    }
                 },
                 onCreateDirectory = { vm.createDirectory(it) },
                 onBack = { screen = Screen.Sessions },
             )
         }
+
+        // Into the run's home once it is made, where its status and then its
+        // steps appear. Cancel goes back to the picker where it was.
+        is Screen.Brief -> BriefScreen(
+            workspace = s.workspace,
+            onStart = { brief, onFailed ->
+                vm.createRun(s.workspace, brief, onCreated = { id -> screen = Screen.Transcript(id) }, onFailed = onFailed)
+            },
+            onBack = { screen = Screen.Browse },
+        )
 
         is Screen.Sessions -> SessionListScreen(
             sessions = sessions,
@@ -164,6 +181,7 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
             onOpen = { screen = Screen.Transcript(it) },
             onSettings = { screen = Screen.Settings },
             onNewSession = { vm.startBrowsing(); screen = Screen.Browse },
+            onNewRun = { vm.startBrowsing(Purpose.Run); screen = Screen.Browse },
             onArchive = { vm.archiveSession(it) },
             onArchived = { vm.loadArchived(); screen = Screen.Archived },
         )
