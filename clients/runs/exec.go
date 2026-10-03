@@ -302,3 +302,29 @@ func (g GHCLI) CommentIssue(ctx context.Context, dir string, n int, body string)
 	_, err := g.Run(ctx, dir, []byte(body), "gh", "issue", "comment", strconv.Itoa(n), "--body-file", "-")
 	return err
 }
+
+func (g GHCLI) OpenPRFor(ctx context.Context, dir, head string) (int, string, bool, error) {
+	out, err := g.Run(ctx, dir, nil, "gh", "pr", "list", "--head", head, "--state", "open", "--json", "number,url")
+	if err != nil {
+		return 0, "", false, err
+	}
+	var prs []struct {
+		Number int    `json:"number"`
+		URL    string `json:"url"`
+	}
+	if err := json.Unmarshal(out, &prs); err != nil {
+		return 0, "", false, fmt.Errorf("gh pr list: %w", err)
+	}
+	if len(prs) == 0 {
+		return 0, "", false, nil
+	}
+	return prs[0].Number, prs[0].URL, true, nil
+}
+
+func (g GHCLI) EditPR(ctx context.Context, dir string, n int, title, body, label string) error {
+	// As for a new PR, the label may not exist yet in this repository.
+	_, _ = g.Run(ctx, dir, nil, "gh", "label", "create", label, "--color", "5319e7", "--description", "nabu works on this")
+	_, err := g.Run(ctx, dir, []byte(body), "gh", "pr", "edit", strconv.Itoa(n),
+		"--title", title, "--body-file", "-", "--add-label", label)
+	return err
+}
