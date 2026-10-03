@@ -297,3 +297,8 @@ func (g GHCLI) FailedLog(ctx context.Context, dir, runID string) (string, error)
 	}
 	return text, nil
 }
+
+func (g GHCLI) CommentIssue(ctx context.Context, dir string, n int, body string) error {
+	_, err := g.Run(ctx, dir, []byte(body), "gh", "issue", "comment", strconv.Itoa(n), "--body-file", "-")
+	return err
+}

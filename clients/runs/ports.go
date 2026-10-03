@@ -68,6 +68,8 @@ type GH interface {
 	PRChecks(ctx context.Context, dir string, n int) (state string, checks []Check, err error)
 	// FailedLog is the end of a failed Actions run's log.
 	FailedLog(ctx context.Context, dir, runID string) (string, error)
+	// CommentIssue posts on an issue.
+	CommentIssue(ctx context.Context, dir string, n int, body string) error
 }
 
 // Claude is the reviewer at the run's gates: the Claude Code CLI, read-only.

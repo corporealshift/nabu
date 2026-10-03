@@ -122,6 +122,11 @@ type Run struct {
 	// waiting on a repository that has none.
 	CISince time.Time `json:"ci_since,omitzero"`
 
+	// Issue is the GitHub issue the run was asked for, if any, and Reported
+	// whether the issue has been told how the run ended.
+	Issue    int  `json:"issue,omitempty"`
+	Reported bool `json:"reported,omitempty"`
+
 	PR    int      `json:"pr,omitempty"`
 	PRURL string   `json:"pr_url,omitempty"`
 	Notes []string `json:"notes,omitempty"`

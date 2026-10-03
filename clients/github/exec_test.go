@@ -193,3 +193,24 @@ func TestPRCommentsReadsAllThreeKindsAndSkipsPendingReviews(t *testing.T) {
 		t.Errorf("fields: %+v", got)
 	}
 }
+
+func TestIssueCalls(t *testing.T) {
+	run, calls := recorder(`[{"number":12,"title":"T","body":"B","url":"u"}]`)
+	issues, err := GH{run}.OpenIssues(context.Background(), "kyle/bw", "nabu")
+	if err != nil || !reflect.DeepEqual(issues, []Issue{{Number: 12, Title: "T", Body: "B", URL: "u"}}) {
+		t.Fatalf("issues = %+v, %v", issues, err)
+	}
+	want := []string{"gh", "issue", "list", "--repo", "kyle/bw", "--label", "nabu", "--state", "open", "--limit", "100", "--json", "number,title,body,url"}
+	if !reflect.DeepEqual((*calls)[0].args, want) {
+		t.Errorf("args = %q", (*calls)[0].args)
+	}
+
+	run, calls = recorder(`[{"id":5,"user":{"login":"kyle"},"body":"more","created_at":"2026-10-01T10:00:00Z","html_url":"c5"}]`)
+	cs, err := GH{run}.IssueComments(context.Background(), "kyle/bw", 12)
+	if err != nil || len(cs) != 1 || cs[0].ID != 5 || cs[0].Author != "kyle" || cs[0].Kind != CommentIssue {
+		t.Fatalf("comments = %+v, %v", cs, err)
+	}
+	if got := (*calls)[0].args; !reflect.DeepEqual(got, []string{"gh", "api", "--paginate", "repos/kyle/bw/issues/12/comments"}) {
+		t.Errorf("args = %q", got)
+	}
+}

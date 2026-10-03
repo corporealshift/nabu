@@ -309,6 +309,13 @@ type fakeGH struct {
 	// whose one check passed.
 	polls []poll
 	logs  []string
+	// issueComments are "#n: body".
+	issueComments []string
+}
+
+func (g *fakeGH) CommentIssue(_ context.Context, _ string, n int, body string) error {
+	g.issueComments = append(g.issueComments, fmt.Sprintf("#%d: %s", n, body))
+	return nil
 }
 
 func (g *fakeGH) PRChecks(context.Context, string, int) (string, []Check, error) {
@@ -978,5 +985,97 @@ func TestACIPollThatErrorsIsRetried(t *testing.T) {
 	g.tick()
 	if r.Step != StepDone {
 		t.Errorf("run = %+v", r)
+	}
+}
+
+// askIssue is what the watcher does for a labeled issue: a home with the
+// brief as its description, labeled for the runner and with the issue.
+func (g *rig) askIssue(id, brief string) {
+	g.ask(id, brief)
+	h := g.d.homes[id]
+	h.labels = append(h.labels, "issue:kyle/x/12")
+}
+
+func TestAnIssueRun(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	g.askIssue("H1", "Add a Median function\n\nIt should return a float64.\n\n(From issue kyle/x#12.)")
+	g.tick()
+	r := g.run("H1")
+	if r.Issue != 12 || !strings.HasPrefix(r.Slug, "issue-12-add-a-median-function-") {
+		t.Fatalf("run = %+v", r)
+	}
+	g.finish(map[string]string{r.File(PlanFile): "p"})
+	g.tick()
+	g.finish(map[string]string{r.File(TasksFile): twoTasks})
+	g.tick()
+	g.finish(map[string]string{r.File(VerifyFile): "v"})
+	g.tick()
+	g.finish(map[string]string{"stats.go": "x"})
+	g.tick()
+	g.finish(map[string]string{"stats_test.go": "x"})
+	g.tick()
+	if r.Step != StepDone {
+		t.Fatalf("run = %+v\nlog:\n%s", r, g.log.String())
+	}
+	if !strings.Contains(g.gh.prs[0], "|nabu|Closes #12\n\n") {
+		t.Errorf("pr body does not close the issue: %q", g.gh.prs[0])
+	}
+	if len(g.gh.issueComments) != 1 || !strings.HasPrefix(g.gh.issueComments[0], "#12: ") ||
+		!strings.Contains(g.gh.issueComments[0], r.PRURL) || !strings.HasSuffix(g.gh.issueComments[0], "<!-- nabu -->") {
+		t.Errorf("issue comments = %q", g.gh.issueComments)
+	}
+	g.tick()
+	if len(g.gh.issueComments) != 1 {
+		t.Error("the issue was told twice")
+	}
+}
+
+func TestAFailedIssueRunSaysWhereAndResumesWithANewBrief(t *testing.T) {
+	g := newRig(t)
+	g.askIssue("H1", "Add a Median function")
+	g.tick()
+	r := g.run("H1")
+	g.finish(nil)
+	g.tick() // nudged
+	g.finish(nil)
+	g.tick() // retried
+	g.finish(nil)
+	g.tick() // nudged
+	g.finish(nil)
+	g.tick() // failed at plan
+	if r.Step != StepFailed || len(g.gh.issueComments) != 1 || !strings.Contains(g.gh.issueComments[0], "at the `plan` step") ||
+		!strings.Contains(g.gh.issueComments[0], "Edit this issue, or comment on it") {
+		t.Fatalf("run %+v, comments %q", r, g.gh.issueComments)
+	}
+
+	// The issue is edited; the watcher sets the new brief and asks again.
+	g.d.homes["H1"].description = "Add a Median function, returning a float64."
+	g.ask("H1", "")
+	g.tick()
+	if r.Step != StepPlan || r.Brief != "Add a Median function, returning a float64." || r.Reported {
+		t.Fatalf("resumed run = %+v", r)
+	}
+	if msgs := g.git.messages(); msgs[len(msgs)-1] != "run: brief updated from the issue" {
+		t.Errorf("commits = %q", msgs)
+	}
+	if text, _ := g.rn.read(r, BriefFile); text != "Add a Median function, returning a float64.\n" {
+		t.Errorf("brief.md = %q", text)
+	}
+}
+
+func TestIssueOf(t *testing.T) {
+	for _, tt := range []struct {
+		labels []string
+		want   int
+	}{
+		{nil, 0},
+		{[]string{"run:requested"}, 0},
+		{[]string{"run:requested", "issue:kyle/x/12"}, 12},
+		{[]string{"issue:kyle/x/zero"}, 0},
+	} {
+		if got := IssueOf(tt.labels); got != tt.want {
+			t.Errorf("IssueOf(%q) = %d, want %d", tt.labels, got, tt.want)
+		}
 	}
 }
