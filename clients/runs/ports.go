@@ -61,9 +61,13 @@ type Git interface {
 	Diffed(ctx context.Context, dir, base string) ([]string, error)
 }
 
-// GH opens the run's pull request.
+// GH opens the run's pull request and watches its checks.
 type GH interface {
 	CreatePR(ctx context.Context, dir, base, head, title, body, label string) (number int, url string, err error)
+	// PRChecks is the PR's state (OPEN, MERGED or CLOSED) and its checks.
+	PRChecks(ctx context.Context, dir string, n int) (state string, checks []Check, err error)
+	// FailedLog is the end of a failed Actions run's log.
+	FailedLog(ctx context.Context, dir, runID string) (string, error)
 }
 
 // Claude is the reviewer at the run's gates: the Claude Code CLI, read-only.

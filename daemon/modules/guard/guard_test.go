@@ -16,6 +16,7 @@ import (
 type fakeSession struct {
 	workspace string
 	mode      protocol.PermissionMode
+	labels    []string
 }
 
 func (f fakeSession) ID() string                  { return "01ARZ3NDEKTSV4RRFFQ69G5FAV" }
@@ -24,7 +25,7 @@ func (f fakeSession) Events(*string) ([]protocol.Event, error) {
 	return nil, nil
 }
 func (f fakeSession) State() protocol.State {
-	return protocol.State{Options: protocol.Options{PermissionMode: f.mode}}
+	return protocol.State{Options: protocol.Options{PermissionMode: f.mode, Labels: f.labels}}
 }
 func (f fakeSession) Append(protocol.EventType, any) (protocol.Event, error) {
 	return protocol.Event{}, nil

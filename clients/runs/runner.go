@@ -171,7 +171,10 @@ func (rn *Runner) pickUp(ctx context.Context, d Daemon) error {
 func (rn *Runner) label(ctx context.Context, d Daemon, r *Run, current []string) error {
 	want := "run:" + string(r.Step)
 	attempt := ""
-	if r.Step == StepFix || (r.Step == StepCheck && r.Fixes > 0) {
+	switch {
+	case r.Step == StepCIFix:
+		attempt = fmt.Sprintf("run:attempt:%d/%d", r.CIFixes, MaxCIFixes)
+	case r.Step == StepFix || (r.Step == StepCheck && r.Fixes > 0):
 		attempt = fmt.Sprintf("run:attempt:%d/%d", r.Fixes, MaxFixes)
 	}
 	key := want + " " + attempt
@@ -225,7 +228,9 @@ func (rn *Runner) advance(ctx context.Context, d Daemon, r *Run) error {
 			o, err = rn.perform(ctx, d, r)
 			done = true
 		}
-		if err != nil || !done {
+		if err != nil || !done || o.Wait {
+			// A session still working, or checks still running: nothing to
+			// do until the next poll.
 			return errors.Join(err, rn.label(ctx, d, r, nil))
 		}
 		from := r.Step
@@ -291,7 +296,7 @@ func (rn *Runner) begin(ctx context.Context, d Daemon, r *Run) error {
 		return err
 	}
 	turns := rn.Cfg.PlanTurns
-	if r.Step == StepWork || r.Step == StepFix {
+	if r.Step == StepWork || r.Step == StepFix || r.Step == StepCIFix {
 		turns = rn.Cfg.WorkTurns
 	}
 	id, err := d.Create(ctx, r.Worktree, r.Home, turns)
@@ -311,7 +316,7 @@ func (rn *Runner) begin(ctx context.Context, d Daemon, r *Run) error {
 		return err
 	}
 	r.Prompted = true
-	if r.Step == StepFix {
+	if r.Step == StepFix || r.Step == StepCIFix {
 		r.Advice = "" // it has been passed on
 	}
 	rn.logf("run %s: %s session %s", r.Home, r.Step, id)
@@ -344,6 +349,9 @@ func (rn *Runner) prompt(ctx context.Context, d Daemon, r *Run) (string, string,
 		return p, g, nil
 	case StepFix:
 		p, g := FixPrompt(*r, r.Output, r.Advice)
+		return p, g, nil
+	case StepCIFix:
+		p, g := CIFixPrompt(*r, r.Output)
 		return p, g, nil
 	}
 	return "", "", fmt.Errorf("%s has no session", r.Step)
@@ -625,7 +633,7 @@ func (rn *Runner) produced(ctx context.Context, d Daemon, r *Run, goalMet bool) 
 			return Outcome{}, err
 		}
 		return Outcome{OK: true, TasksLeft: rn.tasksLeft(r)}, nil
-	case StepFix:
+	case StepFix, StepCIFix:
 		if _, ok := rn.read(r, RevisionFile); ok {
 			return Outcome{OK: true, Revision: true}, nil
 		}
@@ -728,11 +736,104 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		if err != nil {
 			return Outcome{Why: err.Error()}, nil
 		}
-		r.PR, r.PRURL = n, url
+		r.PR, r.PRURL, r.CISince = n, url, rn.Now()
 		rn.logf("run %s: opened %s", r.Home, url)
+		return Outcome{OK: true}, nil
+	case StepCI:
+		return rn.ci(ctx, r), nil
+	case StepPush:
+		err := rn.Git.Push(ctx, r.Worktree, r.Branch)
+		if err == nil {
+			rn.logf("run %s: pushed a fix to %s", r.Home, r.Branch)
+			return Outcome{OK: true}, nil
+		}
+		if !rejected(err) {
+			return Outcome{Why: err.Error()}, nil
+		}
+		// The branch moved under the run: the comments job, or Kyle, pushed
+		// to it. The fix is dropped, and the moved head's own checks decide
+		// what happens next.
+		if err := rn.Git.Fetch(ctx, r.Worktree); err != nil {
+			return Outcome{Why: err.Error()}, nil
+		}
+		if err := rn.Git.ResetHard(ctx, r.Worktree, "origin/"+r.Branch); err != nil {
+			return Outcome{Why: err.Error()}, nil
+		}
+		rn.logf("run %s: %s moved while it was being fixed; watching its new head", r.Home, r.Branch)
 		return Outcome{OK: true}, nil
 	}
 	return Outcome{}, fmt.Errorf("%s is not a step the runner performs", r.Step)
+}
+
+// noChecksWait is how long a run waits for a PR's first check before
+// deciding the repository has no CI.
+const noChecksWait = 10 * time.Minute
+
+// ci polls the PR's checks once.
+func (rn *Runner) ci(ctx context.Context, r *Run) Outcome {
+	state, checks, err := rn.GH.PRChecks(ctx, r.Worktree, r.PR)
+	if err != nil {
+		return Outcome{Why: err.Error()}
+	}
+	switch strings.ToUpper(state) {
+	case "MERGED":
+		return Outcome{OK: true, CI: CIMerged}
+	case "CLOSED":
+		return Outcome{OK: true, CI: CIClosed}
+	}
+	switch Classify(checks) {
+	case CIPending:
+		return Outcome{Wait: true}
+	case CINone:
+		if rn.Now().Sub(r.CISince) < noChecksWait {
+			return Outcome{Wait: true}
+		}
+		rn.logf("run %s: no checks reported in %s; done", r.Home, noChecksWait)
+		return Outcome{OK: true, CI: CIPass}
+	case CIFail:
+		r.Output = rn.failures(ctx, r, Failed(checks))
+		rn.logf("run %s: CI failed", r.Home)
+		return Outcome{OK: true, CI: CIFail}
+	}
+	rn.logf("run %s: CI passed", r.Home)
+	return Outcome{OK: true, CI: CIPass}
+}
+
+// failures is each failed check, with the end of its Actions log when it has
+// one. Jobs of one Actions run share a log, so each run is read once.
+func (rn *Runner) failures(ctx context.Context, r *Run, failed []Check) string {
+	var b strings.Builder
+	seen := map[string]bool{}
+	for _, c := range failed {
+		fmt.Fprintf(&b, "### %s\n\n%s\n\n", c.Name, c.Link)
+		id := RunID(c.Link)
+		switch {
+		case id == "":
+			b.WriteString("(not an Actions run, so there is no log to show)\n\n")
+		case seen[id]:
+			b.WriteString("(the log is above, under another job of the same run)\n\n")
+		default:
+			seen[id] = true
+			log, err := rn.GH.FailedLog(ctx, r.Worktree, id)
+			if err != nil {
+				fmt.Fprintf(&b, "(the log was not available: %v)\n\n", err)
+				continue
+			}
+			fmt.Fprintf(&b, "~~~\n%s\n~~~\n\n", strings.TrimSpace(log))
+		}
+	}
+	return b.String()
+}
+
+// rejected reports whether a push failed because the branch moved.
+func rejected(err error) bool {
+	msg := err.Error()
+	for _, s := range []string{"rejected", "non-fast-forward", "fetch first"} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // setup makes the run's branch and worktree, and commits the brief if the

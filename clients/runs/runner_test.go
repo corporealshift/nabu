@@ -148,6 +148,8 @@ type fakeGit struct {
 	resets  []string
 	pushed  []string
 	fetches int
+	// pushErrs are taken in order by Push; an empty queue pushes.
+	pushErrs []error
 }
 
 func (g *fakeGit) DefaultBranch(context.Context, string) (string, error) { return "main", nil }
@@ -212,6 +214,13 @@ func (g *fakeGit) Remove(_ context.Context, dir, msg, path string) error {
 }
 
 func (g *fakeGit) Push(_ context.Context, _, branch string) error {
+	if len(g.pushErrs) > 0 {
+		err := g.pushErrs[0]
+		g.pushErrs = g.pushErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
 	g.pushed = append(g.pushed, branch)
 	return nil
 }
@@ -288,7 +297,41 @@ func (s *fakeShell) Verify(context.Context, string, string, time.Duration) (bool
 	return false, "FAIL TestMedian: got 2, want 2.5", nil
 }
 
-type fakeGH struct{ prs []string }
+type poll struct {
+	state  string
+	checks []Check
+	err    error
+}
+
+type fakeGH struct {
+	prs []string
+	// polls are taken in order by PRChecks; an empty queue is an open PR
+	// whose one check passed.
+	polls []poll
+	logs  []string
+}
+
+func (g *fakeGH) PRChecks(context.Context, string, int) (string, []Check, error) {
+	if len(g.polls) == 0 {
+		return "OPEN", []Check{{Name: "build", State: "SUCCESS"}}, nil
+	}
+	p := g.polls[0]
+	g.polls = g.polls[1:]
+	return p.state, p.checks, p.err
+}
+
+func (g *fakeGH) FailedLog(_ context.Context, _, id string) (string, error) {
+	g.logs = append(g.logs, id)
+	return "log of run " + id + ": gofmt -l found stats.go", nil
+}
+
+var (
+	pending = poll{state: "OPEN", checks: []Check{{Name: "build", State: "IN_PROGRESS"}}}
+	failing = poll{state: "OPEN", checks: []Check{
+		{Name: "lint", State: "FAILURE", Link: "https://github.com/kyle/x/actions/runs/42/job/1"},
+		{Name: "lint (windows)", State: "FAILURE", Link: "https://github.com/kyle/x/actions/runs/42/job/2"},
+		{Name: "build", State: "SUCCESS"}}}
+)
 
 func (g *fakeGH) CreatePR(_ context.Context, _, base, head, title, body, label string) (int, string, error) {
 	g.prs = append(g.prs, strings.Join([]string{base, head, title, label, body}, "|"))
@@ -306,12 +349,13 @@ type rig struct {
 	shell  *fakeShell
 	gh     *fakeGH
 	log    bytes.Buffer
+	now    time.Time
 }
 
 func newRig(t *testing.T) *rig {
 	t.Helper()
 	g := &rig{t: t, d: newFakeDaemon(), git: &fakeGit{dirty: map[string]bool{}}, claude: &fakeClaude{answers: map[string][]string{}},
-		shell: &fakeShell{}, gh: &fakeGH{}}
+		shell: &fakeShell{}, gh: &fakeGH{}, now: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)}
 	g.rn = g.runner(t.TempDir())
 	return g
 }
@@ -319,7 +363,7 @@ func newRig(t *testing.T) *rig {
 func (g *rig) runner(root string) *Runner {
 	cfg, _ := LoadConfig(root)
 	return &Runner{Cfg: cfg, Root: root, Git: g.git, GH: g.gh, Claude: g.claude, Shell: g.shell,
-		Now: func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }, Log: &g.log}
+		Now: func() time.Time { return g.now }, Log: &g.log}
 }
 
 // ask is /run on a home: a goal when there is text, and the label.
@@ -795,5 +839,144 @@ func TestATaskAlreadyDoneIsDone(t *testing.T) {
 	}
 	if msgs := g.git.messages(); msgs[len(msgs)-1] != "run: task 1 done" {
 		t.Errorf("commits = %q", msgs)
+	}
+}
+
+// opened takes a run to its open PR, with whatever CI polls the test queued.
+func (g *rig) opened(id string) *Run {
+	g.t.Helper()
+	r := g.planned(id)
+	g.finish(map[string]string{"stats.go": "x"})
+	g.tick()
+	g.finish(map[string]string{"stats_test.go": "x"})
+	g.tick()
+	if r.PR == 0 {
+		g.t.Fatalf("no PR: %+v\nlog:\n%s", r, g.log.String())
+	}
+	return r
+}
+
+func TestCIPendingThenPassing(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	g.gh.polls = []poll{pending, pending}
+	r := g.opened("H1")
+	if r.Step != StepCI || r.Attempt != 0 {
+		t.Fatalf("run = %+v", r)
+	}
+	if !slices.Equal(g.d.homes["H1"].labels, []string{"run:ci"}) {
+		t.Errorf("home labels = %q", g.d.homes["H1"].labels)
+	}
+	g.tick()
+	if r.Step != StepCI {
+		t.Fatalf("still pending, but the run is at %q", r.Step)
+	}
+	g.tick()
+	if r.Step != StepDone {
+		t.Errorf("run = %+v", r)
+	}
+}
+
+func TestCIFailingIsFixedAndPushed(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	g.gh.polls = []poll{failing}
+	r := g.opened("H1")
+	if r.Step != StepCIFix || r.CIFixes != 1 {
+		t.Fatalf("run = %+v", r)
+	}
+	if !slices.Equal(g.d.homes["H1"].labels, []string{"run:ci-fix", "run:attempt:1/5"}) {
+		t.Errorf("home labels = %q", g.d.homes["H1"].labels)
+	}
+	_, s := g.d.last()
+	for _, want := range []string{"### lint", "log of run 42: gofmt -l found stats.go", "### lint (windows)", "under another job of the same run"} {
+		if !strings.Contains(s.prompts[0], want) {
+			t.Errorf("ci-fix prompt lacks %q:\n%s", want, s.prompts[0])
+		}
+	}
+	if len(g.gh.logs) != 1 || len(s.goals) != 1 || s.turns != 60 {
+		t.Errorf("logs read %q, goals %q, turns %d", g.gh.logs, s.goals, s.turns)
+	}
+	g.finish(map[string]string{"stats.go": "gofmt'd"})
+	g.tick() // check passes, push, ci passes
+	if r.Step != StepDone || len(g.git.pushed) != 2 {
+		t.Errorf("run = %+v, pushes %q\nlog:\n%s", r, g.git.pushed, g.log.String())
+	}
+}
+
+func TestCIFixesAreCapped(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	for range MaxCIFixes + 1 {
+		g.gh.polls = append(g.gh.polls, failing)
+	}
+	r := g.opened("H1")
+	for range MaxCIFixes {
+		g.finish(map[string]string{"stats.go": "again"})
+		g.tick()
+	}
+	if r.Step != StepFailed || r.FailedAt != StepCIFix {
+		t.Errorf("run = %+v", r)
+	}
+}
+
+func TestCIMergedOrClosed(t *testing.T) {
+	for state, want := range map[string]Step{"MERGED": StepDone, "CLOSED": StepFailed} {
+		t.Run(state, func(t *testing.T) {
+			g := newRig(t)
+			g.shell.results = []bool{false}
+			g.gh.polls = []poll{{state: state, checks: failing.checks}}
+			if r := g.opened("H1"); r.Step != want {
+				t.Errorf("run = %+v", r)
+			}
+		})
+	}
+}
+
+func TestNoChecksAtAllIsDoneAfterAWait(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	none := poll{state: "OPEN"}
+	g.gh.polls = []poll{none, none}
+	r := g.opened("H1")
+	if r.Step != StepCI {
+		t.Fatalf("run = %+v", r)
+	}
+	g.now = g.now.Add(noChecksWait + time.Second)
+	g.tick()
+	if r.Step != StepDone {
+		t.Errorf("run = %+v", r)
+	}
+}
+
+// A push the remote refuses means the branch moved under the run. The run
+// takes the moved head and watches its checks.
+func TestARejectedPushFollowsTheMovedBranch(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	g.gh.polls = []poll{failing}
+	g.git.pushErrs = []error{nil, errors.New("! [rejected] nabu/x -> nabu/x (fetch first)")}
+	r := g.opened("H1")
+	g.finish(map[string]string{"stats.go": "fixed"})
+	g.tick()
+	if r.Step != StepDone || !slices.Contains(g.git.resets, "origin/"+r.Branch) || g.git.fetches < 2 {
+		t.Errorf("run = %+v, resets %q, fetches %d", r, g.git.resets, g.git.fetches)
+	}
+	if !strings.Contains(g.log.String(), "moved while it was being fixed") {
+		t.Errorf("log:\n%s", g.log.String())
+	}
+}
+
+func TestACIPollThatErrorsIsRetried(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	g.gh.polls = []poll{{err: errors.New("gh: HTTP 502")}}
+	r := g.opened("H1")
+	if r.Step != StepCI || r.Attempt != 1 {
+		t.Fatalf("run = %+v", r)
+	}
+	g.tick()
+	if r.Step != StepDone {
+		t.Errorf("run = %+v", r)
 	}
 }
