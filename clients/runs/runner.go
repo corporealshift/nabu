@@ -748,12 +748,27 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		if err := rn.Git.Push(ctx, r.Worktree, r.Branch); err != nil {
 			return Outcome{Why: err.Error()}, nil
 		}
-		n, url, err := rn.GH.CreatePR(ctx, r.Worktree, r.Base, r.Branch, prTitle(r.Brief), rn.prBody(r), rn.Cfg.Label)
+		// A PR for the branch may be open already: a session got one up
+		// before the guard stopped that, or this step opened it and failed
+		// before recording it. It is the run's branch, so it is the run's PR;
+		// it gets the run's title, body and label rather than a failure.
+		title, body := prTitle(r.Brief), rn.prBody(r)
+		n, url, found, err := rn.GH.OpenPRFor(ctx, r.Worktree, r.Branch)
 		if err != nil {
 			return Outcome{Why: err.Error()}, nil
 		}
+		if found {
+			if err := rn.GH.EditPR(ctx, r.Worktree, n, title, body, rn.Cfg.Label); err != nil {
+				return Outcome{Why: err.Error()}, nil
+			}
+			rn.logf("run %s: took over %s, already open for %s", r.Home, url, r.Branch)
+		} else {
+			if n, url, err = rn.GH.CreatePR(ctx, r.Worktree, r.Base, r.Branch, title, body, rn.Cfg.Label); err != nil {
+				return Outcome{Why: err.Error()}, nil
+			}
+			rn.logf("run %s: opened %s", r.Home, url)
+		}
 		r.PR, r.PRURL, r.CISince = n, url, rn.Now()
-		rn.logf("run %s: opened %s", r.Home, url)
 		return Outcome{OK: true}, nil
 	case StepCI:
 		return rn.ci(ctx, r), nil
