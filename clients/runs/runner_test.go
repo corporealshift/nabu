@@ -493,10 +493,10 @@ func TestAWholeRun(t *testing.T) {
 	if len(g.d.order) != 5 {
 		t.Fatalf("sessions = %d", len(g.d.order))
 	}
-	if s := g.d.sessions["S1"]; s.turns != 50 || len(s.goals) != 0 || !strings.Contains(s.prompts[0], r.File(PlanFile)) {
+	if s := g.d.sessions["S1"]; s.turns != 0 || len(s.goals) != 0 || !strings.Contains(s.prompts[0], r.File(PlanFile)) {
 		t.Errorf("plan session: %+v", s)
 	}
-	if s := g.d.sessions["S4"]; s.turns != 100 || len(s.goals) != 1 || !strings.Contains(s.prompts[0], "task 1 of 2") {
+	if s := g.d.sessions["S4"]; s.turns != 0 || len(s.goals) != 1 || !strings.Contains(s.prompts[0], "task 1 of 2") {
 		t.Errorf("first work session: %+v", s)
 	}
 	if s := g.d.sessions["S5"]; !strings.Contains(s.prompts[0], "task 2 of 2") || !strings.Contains(s.goals[0], "Test Median") {
@@ -917,7 +917,7 @@ func TestCIFailingIsFixedAndPushed(t *testing.T) {
 			t.Errorf("ci-fix prompt lacks %q:\n%s", want, s.prompts[0])
 		}
 	}
-	if len(g.gh.logs) != 1 || len(s.goals) != 1 || s.turns != 100 {
+	if len(g.gh.logs) != 1 || len(s.goals) != 1 || s.turns != 0 {
 		t.Errorf("logs read %q, goals %q, turns %d", g.gh.logs, s.goals, s.turns)
 	}
 	g.finish(map[string]string{"stats.go": "gofmt'd"})

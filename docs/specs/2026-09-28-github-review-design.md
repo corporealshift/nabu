@@ -56,7 +56,7 @@ config is unchanged.
   "poll": "2m",
   "quiet": "5m",
   "max_jobs": 1,
-  "review": {"enabled": true, "pushes": true, "max_turns": 100}
+  "review": {"enabled": true, "pushes": true, "max_turns": 0}
 }
 ```
 
@@ -110,9 +110,9 @@ no label. That includes PRs nabu opened itself.
 
 **Session.**
 - `nabu.session.create` with the worktree as the workspace,
-  `options.permission_mode: "auto"` and `budget.max_turns: review.max_turns`. That is 100
-  by default (amended 2026-10-03: the first default, 30, cut real reviews off before
-  they finished).
+  `options.permission_mode: "auto"` and `budget.max_turns: review.max_turns`. That is 0
+  by default, which is no cap (amended 2026-10-04: defaults of 30, then 100, cut real
+  work off before it finished).
 - No goal. A review changes nothing, so the stop gate has nothing to object to.
 - The prompt gives the PR's title, body, base and head. It says the diff is
   `git diff origin/<base>...<sha>` and tells the model not to change any files. If nabu

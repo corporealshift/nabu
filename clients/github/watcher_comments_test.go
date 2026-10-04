@@ -36,7 +36,7 @@ func TestWatcherStartsACommentsJob(t *testing.T) {
 		t.Fatalf("started %d jobs, want 1", n)
 	}
 	s := r.d.sessions["S1"]
-	if !strings.Contains(s.workspace, "comments-9-10") || s.maxTurns != 100 {
+	if !strings.Contains(s.workspace, "comments-9-10") || s.maxTurns != 0 {
 		t.Errorf("session in %q with %d turns", s.workspace, s.maxTurns)
 	}
 	if len(s.goals) != 1 || s.goals[0] != CommentsGoal {
