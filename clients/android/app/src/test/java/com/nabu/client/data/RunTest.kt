@@ -115,4 +115,29 @@ class RunTest {
         repo.refreshSessions(client)
         assertEquals("an archived session leaves the mirror", setOf("HOME", "WORK1", "WORK2"), db.sessions().ids().toSet())
     }
+
+    // A run started from the list is one call: the runner must never find a
+    // requested run whose brief has not arrived yet.
+    @Test
+    fun `a run from the list is created with its brief and label in one call`() = runBlocking {
+        val id = repo.createSession(client, "C:/proj/breezeway", description = "Add a Median function", labels = listOf("run:requested"))
+
+        assertEquals("01NEWSESSION", id)
+        val created = sent("nabu.session.create")
+        assertEquals(1, created.size)
+        assertTrue(created[0], created[0].contains("\"options\":{\"description\":\"Add a Median function\",\"labels\":[\"run:requested\"]}"))
+        assertTrue(sent("nabu.session.set_option").isEmpty())
+        assertTrue(sent("nabu.session.set_goal").isEmpty())
+        assertTrue(sent("nabu.session.send_prompt").isEmpty())
+        assertEquals(listOf("01NEWSESSION"), db.sessions().ids())
+    }
+
+    @Test
+    fun `a plain session is created with no options`() = runBlocking {
+        repo.createSession(client, "C:/proj/breezeway")
+
+        val created = sent("nabu.session.create")
+        assertEquals(1, created.size)
+        assertFalse(created[0], created[0].contains("\"options\""))
+    }
 }

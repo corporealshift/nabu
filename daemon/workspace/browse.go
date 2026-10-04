@@ -28,6 +28,10 @@ type Listing struct {
 	// where climbing stops, and finding out by being refused is a worse way.
 	Parent  *string `json:"parent"`
 	Entries []Entry `json:"entries"`
+	// IsRepo marks the listed directory itself as a git repository, so a
+	// client that arrived without its parent's listing still knows. It is
+	// false at the top, which lists roots rather than a directory.
+	IsRepo bool `json:"is_repo"`
 }
 
 // Browse lists the directories under path, or the roots themselves when path
@@ -70,7 +74,7 @@ func Browse(roots []string, path string) (Listing, error) {
 		return Listing{}, fmt.Errorf("%s is not a directory", abs)
 	}
 
-	out := Listing{Path: filepath.ToSlash(abs), Entries: []Entry{}}
+	out := Listing{Path: filepath.ToSlash(abs), Entries: []Entry{}, IsRepo: isRepo(abs)}
 	// Up stops at a root: the parent of a root is outside what may be listed,
 	// so offering it would only produce a refusal one tap later.
 	if !isRoot(clean, abs) {

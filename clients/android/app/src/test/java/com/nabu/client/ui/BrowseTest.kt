@@ -109,4 +109,53 @@ class BrowseTest {
         assertEquals("…/kyle/projects", entryLabel(e, atTop = true))
         assertEquals("projects", entryLabel(e, atTop = false))
     }
+
+    private fun listing(path: String, repo: Boolean) =
+        BrowseResult(path = path, parent = "/a", entries = emptyList(), isRepo = repo)
+
+    // The runner branches a worktree from the directory, so anywhere else a
+    // run would only fail at setup, out of sight.
+    @Test
+    fun `a run starts only in a repository`() {
+        val run = BrowseState(purpose = Purpose.Run)
+
+        val repo = run.applied(listing("/a/nabu", repo = true))
+        assertTrue(repo.canStartHere)
+        assertFalse(repo.needsRepo)
+
+        val plain = run.applied(listing("/a/notes", repo = false))
+        assertFalse(plain.canStartHere)
+        assertTrue("the picker says why, rather than just having no button", plain.needsRepo)
+    }
+
+    @Test
+    fun `a session still starts anywhere, and never asks for a repository`() {
+        val plain = BrowseState().applied(listing("/a/notes", repo = false))
+        assertTrue(plain.canStartHere)
+        assertFalse(plain.needsRepo)
+    }
+
+    @Test
+    fun `the purpose survives moving around the tree`() {
+        val state = BrowseState(purpose = Purpose.Run)
+            .applied(listing("/a/nabu", repo = true))
+            .applied(listing("/a/nabu/src", repo = false))
+        assertEquals(Purpose.Run, state.purpose)
+        assertFalse("is_repo is the listed directory's, not carried over", state.isRepo)
+    }
+
+    @Test
+    fun `the top level is never somewhere to run, and says nothing about repositories`() {
+        val top = BrowseState(purpose = Purpose.Run).applied(BrowseResult(path = "", parent = null))
+        assertFalse(top.canStartHere)
+        assertFalse(top.needsRepo)
+    }
+
+    @Test
+    fun `is_repo is read from the daemon's listing`() {
+        val json = """{"path":"/a/nabu","parent":"/a","is_repo":true,"entries":[]}"""
+        assertTrue(com.nabu.client.protocol.NabuJson.decodeFromString(BrowseResult.serializer(), json).isRepo)
+        val old = """{"path":"/a/nabu","parent":"/a","entries":[]}"""
+        assertFalse("a daemon without the field reads as not a repository", com.nabu.client.protocol.NabuJson.decodeFromString(BrowseResult.serializer(), old).isRepo)
+    }
 }

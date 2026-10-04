@@ -352,6 +352,8 @@ data class BrowseResult(
     val path: String = "",
     val parent: String? = null,
     val entries: List<BrowseEntry> = emptyList(),
+    /** Whether [path] itself is a repository; false at the top. */
+    @SerialName("is_repo") val isRepo: Boolean = false,
 )
 
 /** What nabu.session.create returns; only the id is used here. */

@@ -1,17 +1,31 @@
 package com.nabu.client.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.nabu.client.ui.theme.NabuTheme
 
 // Orchestrated runs, as the phone sees them
@@ -73,6 +87,82 @@ fun parseRun(text: String): String? {
     if (t == "/run") return ""
     if (t.startsWith("/run ") || t.startsWith("/run\n")) return t.removePrefix("/run").trim()
     return null
+}
+
+/**
+ * The brief for a run started from the list, in [workspace]. A screen rather
+ * than a dialog: a brief runs to paragraphs, and the keyboard takes half of
+ * whatever holds it. There is no conversation to write one from, so it is
+ * required. [onStart] reports a failure through its callback, which puts the
+ * reason here and lets the reader try again.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BriefScreen(
+    workspace: String,
+    onStart: (brief: String, onFailed: (String) -> Unit) -> Unit,
+    onBack: () -> Unit,
+) {
+    val c = NabuTheme.colors
+    var brief by rememberSaveable { mutableStateOf("") }
+    var starting by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    Scaffold(
+        containerColor = c.background,
+        topBar = {
+            TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = c.background,
+                    titleContentColor = c.ink,
+                ),
+                title = {
+                    Text(
+                        "Run in ${projectName(workspace)}",
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                navigationIcon = { TextButton(onClick = onBack) { Text("Cancel") } },
+            )
+        },
+        bottomBar = {
+            Box(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(12.dp)) {
+                Button(
+                    onClick = {
+                        starting = true
+                        error = null
+                        onStart(brief.trim()) { starting = false; error = it }
+                    },
+                    enabled = brief.isNotBlank() && !starting,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (starting) "Starting…" else "Start run") }
+            }
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
+            Text(
+                "Say what to build or change, and what done looks like. The runner plans, works " +
+                    "and checks it in a worktree of its own, then opens a pull request.",
+                style = MaterialTheme.typography.bodySmall,
+                color = c.muted,
+            )
+            error?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.danger,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            OutlinedTextField(
+                value = brief,
+                onValueChange = { brief = it },
+                label = { Text("Brief") },
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp),
+            )
+        }
+    }
 }
 
 /** Asks for a run's brief before handing the session to the runner. */

@@ -420,9 +420,24 @@ class SessionRepository(
      * rewrites it: a client massaging a path would be guessing about a
      * filesystem it cannot see.
      */
-    suspend fun createSession(client: DaemonClient, workspace: String): String {
+    suspend fun createSession(
+        client: DaemonClient,
+        workspace: String,
+        description: String = "",
+        labels: List<String> = emptyList(),
+    ): String {
         val result = client.callOrThrow("nabu.session.create", buildJsonObject {
             put("workspace", workspace)
+            // Options only when there are some: the daemon fills in the rest
+            // from its config either way.
+            if (description.isNotEmpty() || labels.isNotEmpty()) {
+                put("options", buildJsonObject {
+                    if (description.isNotEmpty()) put("description", description)
+                    if (labels.isNotEmpty()) {
+                        put("labels", kotlinx.serialization.json.JsonArray(labels.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+                    }
+                })
+            }
         })
         val created = NabuJson.decodeFromJsonElement(CreateSessionResult.serializer(), result)
         // Record it straight away, so the list shows what the reader just made
