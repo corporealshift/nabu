@@ -31,8 +31,9 @@ type Config struct {
 	Label         string          `json:"label"`
 	VerifyTimeout github.Duration `json:"verify_timeout"`
 	Claude        ClaudeConfig    `json:"claude"`
-	// PlanTurns budgets brief, plan, tasks and verify sessions (50 by
-	// default); WorkTurns budgets work, fix and ci-fix sessions (100).
+	// PlanTurns caps brief, plan, tasks and verify sessions' turns, and
+	// WorkTurns caps work, fix and ci-fix sessions'. Zero, the default, is no
+	// cap: caps of 50 and 100 failed a run whose sessions were still working.
 	PlanTurns int `json:"plan_turns"`
 	WorkTurns int `json:"work_turns"`
 }
@@ -73,10 +74,10 @@ func (c *Config) withDefaults() {
 	if c.Claude.Timeout <= 0 {
 		c.Claude.Timeout = github.Duration(15 * time.Minute)
 	}
-	if c.PlanTurns <= 0 {
-		c.PlanTurns = 50
+	if c.PlanTurns < 0 {
+		c.PlanTurns = 0
 	}
-	if c.WorkTurns <= 0 {
-		c.WorkTurns = 100
+	if c.WorkTurns < 0 {
+		c.WorkTurns = 0
 	}
 }

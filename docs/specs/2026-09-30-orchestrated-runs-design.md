@@ -146,8 +146,10 @@ point of the design, so they are never skipped.
   `.nabu/runs/<slug>/verify-revision.md` with its reason, and commits it. The runner
   sees the file and goes to `revise`, then deletes the file in its own commit.
 - **Every session runs in `auto` mode, is told not to use `ask`,** and has its own turn
-  budget. Planning steps get 50 turns; `work`, `fix` and `ci-fix` get 100 (amended
-  2026-10-03 from 30 and 60, which cut sessions off before they finished).
+  budget. By default it has no turn cap; `plan_turns` and `work_turns` set one
+  (amended 2026-10-04). Caps of 30 and 60, then 50 and 100, cut sessions off before
+  they finished: a breezeway run failed when its plan session reached 50 turns and two
+  work sessions reached 100, all still working.
 - **A session that stops short is told so, once, in the same session.** The local model
   sometimes ends its turn having written nothing. In the second live run, a `tasks`
   session read the brief and the plan, then stopped, twice, and the run failed. When a
