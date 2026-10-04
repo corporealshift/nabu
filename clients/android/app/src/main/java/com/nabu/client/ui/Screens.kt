@@ -899,6 +899,7 @@ fun BrowseScreen(
     onStartHere: (String) -> Unit,
     onCreateDirectory: (String) -> Unit,
     onBack: () -> Unit,
+    recent: List<String> = emptyList(),
 ) {
     val c = NabuTheme.colors
     var naming by remember { mutableStateOf(false) }
@@ -983,6 +984,15 @@ fun BrowseScreen(
                         BrowseRow(label = "..", isRepo = false, onClick = { onOpen(state.parent) })
                     }
                 }
+                // Recent directories open rather than start: "Start here" is
+                // the next tap, and the reader sees where they are first.
+                if (state.atTop && recent.isNotEmpty()) {
+                    item(key = "recent-header") { BrowseHeader("Recent") }
+                    items(recent, key = { "recent:$it" }) { path ->
+                        BrowseRow(label = crumbs(path, keep = 2), isRepo = false, onClick = { onOpen(path) })
+                    }
+                    item(key = "places-header") { BrowseHeader("Places") }
+                }
                 items(state.entries, key = { it.path }) { entry ->
                     BrowseRow(
                         label = entryLabel(entry, state.atTop),
@@ -1003,6 +1013,16 @@ fun BrowseScreen(
             }
         }
     }
+}
+
+@Composable
+private fun BrowseHeader(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = NabuTheme.colors.muted,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+    )
 }
 
 @Composable

@@ -76,3 +76,26 @@ fun crumbs(path: String, keep: Int = 3): String {
  */
 fun entryLabel(entry: BrowseEntry, atTop: Boolean): String =
     if (atTop) crumbs(entry.path, keep = 2) else entry.name
+
+/**
+ * The directories sessions were last started in, most recent first, for the
+ * picker's top level, so a project used yesterday is one tap away rather than
+ * a walk down from a root (#115).
+ *
+ * A run's steps are left out, as is anything under a .nabu directory: those are
+ * worktrees the runner and the GitHub watcher make for themselves, not places
+ * the reader chose. Paths are compared without regard to slash direction or
+ * case, since the daemon reports Windows paths both ways.
+ */
+fun recentWorkspaces(cards: List<SessionCard>, limit: Int = 6): List<String> {
+    val seen = mutableSetOf<String>()
+    val out = mutableListOf<String>()
+    for (card in cards.sortedByDescending { it.row.updatedAt }) {
+        if (card.options.parent.isNotEmpty()) continue
+        val path = card.row.workspace.replace('\\', '/').trimEnd('/')
+        if (path.isEmpty() || path.split('/').contains(".nabu")) continue
+        if (seen.add(path.lowercase())) out += path
+        if (out.size == limit) break
+    }
+    return out
+}
