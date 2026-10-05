@@ -670,7 +670,8 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		// An answer that neither revises the plan nor passes it is taken as
 		// passing it: the plan still gets its tasks, and verify is reviewed.
 		if text, changed, _ := ParseRewrite(answer, PlanFile, "NO CHANGES"); changed {
-			if err := rn.write(ctx, r, PlanFile, text, "run: plan revised by claude review"); err != nil {
+			plan, _ := rn.read(r, PlanFile)
+			if err := rn.write(ctx, r, PlanFile, keepDecisions(plan, text), "run: plan revised by claude review"); err != nil {
 				return Outcome{}, err
 			}
 		}
@@ -924,6 +925,8 @@ func (rn *Runner) prBody(r *Run) string {
 		fmt.Fprintf(&b, " after %d fix sessions", r.Fixes)
 	}
 	b.WriteString(". Claude reviewed the plan, the check and the finished work; any blockers it found were fixed before this PR.\n")
+	plan, _ := rn.read(r, PlanFile)
+	b.WriteString(decisionsForPR(plan, r.File(PlanFile), r.File(VerifyFile)))
 	if len(r.Notes) > 0 {
 		b.WriteString("\n## Notes from the final review\n\n")
 		for _, n := range r.Notes {

@@ -173,3 +173,73 @@ func Slug(text, home string) string {
 	}
 	return s + "-" + id
 }
+
+// DecisionsSection is the body of the plan's decisions section, without its
+// heading: everything after the DecisionsHeading line up to the next heading
+// of the same or a higher level. A heading inside a fenced block does not end
+// it. found is false when the plan has no such section.
+func DecisionsSection(plan string) (text string, found bool) {
+	lines := strings.Split(strings.ReplaceAll(plan, "\r\n", "\n"), "\n")
+	start := -1
+	for i, l := range lines {
+		if strings.EqualFold(strings.TrimSpace(l), DecisionsHeading) {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return "", false
+	}
+	end, fenced := len(lines), false
+	for i := start; i < len(lines); i++ {
+		l := lines[i]
+		if strings.HasPrefix(strings.TrimSpace(l), "```") {
+			fenced = !fenced
+		}
+		if !fenced && (strings.HasPrefix(l, "# ") || strings.HasPrefix(l, "## ")) {
+			end = i
+			break
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines[start:end], "\n")), true
+}
+
+// keepDecisions puts the plan's decisions back when a review's rewrite left
+// the section out. The runner never judges the entries; it only keeps them
+// from disappearing before the owner sees them.
+func keepDecisions(plan, rewrite string) string {
+	section, _ := DecisionsSection(plan)
+	if section == "" {
+		return rewrite
+	}
+	if _, has := DecisionsSection(rewrite); has {
+		return rewrite
+	}
+	return strings.TrimRight(rewrite, "\n") + "\n\n" + DecisionsHeading +
+		"\n\n_The review's rewrite left this section out; these are the plan's decisions._\n\n" + section + "\n"
+}
+
+// maxDecisions is how much of the decisions section a pull request carries.
+// GitHub refuses a body over 65,536 characters.
+const maxDecisions = 20000
+
+// decisionsForPR is the pull request's account of what the run chose where
+// the brief left a behavior open, from the plan at planPath.
+func decisionsForPR(plan, planPath, verifyPath string) string {
+	section, _ := DecisionsSection(plan)
+	var b strings.Builder
+	b.WriteString("\n## Decisions this run made\n\n")
+	if section == "" {
+		b.WriteString("The plan recorded no open decisions.\n")
+		return b.String()
+	}
+	if len(section) > maxDecisions {
+		cut := section[:maxDecisions]
+		if i := strings.LastIndex(cut, "\n"); i > 0 {
+			cut = cut[:i]
+		}
+		section = strings.ToValidUTF8(cut, "") + fmt.Sprintf("\n\n_Cut here; the rest is in `%s`._", planPath)
+	}
+	fmt.Fprintf(&b, "%s\n\nEach is pinned by a test in `%s`. To change one, say so in a comment on this PR.\n", section, verifyPath)
+	return b.String()
+}

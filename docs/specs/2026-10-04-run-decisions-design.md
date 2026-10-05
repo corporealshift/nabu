@@ -41,7 +41,7 @@ people who use the thing would expect, not the narrowest reading of the brief's 
 The rule is in the prompts for `plan`, `plan-review`, `verify`, `verify-review`, `revise`
 and `final-review`, in these words:
 
-> When the brief leaves a behaviour open, choose what the people who use this would
+> When the brief leaves a behavior open, choose what the people who use this would
 > expect, not the narrowest reading of the brief's words.
 
 `tasks`, `work` and `fix` follow the plan and the check, so they need no rule of their own.
