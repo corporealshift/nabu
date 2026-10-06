@@ -588,6 +588,39 @@ A connection from anywhere but loopback is refused without that token. This matt
 the daemon runs shell commands in your repositories. Use Tailscale or a comparable
 private network rather than exposing the port.
 
+## Phone notifications
+
+The daemon can tell your phone when something needs you:
+- a question is waiting;
+- a run or a goal finished, failed or blocked;
+- a session stopped on an error;
+- a turn longer than a minute finished.
+
+Step sessions never notify on their own: their run or goal does. Notifications carry
+identifiers and states only, and the phone writes the words from its own copy of the
+sessions.
+
+They go through Firebase Cloud Messaging, which needs a project of your own:
+
+1. In the [Firebase console](https://console.firebase.google.com), create a project, then
+   add an Android app with the package name `com.nabu.client`. Download its
+   `google-services.json` to `clients/android/app/`. It is git-ignored.
+2. In **Project settings → Service accounts**, generate a new private key. Save it as
+   `~/.nabu/fcm-service-account.json`, and point the config at it:
+
+   ```json
+   { "notify": { "service_account": "fcm-service-account.json" } }
+   ```
+
+3. Rebuild and install the app (`clients/android/gradlew.sh :app:assembleDebug`), and
+   restart the daemon. The app asks to show notifications, and registers itself each
+   time it connects.
+
+`notify.labels` sets which labels notify. The default is `run:done`, `run:failed`,
+`goal:done` and `goal:blocked`. `notify.done_after_seconds` sets the shortest turn whose
+end notifies; the default is 60. Without `google-services.json` the app builds and runs,
+and is never notified.
+
 ## Where things live
 
 ```
@@ -598,6 +631,7 @@ private network rather than exposing the port.
   skills/
   modules/      whatever a module keeps for itself
   daemon.log    beside daemon.pid and daemon.port
+  devices.json  the phones that asked to be notified
 ```
 
 Session logs are plain JSON lines. You can read one with `cat`, and nothing is hidden
