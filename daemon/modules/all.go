@@ -6,6 +6,7 @@ import (
 	"github.com/corporealshift/nabu/daemon/modules/artifact"
 	"github.com/corporealshift/nabu/daemon/modules/ask"
 	"github.com/corporealshift/nabu/daemon/modules/claude"
+	"github.com/corporealshift/nabu/daemon/modules/clock"
 	"github.com/corporealshift/nabu/daemon/modules/guard"
 	"github.com/corporealshift/nabu/daemon/modules/loop"
 	"github.com/corporealshift/nabu/daemon/modules/memory"
@@ -25,6 +26,7 @@ import (
 // a tool call wins.
 var All = []module.Module{
 	&skills.Module{},
+	&clock.Module{},
 	&ask.Module{},
 	&claude.Module{},
 	&memory.Module{},
