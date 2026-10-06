@@ -124,10 +124,10 @@ func taskLine(t protocol.Task) string {
 func (m model) picker() string {
 	var b strings.Builder
 	title, empty, help := "Sessions", "no sessions yet — start one with `nabu run`",
-		"↑↓ move · enter attach · a archive · tab archived · esc cancel"
+		"↑↓ move · →← fold · enter attach · a archive · tab archived · esc"
 	if m.pickingArchived {
 		title, empty, help = "Archived sessions", "nothing archived",
-			"↑↓ move · enter restore and attach · tab back · esc cancel"
+			"↑↓ move · →← fold · enter restore and attach · tab back · esc"
 	}
 	from, to := m.pickerWindow()
 	if to-from < len(m.sessions) {
@@ -139,13 +139,14 @@ func (m model) picker() string {
 	}
 	width := m.pickerWidth()
 	now := time.Now()
-	depth := depths(m.sessions)
+	depth := depths(m.all)
 	for i := from; i < to; i++ {
 		if i > from {
 			b.WriteString("\n")
 		}
 		s := m.sessions[i]
-		b.WriteString(pickerRow(s, i == m.cursorAt, depth[s.SessionID], width, now))
+		fold := fold{under: under(m.all, s.SessionID), open: m.expanded[s.SessionID]}
+		b.WriteString(pickerRow(s, i == m.cursorAt, depth[s.SessionID], fold, width, now))
 	}
 	b.WriteString("\n" + dim.Render(help))
 
@@ -162,7 +163,7 @@ func (m model) picker() string {
 //
 // A step of a run is drawn under its home, indented, when the home is listed,
 // and a goal's runs under the goal, so a goal is three levels deep.
-func pickerRow(s goclient.SessionSummary, selected bool, depth int, width int, now time.Time) string {
+func pickerRow(s goclient.SessionSummary, selected bool, depth int, f fold, width int, now time.Time) string {
 	lead := "  "
 	if selected {
 		lead = "› "
@@ -191,6 +192,13 @@ func pickerRow(s goclient.SessionSummary, selected bool, depth int, width int, n
 	}
 	if goal := goalStatus(s.Labels); goal != "" {
 		meta += " · " + goal
+	}
+	if f.under > 0 {
+		mark := "▸"
+		if f.open {
+			mark = "▾"
+		}
+		meta = fmt.Sprintf("%s %d session%s · %s", mark, f.under, plural(f.under), meta)
 	}
 	if s.State == string(protocol.StateIdle) {
 		if age := idleAge(s.UpdatedAt, now); age != "" {
@@ -226,6 +234,51 @@ func groupByParent(sessions []goclient.SessionSummary) []goclient.SessionSummary
 	for _, s := range sessions {
 		if s.Parent == "" || !listed[s.Parent] {
 			add(s)
+		}
+	}
+	return out
+}
+
+// fold is how a row with sessions under it is drawn: how many, and whether
+// they show.
+type fold struct {
+	under int
+	open  bool
+}
+
+// under is how many sessions in the list are below id, at any depth.
+func under(sessions []goclient.SessionSummary, id string) int {
+	parent := map[string]string{}
+	for _, s := range sessions {
+		parent[s.SessionID] = s.Parent
+	}
+	n := 0
+	for _, s := range sessions {
+		for p, d := s.Parent, 0; p != "" && d < maxDepth+1; p, d = parent[p], d+1 {
+			if p == id {
+				n++
+				break
+			}
+		}
+	}
+	return n
+}
+
+// visible is the grouped list with the children of every session not
+// expanded left out: each family is folded by default (issue 135).
+func visible(grouped []goclient.SessionSummary, expanded map[string]bool) []goclient.SessionSummary {
+	listed := map[string]bool{}
+	for _, s := range grouped {
+		listed[s.SessionID] = true
+	}
+	shown := map[string]bool{}
+	out := make([]goclient.SessionSummary, 0, len(grouped))
+	for _, s := range grouped {
+		// Grouped order puts a parent before its children, so it is decided
+		// first.
+		if s.Parent == "" || !listed[s.Parent] || (shown[s.Parent] && expanded[s.Parent]) {
+			shown[s.SessionID] = true
+			out = append(out, s)
 		}
 	}
 	return out

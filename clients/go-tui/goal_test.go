@@ -89,7 +89,32 @@ func TestPickerShowsAGoalThreeDeep(t *testing.T) {
 		{SessionID: "01RUN", Parent: "01GOAL", State: "idle", LastPrompt: "the run", Labels: []string{"run:plan"}},
 		{SessionID: "01GOAL", State: "idle", LastPrompt: "the goal", Labels: []string{"goal:runs", "goal:round:1"}},
 	}})
-	view := next.(model).picker()
+	m = next.(model)
+	// Folded at first: only the goal, saying what is under it (issue 135).
+	if folded := m.picker(); strings.Contains(folded, "the run") || !strings.Contains(folded, "▸ 2 sessions") {
+		t.Fatalf("the goal is not folded:\n%s", folded)
+	}
+	key := func(k tea.KeyType) {
+		next, _ := m.Update(tea.KeyMsg{Type: k})
+		m = next.(model)
+	}
+	key(tea.KeyRight) // the goal opens on its run, still folded
+	if v := m.picker(); !strings.Contains(v, "the run") || strings.Contains(v, "the plan step") || !strings.Contains(v, "▾ 2 sessions") {
+		t.Fatalf("after → on the goal:\n%s", v)
+	}
+	key(tea.KeyDown)
+	key(tea.KeyRight) // and the run on its step
+	view := m.picker()
+	defer func() {
+		key(tea.KeyLeft) // folds the run
+		if v := m.picker(); strings.Contains(v, "the plan step") || m.sessions[m.cursorAt].SessionID != "01RUN" {
+			t.Errorf("← did not fold the run:\n%s", v)
+		}
+		key(tea.KeyLeft) // a folded run goes up to its goal
+		if m.sessions[m.cursorAt].SessionID != "01GOAL" {
+			t.Errorf("← on a folded run is on %s", m.sessions[m.cursorAt].SessionID)
+		}
+	}()
 	col := func(text string) int {
 		for _, l := range strings.Split(view, "\n") {
 			if i := strings.Index(l, text); i >= 0 {

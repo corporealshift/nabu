@@ -133,11 +133,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case sessionsMsg:
-		m.sessions = groupByParent(msg.sessions)
+		m.all = groupByParent(msg.sessions)
 		m.pickingArchived = msg.archived
-		if m.cursorAt >= len(m.sessions) {
-			m.cursorAt = 0
-		}
+		m = m.refold("")
 		m.picking = true
 		return m, nil
 
@@ -226,6 +224,33 @@ func (m model) onPickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		if m.cursorAt < len(m.sessions)-1 {
 			m.cursorAt++
+		}
+		return m, nil
+	case "right", "l":
+		// Shows what is under the selected session, one level.
+		if m.cursorAt < len(m.sessions) {
+			id := m.sessions[m.cursorAt].SessionID
+			if under(m.all, id) > 0 {
+				if m.expanded == nil {
+					m.expanded = map[string]bool{}
+				}
+				m.expanded[id] = true
+				m = m.refold(id)
+			}
+		}
+		return m, nil
+	case "left", "h":
+		// Folds the selected session away, or, on one already folded, goes up
+		// to its parent.
+		if m.cursorAt < len(m.sessions) {
+			s := m.sessions[m.cursorAt]
+			switch {
+			case m.expanded[s.SessionID]:
+				delete(m.expanded, s.SessionID)
+				m = m.refold(s.SessionID)
+			case s.Parent != "":
+				m = m.refold(s.Parent)
+			}
 		}
 		return m, nil
 	case "tab":
@@ -465,4 +490,20 @@ func (m model) emit(a action) tea.Cmd {
 // unmarshal decodes an event's data.
 func unmarshal(ev protocol.Event, v any) error {
 	return json.Unmarshal(ev.Data, v)
+}
+
+// refold recomputes what the picker shows from the whole list and what is
+// expanded, keeping the cursor on keep, or on the session it was on.
+func (m model) refold(keep string) model {
+	if keep == "" && m.cursorAt < len(m.sessions) {
+		keep = m.sessions[m.cursorAt].SessionID
+	}
+	m.sessions = visible(m.all, m.expanded)
+	m.cursorAt = 0
+	for i, s := range m.sessions {
+		if s.SessionID == keep {
+			m.cursorAt = i
+		}
+	}
+	return m
 }

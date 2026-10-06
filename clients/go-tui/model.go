@@ -131,8 +131,13 @@ type model struct {
 	showKeys bool
 
 	// picker
-	picking  bool
+	picking bool
+	// all is the whole list, grouped by parent; sessions is what shows of it,
+	// with only the children of expanded sessions (issue 135). The cursor
+	// walks sessions.
+	all      []goclient.SessionSummary
 	sessions []goclient.SessionSummary
+	expanded map[string]bool
 	cursorAt int
 	// pickingArchived is the picker showing the archive rather than the
 	// sessions in use.
