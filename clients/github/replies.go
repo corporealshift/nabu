@@ -82,8 +82,14 @@ Answer every comment marked new, by id. Comments marked earlier are only there s
 - Where a comment asks for a change, make it, and check it builds and its tests pass.
 - Where it asks a question, or you think the change would be wrong, answer it instead and say why.
 - Where you cannot tell what it wants, change nothing for it, and ask your question in its reply. The author answers on GitHub.
-- Commit your changes, following the repository's conventions. Do not push: pushing and posting your replies are done for you once you finish.
+- Commit your changes, following the repository's conventions: read its CLAUDE.md or AGENTS.md, if it has one, for how commit messages are written. Do not push: pushing and posting your replies are done for you once you finish.
 - Nobody is watching this session, so do not use the ask tool: a question would only wait ten minutes for an answer that never comes.
+
+`)
+	fmt.Fprintf(&b, "## Before you reply\n\nCheck each new comment against your own diff, `git diff %s`, one comment at a time:\n\n", pr.HeadSHA)
+	b.WriteString(`- Find the lines the comment asked about and read what they say now. Where it gave exact wording, the file must have that wording, character for character: quote the line in your reply.
+- Where it asked for part of something to move or go, check the rest is still there. Read every line your diff removes and be sure each was meant to go.
+- Where you did only part of what it asked, say which part you did not do and why. Do not say a comment is addressed when it is not.
 
 End your final message with exactly one fenced json block, with one reply for each new comment:
 

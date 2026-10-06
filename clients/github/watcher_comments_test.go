@@ -294,3 +294,53 @@ func TestRunsShareTheSlots(t *testing.T) {
 		}
 	})
 }
+
+// A review after a comments job is shown what the comments asked, so it can
+// check the new commits did it. Only comments answered since the last review
+// count: not older ones, not nabu's own, not ones no job has answered yet.
+func TestWatcherShowsTheNextReviewWhatWasAsked(t *testing.T) {
+	r := newRig(t, pr7)
+	r.poll(t)
+	rs := r.repo()
+	rs.Reviewed[7] = Reviewed{SHA: "0ld5ha0000", Summary: "Missing a test.", Handled: Marks{Line: 10}}
+	rs.Handled[7] = Marks{Line: 20}
+	r.gh.comments = map[int][]Comment{7: {root, nabuAns, followUp, fresh, rev}}
+	r.now = r.now.Add(6 * time.Minute)
+	if n := r.poll(t); n != 1 {
+		t.Fatalf("started %d jobs, want 1", n)
+	}
+
+	p := r.d.sessions["S1"].prompts[0]
+	for _, s := range []string{"Use a slice, it's three items.", "**kyle, on b.go:9:**\n\nRename to parseCursor.", "exact wording"} {
+		if !strings.Contains(p, s) {
+			t.Errorf("prompt lacks %q:\n%s", s, p)
+		}
+	}
+	for _, s := range []string{"Why a map here?", "For lookups.", "Two things."} {
+		if strings.Contains(p, s) {
+			t.Errorf("prompt shows %q, which was not answered since the last review", s)
+		}
+	}
+
+	r.d.finish("S1", goodFinal, protocol.StateIdle)
+	r.poll(t)
+	if got := rs.Reviewed[7].Handled; got != (Marks{Line: 20}) {
+		t.Errorf("the review recorded handled %+v, want the marks it started from", got)
+	}
+}
+
+// With nothing answered since the last review, the comments are not fetched
+// and the prompt says nothing about them.
+func TestWatcherShowsNothingAskedWhenNothingWasAnswered(t *testing.T) {
+	r := newRig(t, pr7)
+	r.poll(t)
+	rs := r.repo()
+	rs.Reviewed[7] = Reviewed{SHA: "0ld5ha0000", Handled: Marks{Line: 20}}
+	rs.Handled[7] = Marks{Line: 20}
+	r.gh.comments = map[int][]Comment{7: {fresh}}
+	r.now = r.now.Add(6 * time.Minute)
+	r.poll(t)
+	if p := r.d.sessions["S1"].prompts[0]; strings.Contains(p, "nabu answered these comments") {
+		t.Errorf("prompt shows answered comments:\n%s", p)
+	}
+}
