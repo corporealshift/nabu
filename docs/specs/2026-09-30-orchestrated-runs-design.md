@@ -2,6 +2,8 @@
 
 **Date:** 2026-09-30
 **Status:** Approved by Kyle in conversation
+**Amended by:** `2026-10-04-run-decisions-design.md` (open decisions lean toward what
+users expect, are recorded in the plan, and are reported in the PR).
 **Part 2 of 4.** This spec is the design as a whole, plus the runner through opening the
 PR. The other parts:
 - `2026-09-30-session-parent-and-labels-design.md` (part 1: protocol and TUI);

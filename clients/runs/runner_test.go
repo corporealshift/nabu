@@ -447,10 +447,16 @@ const twoTasks = "- [ ] Add Median\n  In stats.go.\n- [ ] Test Median\n  In stat
 // planned takes a run with a text brief as far as its first work session.
 func (g *rig) planned(id string) *Run {
 	g.t.Helper()
+	return g.plannedWith(id, "# Plan\n")
+}
+
+// plannedWith is planned, with the plan session writing plan.
+func (g *rig) plannedWith(id, plan string) *Run {
+	g.t.Helper()
 	g.ask(id, "Add a Median function to stats")
 	g.tick()
 	r := g.run(id)
-	g.finish(map[string]string{r.File(PlanFile): "# Plan\n"})
+	g.finish(map[string]string{r.File(PlanFile): plan})
 	g.tick()
 	g.finish(map[string]string{r.File(TasksFile): twoTasks})
 	g.tick()
@@ -1117,5 +1123,51 @@ func TestAnOpenPRForTheBranchIsTakenOver(t *testing.T) {
 	}
 	if !strings.Contains(g.log.String(), "took over https://github.com/kyle/x/pull/5") {
 		t.Errorf("log:\n%s", g.log.String())
+	}
+}
+
+const decidedPlan = "# Plan\n\nSort, then sweep.\n\n## Decisions\n\n- Even-length input: the mean of the two middle values, as statistics users expect.\n"
+
+// A run settles what the brief leaves open; the PR says what it chose, so the
+// owner finds out from the description rather than from a bug.
+func TestThePRReportsTheRunsDecisions(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	g.plannedWith("H1", decidedPlan)
+	g.finish(map[string]string{"stats.go": "x"})
+	g.tick()
+	g.finish(map[string]string{"stats_test.go": "x"})
+	g.tick()
+	if len(g.gh.prs) != 1 {
+		t.Fatalf("prs = %q\nlog:\n%s", g.gh.prs, g.log.String())
+	}
+	body := g.gh.prs[0]
+	decisions := strings.Index(body, "## Decisions this run made\n\n- Even-length input: the mean of the two middle values")
+	notes := strings.Index(body, "## Notes from the final review")
+	if decisions < 0 || notes < decisions || !strings.Contains(body, "To change one, say so in a comment on this PR.") {
+		t.Errorf("body:\n%s", body)
+	}
+}
+
+func TestAPlanWithNoDecisionsSaysSo(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	g.opened("H1")
+	if !strings.Contains(g.gh.prs[0], "## Decisions this run made\n\nThe plan recorded no open decisions.\n") {
+		t.Errorf("body:\n%s", g.gh.prs[0])
+	}
+}
+
+// The review may change a decision, but only in the open: a rewrite that
+// drops the section gets the plan's decisions back.
+func TestAReviewThatDropsTheDecisionsKeepsThem(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	g.claude.answers = map[string][]string{"plan": {Begin(PlanFile) + "\n# Plan\n\nSort with slices.SortFunc.\n" + End(PlanFile)}}
+	r := g.plannedWith("H1", decidedPlan)
+	plan, _ := g.rn.read(r, PlanFile)
+	if !strings.Contains(plan, "Sort with slices.SortFunc.") || !strings.Contains(plan, "left this section out") ||
+		!strings.Contains(plan, "- Even-length input: the mean of the two middle values") {
+		t.Errorf("plan.md:\n%s", plan)
 	}
 }
