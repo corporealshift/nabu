@@ -54,9 +54,13 @@ type Seen struct {
 
 // Reviewed is a posted review: the head it was for, and its summary, which
 // the next review of the same PR is shown so it does not repeat itself.
+// Handled is how far comments jobs had answered when the review started, so
+// the next review is shown the comments answered since and can check the new
+// commits did what they asked.
 type Reviewed struct {
 	SHA     string `json:"sha"`
 	Summary string `json:"summary,omitempty"`
+	Handled Marks  `json:"handled,omitzero"`
 }
 
 // Job is one session the watcher started.
@@ -69,6 +73,8 @@ type Job struct {
 	HeadRef string `json:"head_ref,omitempty"`
 	// Through is the newest comment of each kind a comments job answers, and
 	// Due is those comments, kept so the replies can be built after a restart.
+	// For a review job, Through is how far comments had been answered when it
+	// started, which the next review counts from.
 	Through Marks     `json:"through,omitzero"`
 	Due     []Comment `json:"due,omitempty"`
 	// Prompt, Goal and MaxTurns are what the session is started with. They

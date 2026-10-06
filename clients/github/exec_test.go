@@ -111,7 +111,7 @@ func TestOpenPRsDecodesGh(t *testing.T) {
 }
 
 func TestReviewPrompt(t *testing.T) {
-	first := ReviewPrompt("kyle/bw", pr7, nil)
+	first := ReviewPrompt("kyle/bw", pr7, nil, nil)
 	for _, s := range []string{`"Add the thing"`, "It adds the thing.", "git diff origin/main...abc1234def", "Change no files", "do not use the ask tool", "```json", `"comments"`} {
 		if !strings.Contains(first, s) {
 			t.Errorf("prompt lacks %q:\n%s", s, first)
@@ -121,7 +121,7 @@ func TestReviewPrompt(t *testing.T) {
 		t.Error("a first review mentions an earlier one")
 	}
 
-	again := ReviewPrompt("kyle/bw", pr7, &Reviewed{SHA: "0ld5ha0000", Summary: "Missing a test."})
+	again := ReviewPrompt("kyle/bw", pr7, &Reviewed{SHA: "0ld5ha0000", Summary: "Missing a test."}, nil)
 	for _, s := range []string{"reviewed this PR before, at 0ld5ha0", "Missing a test.", "git diff 0ld5ha0000..abc1234def"} {
 		if !strings.Contains(again, s) {
 			t.Errorf("second prompt lacks %q", s)
@@ -130,7 +130,7 @@ func TestReviewPrompt(t *testing.T) {
 
 	long := pr7
 	long.Body = strings.Repeat("x", maxBody+10)
-	if p := ReviewPrompt("kyle/bw", long, nil); strings.Contains(p, strings.Repeat("x", maxBody+1)) || !strings.Contains(p, "cut at 8000") {
+	if p := ReviewPrompt("kyle/bw", long, nil, nil); strings.Contains(p, strings.Repeat("x", maxBody+1)) || !strings.Contains(p, "cut at 8000") {
 		t.Error("a long description was not cut")
 	}
 }

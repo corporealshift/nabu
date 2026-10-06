@@ -31,6 +31,8 @@ func TestCommentsPrompt(t *testing.T) {
 		"### b.go:9", "**new comment, id 20, by kyle:**",
 		"## Comments on the whole PR", "**new review, id 5, by kyle:**", "**new comment, id 900, by kyle:**",
 		"Do not push", "do not use the ask tool", `{"replies": [{"id": 123456`,
+		// The check against its own diff, before it claims anything is done.
+		"CLAUDE.md", "your own diff, `git diff abc`", "character for character", "every line your diff removes",
 	} {
 		if !strings.Contains(p, s) {
 			t.Errorf("prompt lacks %q", s)

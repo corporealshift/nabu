@@ -118,6 +118,12 @@ no label. That includes PRs nabu opened itself.
   `git diff origin/<base>...<sha>` and tells the model not to change any files. If nabu
   reviewed this PR before, it also includes that review's summary and says what has
   changed since it (`git diff <old sha>...<sha>`), so the model does not repeat itself.
+  (Amended 2026-10-06.) It also lists the comments that comments jobs answered since
+  that review, and asks the model to check that the new commits did what each one asked:
+  all of it, using the exact wording where some was given, and without losing what was
+  next to it. Each review records the handled marks from when it started, so the next
+  review knows where to count from. In liftoff PR #1 the follow-up review only had its own
+  earlier summary to check against. It missed two requests that had been done only in part.
 - The prompt tells the model not to use `ask`, and to put anything it could not settle
   into the summary as a question for the author. In the first live runs, a review model
   asked "does this workspace have any go.mod or test files?", which it could have checked
