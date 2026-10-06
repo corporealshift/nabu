@@ -549,10 +549,13 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
      * the runner never finds a requested run without its brief. Its id goes to
      * [onCreated], and a failure's reason to [onFailed].
      */
-    fun createRun(workspace: String, brief: String, onCreated: (String) -> Unit, onFailed: (String) -> Unit) {
+    fun createRun(workspace: String, brief: String, onCreated: (String) -> Unit, onFailed: (String) -> Unit, goal: Boolean = false) {
         viewModelScope.launch {
             val c = client ?: run { onFailed("not connected: a run is started on the daemon"); return@launch }
-            runCatching { repo.createSession(c, workspace, description = brief.trim(), labels = runLabels(emptyList())) }
+            // A goal is made the same way, with the goal's label: the runner
+            // breaks it into runs (docs/specs/2026-10-06-goals-design.md).
+            val labels = if (goal) goalLabels(emptyList()) else runLabels(emptyList())
+            runCatching { repo.createSession(c, workspace, description = brief.trim(), labels = labels) }
                 .onSuccess { id -> if (id.isNotEmpty()) onCreated(id) else onFailed("the daemon made no session") }
                 .onFailure { onFailed(it.message ?: "could not start the run") }
         }

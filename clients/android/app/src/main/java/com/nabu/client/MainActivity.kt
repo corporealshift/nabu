@@ -226,8 +226,8 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean, opening: String?, on
         // steps appear. Cancel goes back to the picker where it was.
         is Screen.Brief -> BriefScreen(
             workspace = s.workspace,
-            onStart = { brief, onFailed ->
-                vm.createRun(s.workspace, brief, onCreated = { id -> screen = Screen.Transcript(id) }, onFailed = onFailed)
+            onStart = { brief, goal, onFailed ->
+                vm.createRun(s.workspace, brief, onCreated = { id -> screen = Screen.Transcript(id) }, onFailed = onFailed, goal = goal)
             },
             onBack = { screen = Screen.Browse },
         )
