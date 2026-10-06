@@ -1,4 +1,6 @@
 local.properties
+# Per developer: the Firebase project for phone notifications.
+app/google-services.json
 .gradle/
 build/
 .kotlin/

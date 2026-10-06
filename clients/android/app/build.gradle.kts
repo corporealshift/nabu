@@ -6,6 +6,13 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// Phone notifications need a Firebase project, whose google-services.json is
+// per developer and not in git. Without it the app builds and runs, and is
+// never pushed to (docs/specs/2026-10-06-phone-notifications-design.md).
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.nabu.client"
     compileSdk = 35
@@ -58,6 +65,9 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     implementation("androidx.room:room-runtime:2.6.1")

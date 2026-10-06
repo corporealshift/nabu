@@ -217,6 +217,10 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         // Anything composed offline goes as soon as there is a connection.
         repo.flushOutbox(c)
 
+        // Every connect registers, so a rotated token or a reinstalled app
+        // reaches the daemon without anything remembering to.
+        launch { registerForPushes(c) }
+
         for (summary in listed) {
             runCatching { repo.sync(c, summary.sessionId) }
         }
@@ -573,6 +577,17 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { repo.startGoal(c, sessionId, text, goalLabels(labels)) }
                 .onSuccess { _error.value = null }
                 .onFailure { _error.value = it.message ?: "could not start the goal" }
+        }
+    }
+
+    /** Asks the daemon to notify this phone, when the build can be pushed to. */
+    private suspend fun registerForPushes(c: DaemonClient) {
+        val token = com.nabu.client.notify.pushToken(getApplication()) ?: return
+        runCatching {
+            c.callOrThrow("nabu.device.register", buildJsonObject {
+                put("token", token)
+                put("name", android.os.Build.MODEL)
+            })
         }
     }
 
