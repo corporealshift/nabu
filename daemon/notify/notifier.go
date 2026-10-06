@@ -163,7 +163,9 @@ func (n *Notifier) decide(it item) []map[string]string {
 		switch {
 		case d.To == protocol.StateBlocked || d.To == protocol.StateError || d.To == protocol.StatePaused:
 			return []map[string]string{n.payload(KindStopped, it.sessionID)}
-		case (d.To == protocol.StateIdle && d.Reason == "turn_complete") || d.To == protocol.StateCompleted:
+		// Only a turn that ended by itself. Completed is always a stop someone
+		// asked for, and they know.
+		case d.To == protocol.StateIdle && d.Reason == "turn_complete":
 			// A turn whose start was missed (a daemon restart) counts as long.
 			if known && e.Timestamp.Sub(start) < n.rules.DoneAfter {
 				return nil

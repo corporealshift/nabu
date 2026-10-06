@@ -30,7 +30,7 @@ question, which waits for a person wherever it is asked.
 | `resolved` | that request is answered, or times out | the question's notification goes away |
 | `label` | a session with no parent gains a label listed in `notify.labels`, by default `run:done`, `run:failed`, `goal:done` and `goal:blocked` | "Goal blocked: <title>" |
 | `stopped` | a session with no parent goes from `running` to `blocked`, `error` or `paused` | "<project> stopped: error" |
-| `done` | a session with no parent goes from `running` to `idle` with reason `turn_complete`, or to `completed`, after a turn of at least `notify.done_after_seconds` (default 60) | "<project> finished: 5/6 tasks" |
+| `done` | a session with no parent goes from `running` to `idle` with reason `turn_complete`, after a turn of at least `notify.done_after_seconds` (default 60). Not `completed`, which is always a stop someone asked for (amended 2026-10-06, after the first live test buzzed for one). | "<project> finished: 5/6 tasks" |
 
 The answers to the three questions PR 113 asked:
 - "Stops early" means `blocked`, `error` or `paused`.

@@ -18,7 +18,11 @@ import com.nabu.client.data.MirrorDb
 import com.nabu.client.data.SessionRepository
 import com.nabu.client.ui.SessionCard
 import com.nabu.client.ui.projectName
+import com.nabu.client.net.DaemonClient
+import com.nabu.client.settings.SettingsStore
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.tasks.await
 
 /** The extra a tapped notification opens the app with. */
@@ -68,12 +72,42 @@ class PushService : FirebaseMessagingService() {
     }
 }
 
-/** The session's project and its title, from the mirror. */
+/**
+ * The session's project and its title, from the mirror. A session the phone
+ * has not seen, which is any made while the app was put away, is fetched from
+ * the daemon first: straight over the private network, so the words still
+ * never pass through Google. If that takes too long, the words are generic.
+ */
 private suspend fun describe(context: Context, sessionId: String): Pair<String, String> {
-    val repo = SessionRepository(MirrorDb.get(context))
-    val row = MirrorDb.get(context).sessions().get(sessionId) ?: return "" to ""
-    val card = SessionCard(row, repo.latestPrompt(sessionId), repo.latestOptions(sessionId))
-    return projectName(row.workspace) to card.title
+    val db = MirrorDb.get(context)
+    val repo = SessionRepository(db)
+    suspend fun read(): Pair<String, String>? {
+        val row = db.sessions().get(sessionId) ?: return null
+        val card = SessionCard(row, repo.latestPrompt(sessionId), repo.latestOptions(sessionId))
+        return if (card.title.isBlank()) null else projectName(row.workspace) to card.title
+    }
+    read()?.let { return it }
+    withTimeoutOrNull(FETCH_TIMEOUT_MS) { fetch(context, repo, sessionId) }
+    return read() ?: (db.sessions().get(sessionId)?.let { projectName(it.workspace) to "" } ?: ("" to ""))
+}
+
+/** How long a notification waits on the daemon for its words. */
+private const val FETCH_TIMEOUT_MS = 6_000L
+
+/** Mirrors one session from the daemon, as the app does on connecting. */
+private suspend fun fetch(context: Context, repo: SessionRepository, sessionId: String) {
+    val s = SettingsStore(context).settings.first()
+    if (s.host.isBlank()) return
+    val c = DaemonClient(baseUrl = "http://${s.host}:${s.port}/", token = s.token)
+    try {
+        c.connect()
+        repo.recordSessions(repo.listSessions(c).filter { it.sessionId == sessionId })
+        repo.sync(c, sessionId)
+    } catch (_: Exception) {
+        // Unreachable, or refused: the generic words will do.
+    } finally {
+        runCatching { c.close() }
+    }
 }
 
 /** Makes the two channels; Android keeps the first creation's settings. */
