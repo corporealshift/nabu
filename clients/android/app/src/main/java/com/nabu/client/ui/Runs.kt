@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -135,17 +137,18 @@ fun parseGoal(text: String): String? {
 }
 
 /**
- * The brief for a run started from the list, in [workspace]. A screen rather
- * than a dialog: a brief runs to paragraphs, and the keyboard takes half of
- * whatever holds it. There is no conversation to write one from, so it is
- * required. [onStart] reports a failure through its callback, which puts the
- * reason here and lets the reader try again.
+ * The brief for a run or a goal started from the list, in [workspace]. A
+ * screen rather than a dialog: a brief runs to paragraphs, and the keyboard
+ * takes half of whatever holds it. There is no conversation to write one
+ * from, so it is required. [onStart] says whether it is a goal, and reports a
+ * failure through its callback, which puts the reason here and lets the reader
+ * try again.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BriefScreen(
     workspace: String,
-    onStart: (brief: String, onFailed: (String) -> Unit) -> Unit,
+    onStart: (brief: String, goal: Boolean, onFailed: (String) -> Unit) -> Unit,
     onBack: () -> Unit,
 ) {
     val c = NabuTheme.colors
@@ -162,7 +165,7 @@ fun BriefScreen(
                 ),
                 title = {
                     Text(
-                        "Run in ${projectName(workspace)}",
+                        "Run or goal in ${projectName(workspace)}",
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -172,23 +175,34 @@ fun BriefScreen(
             )
         },
         bottomBar = {
-            Box(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(12.dp)) {
-                Button(
-                    onClick = {
-                        starting = true
-                        error = null
-                        onStart(brief.trim()) { starting = false; error = it }
-                    },
+            Row(
+                Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                val start = { goal: Boolean ->
+                    starting = true
+                    error = null
+                    onStart(brief.trim(), goal) { starting = false; error = it }
+                }
+                OutlinedButton(
+                    onClick = { start(true) },
                     enabled = brief.isNotBlank() && !starting,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1f),
+                ) { Text("Start goal") }
+                Button(
+                    onClick = { start(false) },
+                    enabled = brief.isNotBlank() && !starting,
+                    modifier = Modifier.weight(1f),
                 ) { Text(if (starting) "Starting…" else "Start run") }
             }
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             Text(
-                "Say what to build or change, and what done looks like. The runner plans, works " +
-                    "and checks it in a worktree of its own, then opens a pull request.",
+                "Say what to build or change, and what done looks like. A run plans, works and " +
+                    "checks it in a worktree of its own, then opens a pull request. A goal is " +
+                    "broader: the runner breaks it into runs, merges each into one branch, and " +
+                    "checks the whole until it is met, then opens one pull request.",
                 style = MaterialTheme.typography.bodySmall,
                 color = c.muted,
             )
@@ -203,7 +217,7 @@ fun BriefScreen(
             OutlinedTextField(
                 value = brief,
                 onValueChange = { brief = it },
-                label = { Text("Brief") },
+                label = { Text("Brief or goal") },
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp),
             )
         }

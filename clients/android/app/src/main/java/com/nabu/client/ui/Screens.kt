@@ -173,7 +173,7 @@ fun SessionListScreen(
                     onClick = onNewRun,
                     containerColor = NabuTheme.colors.surface,
                     contentColor = NabuTheme.colors.accent,
-                ) { Text("New run") }
+                ) { Text("Run or goal") }
                 ExtendedFloatingActionButton(
                     onClick = onNewSession,
                     containerColor = NabuTheme.colors.accent,
@@ -943,7 +943,7 @@ fun BrowseScreen(
                     Button(
                         onClick = { onStartHere(state.at) },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (state.purpose == Purpose.Run) "Run here" else "Start here") }
+                    ) { Text(if (state.purpose == Purpose.Run) "Work here" else "Start here") }
                 }
             } else if (state.needsRepo) {
                 // Said rather than a button that is simply missing, which
