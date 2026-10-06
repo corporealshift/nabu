@@ -164,29 +164,7 @@ func runPath(root, home string) string { return filepath.Join(RunsDir(root), hom
 
 // Save writes a run's state through a temp file and a rename.
 func (r Run) Save(root string) error {
-	b, err := json.MarshalIndent(r, "", "  ")
-	if err != nil {
-		return err
-	}
-	dir := RunsDir(root)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("runs: %w", err)
-	}
-	tmp, err := os.CreateTemp(dir, r.Home+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("runs: %w", err)
-	}
-	_, werr := tmp.Write(append(b, '\n'))
-	cerr := tmp.Close()
-	if werr != nil || cerr != nil {
-		os.Remove(tmp.Name())
-		return fmt.Errorf("runs: writing %s: %w", r.Home, errors.Join(werr, cerr))
-	}
-	if err := os.Rename(tmp.Name(), runPath(root, r.Home)); err != nil {
-		os.Remove(tmp.Name())
-		return fmt.Errorf("runs: %w", err)
-	}
-	return nil
+	return saveJSON(RunsDir(root), r.Home, r)
 }
 
 // Load reads one run; ok is false when there is none.
