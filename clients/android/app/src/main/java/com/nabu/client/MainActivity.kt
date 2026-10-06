@@ -99,6 +99,7 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
     val permission by vm.pendingPermission.collectAsState()
     val ask by vm.pendingAsk.collectAsState()
     val error by vm.error.collectAsState()
+    val expanded by vm.expanded.collectAsState()
     val compacting by vm.compacting.collectAsState()
 
     // With nowhere to connect to, the first screen is the one that fixes that.
@@ -187,6 +188,8 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
             onNewRun = { vm.startBrowsing(Purpose.Run); screen = Screen.Browse },
             onArchive = { vm.archiveSession(it) },
             onArchived = { vm.loadArchived(); screen = Screen.Archived },
+            expanded = expanded,
+            onToggle = { vm.toggleExpanded(it) },
         )
 
         is Screen.Archived -> {

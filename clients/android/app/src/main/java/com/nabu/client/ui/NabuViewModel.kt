@@ -66,6 +66,14 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
     private val _connection = MutableStateFlow(Connection.Offline)
     val connection: StateFlow<Connection> = _connection.asStateFlow()
 
+    /** The sessions opened in the list to show what is under them. Kept for the app's life, not saved (issue 135). */
+    private val _expanded = MutableStateFlow<Set<String>>(emptySet())
+    val expanded: StateFlow<Set<String>> = _expanded.asStateFlow()
+
+    fun toggleExpanded(id: String) {
+        _expanded.value = if (id in _expanded.value) _expanded.value - id else _expanded.value + id
+    }
+
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 

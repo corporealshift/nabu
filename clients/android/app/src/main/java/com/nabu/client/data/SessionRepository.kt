@@ -298,6 +298,9 @@ class SessionRepository(
             put("session_id", sessionId)
         })
         db.sessions().delete(sessionId)
+        // Everything under it went too, on the daemon (issue 135); the
+        // refresh drops those from the mirror.
+        refreshSessions(client)
     }
 
     /** Brings an archived session back. The next sync mirrors it again. */
