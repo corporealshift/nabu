@@ -215,7 +215,18 @@ class SessionRepository(
      * run:requested. Never the goal: setting one starts the session working on
      * it, in the owner's checkout, beside the run.
      */
-    suspend fun startRun(client: DaemonClient, sessionId: String, brief: String, labels: List<String>) {
+    suspend fun startRun(client: DaemonClient, sessionId: String, brief: String, labels: List<String>) =
+        handOver(client, sessionId, brief, labels)
+
+    /**
+     * Hands a session to the runner as a goal, the same way: the text as its
+     * description, then its labels with goal:requested
+     * (docs/specs/2026-10-06-goals-design.md).
+     */
+    suspend fun startGoal(client: DaemonClient, sessionId: String, text: String, labels: List<String>) =
+        handOver(client, sessionId, text, labels)
+
+    private suspend fun handOver(client: DaemonClient, sessionId: String, brief: String, labels: List<String>) {
         if (brief.isNotBlank()) {
             client.callOrThrow("nabu.session.set_option", buildJsonObject {
                 put("session_id", sessionId)

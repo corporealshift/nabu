@@ -2,6 +2,7 @@ package com.nabu.client.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -57,22 +58,55 @@ fun runStatus(labels: List<String>): String? {
     return step?.let { if (attempt != null) "run: $it ($attempt)" else "run: $it" }
 }
 
-/** A card in the list, and whether it is drawn under its run's home. */
-data class Placed(val card: SessionCard, val child: Boolean)
+/** Starts every label the runner reads or sets on a goal's home (docs/specs/2026-10-06-goals-design.md). */
+const val GOAL_PREFIX = "goal:"
 
 /**
- * The list with each step session straight after its home, in the daemon's
- * order otherwise. A step whose home is not listed (archived, say) stands on
- * its own.
+ * A session's labels once it is handed to the runner as a goal: any goal
+ * label it had is replaced by goal:requested, and the rest are kept. On a
+ * blocked goal that is also how it is resumed.
+ */
+fun goalLabels(current: List<String>): List<String> =
+    current.filterNot { it.startsWith(GOAL_PREFIX) } + "${GOAL_PREFIX}requested"
+
+/** How far a goal is, from its home's labels, as "goal: runs, round 2"; null for a session that is not a goal's home. */
+fun goalStatus(labels: List<String>): String? {
+    var step: String? = null
+    var round: String? = null
+    for (l in labels) {
+        if (!l.startsWith(GOAL_PREFIX)) continue
+        val rest = l.removePrefix(GOAL_PREFIX)
+        if (rest.startsWith("round:")) round = rest.removePrefix("round:") else step = rest
+    }
+    return step?.let { if (round != null) "goal: $it, round $round" else "goal: $it" }
+}
+
+/**
+ * A card in the list, and how many of its ancestors are listed above it: a
+ * run's steps are one deep, a goal's runs one deep and their steps two.
+ */
+data class Placed(val card: SessionCard, val depth: Int) {
+    val child: Boolean get() = depth > 0
+}
+
+/** How far the list is indented, whatever the parents say. */
+private const val MAX_DEPTH = 4
+
+/**
+ * The list with each session straight after its parent, and its own children
+ * after it in turn, in the daemon's order otherwise. A session whose parent
+ * is not listed (archived, say) stands on its own.
  */
 fun groupByParent(cards: List<SessionCard>): List<Placed> {
     val listed = cards.map { it.row.id }.toSet()
     val children = cards.filter { it.options.parent in listed }.groupBy { it.options.parent }
     val out = ArrayList<Placed>(cards.size)
+    fun add(card: SessionCard, depth: Int) {
+        out += Placed(card, minOf(depth, MAX_DEPTH))
+        children[card.row.id]?.forEach { add(it, depth + 1) }
+    }
     for (card in cards) {
-        if (card.options.parent in listed) continue
-        out += Placed(card, child = false)
-        children[card.row.id]?.forEach { out += Placed(it, child = true) }
+        if (card.options.parent !in listed) add(card, 0)
     }
     return out
 }
@@ -86,6 +120,17 @@ fun parseRun(text: String): String? {
     val t = text.trim()
     if (t == "/run") return ""
     if (t.startsWith("/run ") || t.startsWith("/run\n")) return t.removePrefix("/run").trim()
+    return null
+}
+
+/**
+ * The text if [text] is a /goal command: "" for a plain /goal, which resumes a
+ * blocked goal. Null for anything else.
+ */
+fun parseGoal(text: String): String? {
+    val t = text.trim()
+    if (t == "/goal") return ""
+    if (t.startsWith("/goal ") || t.startsWith("/goal\n")) return t.removePrefix("/goal").trim()
     return null
 }
 
@@ -165,34 +210,54 @@ fun BriefScreen(
     }
 }
 
-/** Asks for a run's brief before handing the session to the runner. */
+/**
+ * Asks what to hand the runner: a run's brief, or a goal. [goalText] is the
+ * goal of a session that already is a goal's home, offered for editing: asking
+ * again resumes a blocked goal, and the edit is the owner's guidance.
+ */
 @Composable
-fun RunDialog(onRun: (String) -> Unit, onDismiss: () -> Unit) {
+fun RunDialog(goalText: String?, onRun: (String) -> Unit, onGoal: (String) -> Unit, onDismiss: () -> Unit) {
     val c = NabuTheme.colors
-    var brief by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf(goalText.orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = c.surface,
         titleContentColor = c.ink,
         textContentColor = c.muted,
-        title = { Text("Hand this session to the runner?") },
+        title = { Text(if (goalText != null) "Resume this goal?" else "Hand this session to the runner?") },
         text = {
             Column {
                 Text(
-                    "The runner plans, works and checks in a worktree of its own, then opens a " +
-                        "pull request. Its steps appear under this session. Leave the brief " +
-                        "empty to have it written from this conversation.",
+                    if (goalText != null) {
+                        "The runner takes the goal up again where it stopped. Edit it to tell the " +
+                            "runner what to do differently."
+                    } else {
+                        "A run plans, works and checks one brief in a worktree of its own, then opens a " +
+                            "pull request; leave its brief empty to have it written from this " +
+                            "conversation. A goal is broader: the runner breaks it into runs, merges " +
+                            "each into one branch, and checks the whole until it is met. Either way, " +
+                            "the work appears under this session."
+                    },
                 )
                 OutlinedTextField(
-                    value = brief,
-                    onValueChange = { brief = it },
-                    label = { Text("Brief") },
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text(if (goalText != null) "Goal" else "Brief or goal") },
                     minLines = 3,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { onRun(brief.trim()) }) { Text("Run") } },
+        confirmButton = {
+            Row {
+                TextButton(onClick = { onGoal(text.trim()) }, enabled = text.isNotBlank()) {
+                    Text(if (goalText != null) "Resume goal" else "Goal")
+                }
+                if (goalText == null) {
+                    TextButton(onClick = { onRun(text.trim()) }) { Text("Run") }
+                }
+            }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

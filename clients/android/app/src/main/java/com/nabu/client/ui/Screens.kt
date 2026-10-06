@@ -259,7 +259,7 @@ fun SessionListScreen(
                     colors = CardDefaults.cardColors(containerColor = NabuTheme.colors.surface),
                     // Held to archive (issue 56): the list is where sessions pile up.
                     // A run's steps sit under its home, indented.
-                    modifier = Modifier.fillMaxWidth().padding(start = if (placed.child) 20.dp else 0.dp).combinedClickable(
+                    modifier = Modifier.fillMaxWidth().padding(start = (20 * placed.depth).dp).combinedClickable(
                         onClick = { onOpen(s.id) },
                         onLongClick = { archiving = card },
                         onLongClickLabel = "Archive",
@@ -285,7 +285,7 @@ fun SessionListScreen(
                                 style = MaterialTheme.typography.labelMedium,
                                 color = NabuTheme.colors.muted,
                             )
-                            runStatus(card.options.labels)?.let {
+                            (runStatus(card.options.labels) ?: goalStatus(card.options.labels))?.let {
                                 Text(
                                     it,
                                     style = MaterialTheme.typography.labelMedium,
@@ -339,13 +339,19 @@ fun TranscriptScreen(
     onDiscardBlocked: (String) -> Unit,
     onBack: () -> Unit,
     onRun: (String) -> Unit = {},
+    onGoal: (String) -> Unit = {},
     /** What to call this session's run home, when it is a step of one. */
     parentTitle: String? = null,
     onOpenParent: () -> Unit = {},
 ) {
     var running by remember { mutableStateOf(false) }
     if (running) {
-        RunDialog(onRun = { onRun(it); running = false }, onDismiss = { running = false })
+        RunDialog(
+            goalText = view.options.description.takeIf { goalStatus(view.options.labels) != null },
+            onRun = { onRun(it); running = false },
+            onGoal = { onGoal(it); running = false },
+            onDismiss = { running = false },
+        )
     }
     val lines = remember(view, synced) { withGap(view.lines, synced, view.fetched) }
     val listState = rememberLazyListState()
@@ -396,9 +402,11 @@ fun TranscriptScreen(
             // The daemon's refusals land here: compacting a running session is
             // turned down, and a reason nobody sees is not a reason.
             error?.let { RefusalBanner(it) }
-            RunBar(runStatus(view.options.labels), parentTitle, onOpenParent)
-            // A run's home is never prompted, so its brief is what it says.
-            if (view.options.description.isNotBlank() && view.options.parent.isBlank()) {
+            val runOf = runStatus(view.options.labels)
+            RunBar(runOf ?: goalStatus(view.options.labels), parentTitle, runOf != null, onOpenParent)
+            // A run's or a goal's home is never prompted, so its brief is what
+            // it says. A goal's runs have a parent and are homes all the same.
+            if (view.options.description.isNotBlank() && (view.options.parent.isBlank() || runOf != null)) {
                 Text(
                     view.options.description.trim(),
                     style = MaterialTheme.typography.bodySmall,
@@ -1105,7 +1113,7 @@ private fun NewFolderDialog(
  * step, the home it belongs to, which a tap opens.
  */
 @Composable
-private fun RunBar(status: String?, parentTitle: String?, onOpenParent: () -> Unit) {
+private fun RunBar(status: String?, parentTitle: String?, isRun: Boolean, onOpenParent: () -> Unit) {
     if (status == null && parentTitle == null) return
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
@@ -1118,7 +1126,7 @@ private fun RunBar(status: String?, parentTitle: String?, onOpenParent: () -> Un
         parentTitle?.let {
             TextButton(onClick = onOpenParent) {
                 Text(
-                    "Step of: $it",
+                    if (isRun) "Run of: $it" else "Step of: $it",
                     style = MaterialTheme.typography.labelMedium,
                     color = NabuTheme.colors.muted,
                     maxLines = 1,

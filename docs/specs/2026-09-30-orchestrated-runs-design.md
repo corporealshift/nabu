@@ -84,6 +84,7 @@ so they belong in the PR.
 | `final-review` | Claude | Review the finished work against the brief, once. Blockers become new tasks, then back to `work`; anything else goes in the PR body | — |
 | `pr` | runner | Push the branch; `gh pr create` with the `nabu` label | — |
 | `ci` | runner, model | Part 3 | — |
+| `merge` | runner | Only for a goal's run (amended 2026-10-06, `2026-10-06-goals-design.md`): `gh pr merge --squash` into the goal's branch, which is the run's base. Such a run's PR carries no label. | — |
 
 The run then ends `done`, or `failed` at the step that ran out of attempts.
 

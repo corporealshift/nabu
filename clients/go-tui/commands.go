@@ -17,9 +17,9 @@ type action struct {
 	approve bool
 	reason  string
 
-	// text carries a prompt or a goal condition
+	// text carries a prompt or a brief
 	text string
-	// labels are the whole new label list a /run sets.
+	// labels are the whole new label list a /run or /goal sets.
 	labels []string
 }
 
@@ -32,8 +32,6 @@ const (
 	actInterrupt
 	actStop
 	actCompact
-	actSetGoal
-	actClearGoal
 	actAttach
 	actListSessions
 	actListArchived
@@ -41,6 +39,7 @@ const (
 	actRestore
 	actStats
 	actRun
+	actGoal
 )
 
 // commandResult is what a line of composer input means: something to do, or
@@ -57,9 +56,8 @@ type commandResult struct {
 
 // commands is every / command, for /help.
 var commands = []struct{ name, what string }{
-	{"/goal <text>", "set a goal"},
-	{"/goal", "clear it"},
 	{"/run [text]", "hand this session to the runner, the text as its brief"},
+	{"/goal [text]", "hand the runner a broad goal to work as many runs; bare /goal resumes a blocked one"},
 	{"/compact", "summarise the history now"},
 	{"/stop", "end the session"},
 	{"/archive", "put this session away"},
@@ -102,11 +100,6 @@ func parseCommand(line string) commandResult {
 	rest = strings.TrimSpace(rest)
 
 	switch strings.ToLower(name) {
-	case "/goal":
-		if rest == "" {
-			return commandResult{act: &action{kind: actClearGoal}}
-		}
-		return commandResult{act: &action{kind: actSetGoal, text: rest}}
 	case "/stop":
 		return commandResult{act: &action{kind: actStop}}
 	case "/compact":
@@ -124,6 +117,8 @@ func parseCommand(line string) commandResult {
 		return commandResult{act: &action{kind: actStats}}
 	case "/run":
 		return commandResult{act: &action{kind: actRun, text: rest}}
+	case "/goal":
+		return commandResult{act: &action{kind: actGoal, text: rest}}
 	case "/help":
 		return commandResult{note: helpText}
 	default:
@@ -146,6 +141,47 @@ func runLabels(current []string) []string {
 		}
 	}
 	return append(out, runPrefix+"requested")
+}
+
+// goalPrefix starts every label the runner reads or sets on a goal's home
+// (docs/specs/2026-10-06-goals-design.md).
+const goalPrefix = "goal:"
+
+// goalLabels is a session's labels once /goal hands it to the runner: every
+// goal:* label is replaced by goal:requested, which is also how a blocked
+// goal is resumed.
+func goalLabels(current []string) []string {
+	out := []string{}
+	for _, l := range current {
+		if !strings.HasPrefix(l, goalPrefix) {
+			out = append(out, l)
+		}
+	}
+	return append(out, goalPrefix+"requested")
+}
+
+// goalStatus is how far a goal is, from its home's labels, as "goal: runs,
+// round 2". Empty for a session that is not a goal's home.
+func goalStatus(labels []string) string {
+	var step, round string
+	for _, l := range labels {
+		rest, ok := strings.CutPrefix(l, goalPrefix)
+		if !ok {
+			continue
+		}
+		if r, ok := strings.CutPrefix(rest, "round:"); ok {
+			round = r
+		} else {
+			step = rest
+		}
+	}
+	if step == "" {
+		return ""
+	}
+	if round != "" {
+		return fmt.Sprintf("goal: %s, round %s", step, round)
+	}
+	return "goal: " + step
 }
 
 // runStatus is how far a run is, read from its home's labels, as "run: fix

@@ -36,6 +36,9 @@ type Config struct {
 	// cap: caps of 50 and 100 failed a run whose sessions were still working.
 	PlanTurns int `json:"plan_turns"`
 	WorkTurns int `json:"work_turns"`
+	// GoalRounds is how many rounds of runs a goal gets before it stops and
+	// waits for Kyle. Default 5.
+	GoalRounds int `json:"goal_rounds"`
 }
 
 // ConfigPath is where LoadConfig looks.
@@ -79,5 +82,8 @@ func (c *Config) withDefaults() {
 	}
 	if c.WorkTurns < 0 {
 		c.WorkTurns = 0
+	}
+	if c.GoalRounds < 1 {
+		c.GoalRounds = 5
 	}
 }

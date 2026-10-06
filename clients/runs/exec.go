@@ -118,11 +118,12 @@ func (g GitCLI) Diffed(ctx context.Context, dir, base string) ([]string, error) 
 type GHCLI struct{ Run github.Runner }
 
 func (g GHCLI) CreatePR(ctx context.Context, dir, base, head, title, body, label string) (int, string, error) {
-	// The label may not exist yet in this repository; making it is harmless
-	// when it does, and gh says so, which is not a failure worth stopping on.
-	_, _ = g.Run(ctx, dir, nil, "gh", "label", "create", label, "--color", "5319e7", "--description", "nabu works on this")
-	out, err := g.Run(ctx, dir, []byte(body), "gh", "pr", "create",
-		"--base", base, "--head", head, "--title", title, "--body-file", "-", "--label", label)
+	args := []string{"pr", "create", "--base", base, "--head", head, "--title", title, "--body-file", "-"}
+	if label != "" {
+		g.ensureLabel(ctx, dir, label)
+		args = append(args, "--label", label)
+	}
+	out, err := g.Run(ctx, dir, []byte(body), "gh", args...)
 	if err != nil {
 		return 0, "", err
 	}
@@ -322,9 +323,23 @@ func (g GHCLI) OpenPRFor(ctx context.Context, dir, head string) (int, string, bo
 }
 
 func (g GHCLI) EditPR(ctx context.Context, dir string, n int, title, body, label string) error {
-	// As for a new PR, the label may not exist yet in this repository.
+	args := []string{"pr", "edit", strconv.Itoa(n), "--title", title, "--body-file", "-"}
+	if label != "" {
+		g.ensureLabel(ctx, dir, label)
+		args = append(args, "--add-label", label)
+	}
+	_, err := g.Run(ctx, dir, []byte(body), "gh", args...)
+	return err
+}
+
+// ensureLabel makes a label, which may not exist yet in this repository.
+// Making it is harmless when it does, and gh says so, which is not a failure
+// worth stopping on.
+func (g GHCLI) ensureLabel(ctx context.Context, dir, label string) {
 	_, _ = g.Run(ctx, dir, nil, "gh", "label", "create", label, "--color", "5319e7", "--description", "nabu works on this")
-	_, err := g.Run(ctx, dir, []byte(body), "gh", "pr", "edit", strconv.Itoa(n),
-		"--title", title, "--body-file", "-", "--add-label", label)
+}
+
+func (g GHCLI) MergePR(ctx context.Context, dir string, n int) error {
+	_, err := g.Run(ctx, dir, nil, "gh", "pr", "merge", strconv.Itoa(n), "--squash")
 	return err
 }

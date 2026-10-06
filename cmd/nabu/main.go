@@ -54,7 +54,6 @@ Interactive flags:
 
 Common flags:
   --json            emit one JSON object per line, flushed per event
-  --done-when TEXT  set the run goal (run only)
   --max-turns N     turn budget (run only; default 60)
   --root DIR        nabu root (default ~/.nabu, or $NABU_ROOT)
 

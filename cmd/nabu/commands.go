@@ -146,7 +146,6 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	root := rootFlag(fs)
 	asJSON := fs.Bool("json", false, "emit one JSON object per line")
-	doneWhen := fs.String("done-when", "", "goal condition, judged in a fresh context")
 	maxTurns := fs.Int("max-turns", config.RunDefaultMaxTurns, "turn budget; 0 is unlimited")
 	workspace := fs.String("workspace", "", "workspace path (default: the current directory)")
 	if err := fs.Parse(args); err != nil {
@@ -193,13 +192,6 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stderr, "nabu: session %s\n", created.SessionID)
 
-	if *doneWhen != "" {
-		if err := callInto(ctx, c, "nabu.session.set_goal",
-			map[string]any{"session_id": created.SessionID, "condition": *doneWhen}, nil); err != nil {
-			fmt.Fprintf(stderr, "nabu: %v\n", err)
-			return exitError
-		}
-	}
 	if _, err := c.Call(ctx, "nabu.session.subscribe",
 		map[string]any{"session_id": created.SessionID}); err != nil {
 		fmt.Fprintf(stderr, "nabu: %v\n", err)

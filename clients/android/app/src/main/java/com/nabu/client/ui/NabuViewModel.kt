@@ -47,7 +47,8 @@ data class SessionCard(
      * which is never asked anything, the first line of its brief.
      */
     val title: String
-        get() = prompt.ifBlank { options.description.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty() }
+        // A goal's runs have briefs that open "# Title"; the title is the words.
+        get() = prompt.ifBlank { options.description.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty().trimStart('#') }
             // One line of words: a step's prompt opens "Do task 2 of 4:" and a
             // blank line, which left the card saying nothing but that.
             .replace(Regex("\\s+"), " ").trim()
@@ -555,6 +556,23 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { repo.startRun(c, sessionId, brief, runLabels(labels)) }
                 .onSuccess { _error.value = null }
                 .onFailure { _error.value = it.message ?: "could not start the run" }
+        }
+    }
+
+    /**
+     * Hands a session to the runner as a goal, or resumes the blocked goal it
+     * is. A goal needs its text; a session that is no goal yet gets none.
+     */
+    fun startGoal(sessionId: String, text: String, labels: List<String>) {
+        viewModelScope.launch {
+            if (text.isBlank() && goalStatus(labels) == null) {
+                _error.value = "a goal needs its text: /goal <what to get done>"
+                return@launch
+            }
+            val c = client ?: run { _error.value = "not connected: a goal is started on the daemon"; return@launch }
+            runCatching { repo.startGoal(c, sessionId, text, goalLabels(labels)) }
+                .onSuccess { _error.value = null }
+                .onFailure { _error.value = it.message ?: "could not start the goal" }
         }
     }
 

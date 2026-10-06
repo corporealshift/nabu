@@ -261,12 +261,6 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 			}
 			p.Send(done)
 		}()
-	case actSetGoal:
-		_, err = c.Call(ctx, "nabu.session.set_goal",
-			map[string]any{"session_id": a.sessionID, "condition": a.text})
-	case actClearGoal:
-		_, err = c.Call(ctx, "nabu.session.clear_goal",
-			map[string]any{"session_id": a.sessionID})
 	case actRun:
 		// The brief goes in first, so the runner never sees the request
 		// without it. It is the description, never the goal: a goal starts
@@ -281,6 +275,20 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 		}
 		if err == nil {
 			p.Send(noteMsg{text: "handed to the runner: this session is the run's home, and its steps are listed under it"})
+		}
+	case actGoal:
+		// As for /run: the text is the description, never a session goal,
+		// which would start this session working in the checkout.
+		if a.text != "" {
+			_, err = c.Call(ctx, "nabu.session.set_option",
+				map[string]any{"session_id": a.sessionID, "key": "description", "value": a.text})
+		}
+		if err == nil {
+			_, err = c.Call(ctx, "nabu.session.set_option",
+				map[string]any{"session_id": a.sessionID, "key": "labels", "value": a.labels})
+		}
+		if err == nil {
+			p.Send(noteMsg{text: "handed to the runner as a goal: its runs are listed under this session, and its roadmap is the task list"})
 		}
 	case actListSessions:
 		var sessions []goclient.SessionSummary

@@ -123,9 +123,16 @@ func Transition(r Run, o Outcome) Run {
 		return enter(r, StepPR, true)
 	case StepPR, StepPush:
 		return enter(r, StepCI, true)
+	case StepMerge:
+		return enter(r, StepDone, true)
 	case StepCI:
 		switch o.CI {
-		case CIPass, CIMerged:
+		case CIPass:
+			if r.Goal != "" {
+				return enter(r, StepMerge, true)
+			}
+			return enter(r, StepDone, true)
+		case CIMerged:
 			return enter(r, StepDone, true)
 		case CIClosed:
 			return fail(r, StepCI, "the PR was closed")

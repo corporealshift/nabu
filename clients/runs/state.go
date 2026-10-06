@@ -2,7 +2,10 @@
 // pull request through a fixed sequence of named steps, starting one short
 // session for each step that needs the model, doing the mechanical steps
 // itself, and asking Claude at three gates
-// (docs/specs/2026-09-30-orchestrated-runs-design.md).
+// (docs/specs/2026-09-30-orchestrated-runs-design.md). It also drives goals:
+// a broad goal Claude breaks into briefs, worked as runs one after another on
+// a goal branch, and checked until it is met (goal*.go,
+// docs/specs/2026-10-06-goals-design.md).
 //
 // The order is this package's code, never the model's choice. The local model
 // does badly at long tasks and at following a workflow it was only told
@@ -43,6 +46,7 @@ const (
 	StepCI           Step = "ci"
 	StepCIFix        Step = "ci-fix"
 	StepPush         Step = "push"
+	StepMerge        Step = "merge"
 	StepDone         Step = "done"
 	StepFailed       Step = "failed"
 )
@@ -79,6 +83,11 @@ type Run struct {
 	Branch    string `json:"branch"`
 	Base      string `json:"base,omitempty"`
 	Worktree  string `json:"worktree"`
+	// Goal is the home of the goal this run is one brief of, if any. Such a
+	// run starts from the goal's branch, which Base names, opens its PR
+	// against it, and is merged into it once green
+	// (docs/specs/2026-10-06-goals-design.md).
+	Goal string `json:"goal,omitempty"`
 	// Brief is the text the run was given, when it was given one; empty
 	// means the brief step writes it from the home's conversation.
 	Brief string `json:"brief,omitempty"`
@@ -158,29 +167,7 @@ func runPath(root, home string) string { return filepath.Join(RunsDir(root), hom
 
 // Save writes a run's state through a temp file and a rename.
 func (r Run) Save(root string) error {
-	b, err := json.MarshalIndent(r, "", "  ")
-	if err != nil {
-		return err
-	}
-	dir := RunsDir(root)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("runs: %w", err)
-	}
-	tmp, err := os.CreateTemp(dir, r.Home+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("runs: %w", err)
-	}
-	_, werr := tmp.Write(append(b, '\n'))
-	cerr := tmp.Close()
-	if werr != nil || cerr != nil {
-		os.Remove(tmp.Name())
-		return fmt.Errorf("runs: writing %s: %w", r.Home, errors.Join(werr, cerr))
-	}
-	if err := os.Rename(tmp.Name(), runPath(root, r.Home)); err != nil {
-		os.Remove(tmp.Name())
-		return fmt.Errorf("runs: %w", err)
-	}
-	return nil
+	return saveJSON(RunsDir(root), r.Home, r)
 }
 
 // Load reads one run; ok is false when there is none.

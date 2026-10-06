@@ -73,6 +73,15 @@ func TestTransition(t *testing.T) {
 		{name: "pr goes to ci", from: at(StepPR), o: ok, want: StepCI},
 		{name: "ci passes", from: at(StepCI), o: Outcome{OK: true, CI: CIPass}, want: StepDone},
 		{name: "ci merged", from: at(StepCI), o: Outcome{OK: true, CI: CIMerged}, want: StepDone},
+		{name: "a goal's run passes ci and is merged", from: Run{Step: StepCI, Goal: "G"}, o: Outcome{OK: true, CI: CIPass}, want: StepMerge},
+		{name: "a goal's run found merged is done", from: Run{Step: StepCI, Goal: "G"}, o: Outcome{OK: true, CI: CIMerged}, want: StepDone},
+		{name: "merge", from: Run{Step: StepMerge, Goal: "G"}, o: ok, want: StepDone},
+		{name: "merge fails at the cap", from: Run{Step: StepMerge, Goal: "G", Attempt: otherTries - 1}, o: failed, want: StepFailed,
+			check: func(t *testing.T, r Run) {
+				if r.FailedAt != StepMerge {
+					t.Errorf("failed at %q", r.FailedAt)
+				}
+			}},
 		{name: "ci closed", from: at(StepCI), o: Outcome{OK: true, CI: CIClosed}, want: StepFailed,
 			check: func(t *testing.T, r Run) {
 				if r.FailedAt != StepCI {

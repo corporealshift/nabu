@@ -341,10 +341,11 @@ When the agent asks you something, the question takes the screen: a number picks
 the offered answers, or type your own and press enter. Everything else you type goes
 into the answer, so `q` does not quit while one is on screen.
 
-In the composer, a line starting with `/` is a command rather than a prompt: `/goal
-<text>` sets the run goal, `/goal` on its own clears it, `/compact` summarises the
-history now instead of waiting for the automatic pass, `/stop` ends the session,
-`/sessions` switches, `/help` lists them.
+In the composer, a line starting with `/` is a command rather than a prompt: `/run
+[text]` hands the session to the runner, `/goal [text]` hands it a broad goal that the
+runner breaks into runs and checks until it is met, `/compact` summarises the history now instead
+of waiting for the automatic pass, `/stop` ends the session, `/sessions` switches,
+`/help` lists them.
 
 `/compact` is refused while a turn is running — compaction rewrites what the next
 request is built from, so interrupt with `ctrl+x` first.
@@ -361,12 +362,6 @@ nabu run "add a health endpoint and a test for it"
 Runs to completion, prints a report, and exits with a status that says what happened:
 0 completed, 1 blocked, 2 paused, 3 error. Good for scripting, and for handing work to
 nabu from another agent.
-
-Add a goal and it is judged in a fresh context before the run is allowed to finish:
-
-```bash
-nabu run --done-when "the new endpoint has a passing test" "add a health endpoint"
-```
 
 ### The rest
 
@@ -516,8 +511,9 @@ ordinary session, when the agent finishes a turn that changed files, nabu remind
 once: what is uncommitted or unpushed, whether the branch has a pull request, which
 tasks are still open, and what the gate said. It asks the agent to commit and open a
 PR if the work is finished, or to say what is left if it is not, and then lets it stop.
-With a goal (`nabu run --done-when`), nobody is there to say "carry on", so the agent
-cannot finish while the command fails, the tree is dirty, or tasks are open.
+In a session with a goal, which the runner gives each of its work sessions, nobody is
+there to say "carry on", so the agent cannot finish while the command fails, the tree
+is dirty, or tasks are open.
 
 A gate for one repository goes under `commands`, keyed by its path. It replaces
 `command` there, and an empty string turns the gate off for that repository:

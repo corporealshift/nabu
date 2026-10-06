@@ -216,3 +216,31 @@ func TestOpenPRForAndEditPR(t *testing.T) {
 		t.Errorf("edit = %+v", c)
 	}
 }
+
+// A goal's runs open their PRs with no label, and the runner merges them.
+func TestNoLabelAndMerge(t *testing.T) {
+	ctx := context.Background()
+	run, calls := recorder("https://github.com/kyle/bw/pull/42\n")
+	if _, _, err := (GHCLI{run}).CreatePR(ctx, "C:/w", "nabu/goal-x", "nabu/x-1", "Add x", "the body", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(*calls) != 1 || !reflect.DeepEqual((*calls)[0].args, []string{"gh", "pr", "create", "--base", "nabu/goal-x", "--head", "nabu/x-1", "--title", "Add x", "--body-file", "-"}) {
+		t.Errorf("create with no label = %q", *calls)
+	}
+
+	run, calls = recorder("")
+	if err := (GHCLI{run}).EditPR(ctx, "C:/w", 5, "Add x", "the body", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(*calls) != 1 || !reflect.DeepEqual((*calls)[0].args, []string{"gh", "pr", "edit", "5", "--title", "Add x", "--body-file", "-"}) {
+		t.Errorf("edit with no label = %q", *calls)
+	}
+
+	run, calls = recorder("")
+	if err := (GHCLI{run}).MergePR(ctx, "C:/w", 5); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual((*calls)[0].args, []string{"gh", "pr", "merge", "5", "--squash"}) || (*calls)[0].dir != "C:/w" {
+		t.Errorf("merge = %+v", (*calls)[0])
+	}
+}

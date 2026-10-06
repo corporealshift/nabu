@@ -23,14 +23,14 @@ const NoPushLabel = "guard:no-push"
 // Client is the Daemon over a goclient connection.
 type Client struct{ C *goclient.Client }
 
-func (c Client) Requested(ctx context.Context) ([]Home, error) {
+func (c Client) Requested(ctx context.Context, label string) ([]Home, error) {
 	list, err := c.C.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var out []Home
 	for _, s := range list {
-		if slices.Contains(s.Labels, LabelRequested) {
+		if slices.Contains(s.Labels, label) {
 			out = append(out, Home{ID: s.SessionID, Workspace: s.Workspace, Labels: s.Labels, LastPrompt: s.LastPrompt})
 		}
 	}
@@ -107,6 +107,22 @@ func (c Client) Create(ctx context.Context, workspace, parent string, maxTurns i
 		"budget": map[string]any{"max_turns": maxTurns, "source": "client"},
 	}, &out)
 	return out.SessionID, err
+}
+
+func (c Client) CreateHome(ctx context.Context, workspace, parent, description string) (string, error) {
+	var out struct {
+		SessionID string `json:"session_id"`
+	}
+	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
+		"workspace": workspace,
+		// Never prompted, so it never runs; the label is there in case.
+		"options": map[string]any{"parent": parent, "description": description, "labels": []string{NoPushLabel}},
+	}, &out)
+	return out.SessionID, err
+}
+
+func (c Client) UpdateTasks(ctx context.Context, id string, tasks []protocol.Task) error {
+	return c.C.CallInto(ctx, "nabu.session.update_tasks", map[string]any{"session_id": id, "tasks": tasks}, nil)
 }
 
 // SendPrompt sends a message with a client_id made from its text, so sending
