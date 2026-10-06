@@ -863,9 +863,51 @@ func (m *Manager) dataDir(name string) (string, error) {
 // ---------------------------------------------------------------- archiving
 
 // Archive puts a session away (issue 56): it stops being listed, loaded at
-// start, or mirrored, and its log is kept whole. Refused while it runs, since
-// archiving closes the log under a turn still writing to it.
+// start, or mirrored, and its log is kept whole. Every session descended from
+// it goes too, so a run or a goal is put away as one thing (issue 135). Refused
+// while any of them runs, since archiving closes the log under a turn still
+// writing to it.
 func (m *Manager) Archive(ctx context.Context, id, why string) error {
+	if _, err := m.handle(id); err != nil {
+		return err
+	}
+	sums, err := m.deps.Store.List()
+	if err != nil {
+		return err
+	}
+	family := descendants(sums, id)
+	byID := map[string]session.Summary{}
+	for _, s := range sums {
+		byID[s.SessionID] = s
+	}
+	for _, d := range family {
+		if m.isRunning(d, byID[d].State) {
+			return protocol.NewRPCError(protocol.CodeInvalidTransition,
+				fmt.Sprintf("session %s, under this one, is running; interrupt or stop it before archiving", d))
+		}
+	}
+	for _, d := range family {
+		if err := m.archiveOne(d, archivedWith(id)+why); err != nil {
+			return err
+		}
+	}
+	return m.archiveOne(id, "archived: "+why)
+}
+
+// archivedWith starts the notice on a session archived because an ancestor
+// was. Restore looks for it, to bring back only what went together.
+func archivedWith(id string) string { return "archived with " + id + ": " }
+
+// isRunning reports whether a session has a turn going.
+func (m *Manager) isRunning(id string, state protocol.SessionState) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	rs := m.rt[id]
+	return (rs != nil && rs.running) || state == protocol.StateRunning
+}
+
+// archiveOne archives one session, recording why in its log first.
+func (m *Manager) archiveOne(id, notice string) error {
 	h, err := m.handle(id)
 	if err != nil {
 		return err
@@ -884,7 +926,7 @@ func (m *Manager) Archive(ctx context.Context, id, why string) error {
 	}
 	// Recorded before it moves, so the log says why it went.
 	if _, err := h.s.Append(protocol.EventNotice, protocol.NoticeData{
-		Source: "daemon", Level: "info", Message: "archived: " + why}); err != nil {
+		Source: "daemon", Level: "info", Message: notice}); err != nil {
 		m.mu.Unlock()
 		return err
 	}
@@ -894,8 +936,60 @@ func (m *Manager) Archive(ctx context.Context, id, why string) error {
 	return m.deps.Store.Archive(id)
 }
 
-// Restore brings an archived session back.
+// descendants is every listed session under id: its children, theirs, and so
+// on, nearest first.
+func descendants(sums []session.Summary, id string) []string {
+	children := map[string][]string{}
+	for _, s := range sums {
+		if s.Parent != "" {
+			children[s.Parent] = append(children[s.Parent], s.SessionID)
+		}
+	}
+	var out []string
+	seen := map[string]bool{id: true}
+	queue := []string{id}
+	for len(queue) > 0 {
+		next := queue[0]
+		queue = queue[1:]
+		for _, c := range children[next] {
+			if !seen[c] {
+				seen[c] = true
+				out = append(out, c)
+				queue = append(queue, c)
+			}
+		}
+	}
+	return out
+}
+
+// Restore brings an archived session back, and every session archived with
+// it. One archived on its own before stays archived.
 func (m *Manager) Restore(ctx context.Context, id string) error {
+	if err := m.restoreOne(id); err != nil {
+		return err
+	}
+	archived, err := m.deps.Store.ListArchived()
+	if err != nil {
+		m.log.Warn("restore: listing the archive", "error", err)
+	}
+	for _, s := range archived {
+		events, err := m.deps.Store.ArchivedEvents(s.SessionID)
+		if err != nil || len(events) == 0 {
+			continue
+		}
+		last := events[len(events)-1]
+		if last.Type != protocol.EventNotice ||
+			!strings.HasPrefix(protocol.MustData[protocol.NoticeData](last).Message, archivedWith(id)) {
+			continue
+		}
+		if err := m.restoreOne(s.SessionID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Manager) restoreOne(id string) error {
 	if err := m.deps.Store.Restore(id); err != nil {
 		return err
 	}
@@ -910,16 +1004,31 @@ func (m *Manager) Restore(ctx context.Context, id string) error {
 	return err
 }
 
-// ArchiveIdle archives every session not running whose last event is older
-// than after, and returns their ids.
+// ArchiveIdle archives every family that has sat untouched: a session with no
+// listed parent, with everything under it, when none of them is running and
+// the newest event among them is older than after. It returns the ids it was
+// asked to archive, which took their families with them.
 func (m *Manager) ArchiveIdle(ctx context.Context, now time.Time, after time.Duration) []string {
 	sums, err := m.deps.Store.List()
 	if err != nil {
 		m.log.Warn("archive sweep: listing sessions", "error", err)
 	}
+	listed := map[string]session.Summary{}
+	for _, s := range sums {
+		listed[s.SessionID] = s
+	}
 	var out []string
 	for _, s := range sums {
-		if s.State == protocol.StateRunning || now.Sub(s.UpdatedAt) < after {
+		if _, ok := listed[s.Parent]; s.Parent != "" && ok {
+			continue // it goes with its parent
+		}
+		idle := s.State != protocol.StateRunning && now.Sub(s.UpdatedAt) >= after
+		for _, d := range descendants(sums, s.SessionID) {
+			if listed[d].State == protocol.StateRunning || now.Sub(listed[d].UpdatedAt) < after {
+				idle = false
+			}
+		}
+		if !idle {
 			continue
 		}
 		days := int(after.Hours() / 24)
