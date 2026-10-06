@@ -342,7 +342,8 @@ the offered answers, or type your own and press enter. Everything else you type 
 into the answer, so `q` does not quit while one is on screen.
 
 In the composer, a line starting with `/` is a command rather than a prompt: `/run
-[text]` hands the session to the runner, `/compact` summarises the history now instead
+[text]` hands the session to the runner, `/goal [text]` hands it a broad goal that the
+runner breaks into runs and checks until it is met, `/compact` summarises the history now instead
 of waiting for the automatic pass, `/stop` ends the session, `/sessions` switches,
 `/help` lists them.
 

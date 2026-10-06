@@ -330,6 +330,12 @@ func (m model) submit() (tea.Model, tea.Cmd) {
 		m.note("› " + act.text)
 	case actRun:
 		act.labels = runLabels(m.labels)
+	case actGoal:
+		if act.text == "" && goalStatus(m.labels) == "" {
+			m.note("/goal needs the goal: /goal <what to get done>")
+			return m, nil
+		}
+		act.labels = goalLabels(m.labels)
 	case actCompact:
 		// It is a model call and the transcript does not move while it runs,
 		// so without this the client looks like it dropped the command. On a

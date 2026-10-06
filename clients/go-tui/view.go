@@ -139,16 +139,13 @@ func (m model) picker() string {
 	}
 	width := m.pickerWidth()
 	now := time.Now()
-	listed := map[string]bool{}
-	for _, s := range m.sessions {
-		listed[s.SessionID] = true
-	}
+	depth := depths(m.sessions)
 	for i := from; i < to; i++ {
 		if i > from {
 			b.WriteString("\n")
 		}
 		s := m.sessions[i]
-		b.WriteString(pickerRow(s, i == m.cursorAt, listed[s.Parent], width, now))
+		b.WriteString(pickerRow(s, i == m.cursorAt, depth[s.SessionID], width, now))
 	}
 	b.WriteString("\n" + dim.Render(help))
 
@@ -163,17 +160,16 @@ func (m model) picker() string {
 // last asked, since several sessions share a workspace and an id tells nobody
 // anything, then the project, state and how long it has sat idle.
 //
-// A step of a run is drawn under its home, indented, when the home is listed.
-func pickerRow(s goclient.SessionSummary, selected, child bool, width int, now time.Time) string {
-	lead, indent := "  ", ""
+// A step of a run is drawn under its home, indented, when the home is listed,
+// and a goal's runs under the goal, so a goal is three levels deep.
+func pickerRow(s goclient.SessionSummary, selected bool, depth int, width int, now time.Time) string {
+	lead := "  "
 	if selected {
 		lead = "› "
 	}
-	if child {
-		indent = "   "
-		lead = indent + lead
-		width -= len(indent)
-	}
+	indent := strings.Repeat("   ", depth)
+	lead = indent + lead
+	width -= len(indent)
 	prompt := strings.Join(strings.Fields(s.LastPrompt), " ")
 	var first string
 	switch {
@@ -193,6 +189,9 @@ func pickerRow(s goclient.SessionSummary, selected, child bool, width int, now t
 	if run := runStatus(s.Labels); run != "" {
 		meta += " · " + run
 	}
+	if goal := goalStatus(s.Labels); goal != "" {
+		meta += " · " + goal
+	}
 	if s.State == string(protocol.StateIdle) {
 		if age := idleAge(s.UpdatedAt, now); age != "" {
 			meta += " · " + age
@@ -202,8 +201,9 @@ func pickerRow(s goclient.SessionSummary, selected, child bool, width int, now t
 }
 
 // groupByParent orders a session list so that each session whose parent is
-// listed comes straight after it, keeping the daemon's order otherwise. The
-// picker's cursor walks this order, so it is fixed when the list arrives.
+// listed comes straight after it, its own children after it in turn, keeping
+// the daemon's order otherwise. The picker's cursor walks this order, so it
+// is fixed when the list arrives.
 func groupByParent(sessions []goclient.SessionSummary) []goclient.SessionSummary {
 	listed := map[string]bool{}
 	for _, s := range sessions {
@@ -216,12 +216,41 @@ func groupByParent(sessions []goclient.SessionSummary) []goclient.SessionSummary
 		}
 	}
 	out := make([]goclient.SessionSummary, 0, len(sessions))
-	for _, s := range sessions {
-		if s.Parent != "" && listed[s.Parent] {
-			continue
-		}
+	var add func(s goclient.SessionSummary)
+	add = func(s goclient.SessionSummary) {
 		out = append(out, s)
-		out = append(out, children[s.SessionID]...)
+		for _, c := range children[s.SessionID] {
+			add(c)
+		}
+	}
+	for _, s := range sessions {
+		if s.Parent == "" || !listed[s.Parent] {
+			add(s)
+		}
+	}
+	return out
+}
+
+// maxDepth bounds how far a list is indented, whatever the parents say.
+const maxDepth = 4
+
+// depths is how many listed ancestors each session has: 0 at the top, 1 for
+// a run's step or a goal's run, 2 for a step of a goal's run.
+func depths(sessions []goclient.SessionSummary) map[string]int {
+	parent := map[string]string{}
+	for _, s := range sessions {
+		parent[s.SessionID] = s.Parent
+	}
+	out := map[string]int{}
+	for _, s := range sessions {
+		d := 0
+		for p := s.Parent; d < maxDepth; p = parent[p] {
+			if _, ok := parent[p]; !ok || p == "" {
+				break
+			}
+			d++
+		}
+		out[s.SessionID] = d
 	}
 	return out
 }
@@ -290,6 +319,9 @@ func (m model) status() string {
 	}
 	if run := runStatus(m.labels); run != "" {
 		parts = append(parts, badgeWarn.Render(run))
+	}
+	if goal := goalStatus(m.labels); goal != "" {
+		parts = append(parts, badgeWarn.Render(goal))
 	}
 	if m.parent != "" {
 		parts = append(parts, dim.Render("↑ "+shortID(m.parent)))
