@@ -138,3 +138,59 @@ func TestSlug(t *testing.T) {
 		}
 	}
 }
+
+func TestDecisionsSection(t *testing.T) {
+	tests := []struct {
+		name, plan, want string
+		found            bool
+	}{
+		{"absent", "# Plan\n\n## Approach\n\nSort.\n", "", false},
+		{"last", "# Plan\n\n## Decisions\n\n- Touching ranges merge.\n", "- Touching ranges merge.", true},
+		{"followed by a section", "## Decisions\n- a\n- b\n## Risks\nnone\n", "- a\n- b", true},
+		{"a subheading stays in", "## Decisions\n### Touching\nmerge\n# Appendix\n", "### Touching\nmerge", true},
+		{"crlf", "## Decisions\r\n- a\r\n", "- a", true},
+		{"heading case and spaces", "  ## decisions  \n- a\n", "- a", true},
+		{"a heading in a fence does not end it", "## Decisions\n```\n## not a heading\n```\n- a\n## Next\n", "```\n## not a heading\n```\n- a", true},
+		{"empty", "## Decisions\n\n## Next\n", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, found := DecisionsSection(tt.plan)
+			if got != tt.want || found != tt.found {
+				t.Errorf("= %q, %v; want %q, %v", got, found, tt.want, tt.found)
+			}
+		})
+	}
+}
+
+func TestKeepDecisions(t *testing.T) {
+	plan := "# Plan\n\n## Decisions\n\n- Touching ranges merge.\n"
+	if got := keepDecisions(plan, "# Plan\nrevised\n"); !strings.Contains(got, "revised") ||
+		!strings.Contains(got, "## Decisions\n\n_The review's rewrite left this section out") || !strings.HasSuffix(got, "- Touching ranges merge.\n") {
+		t.Errorf("a dropped section is not put back: %q", got)
+	}
+	kept := "# Plan\n\n## Decisions\n\n- Touching ranges stay apart.\n  Changed by review: the plan chose merge.\n"
+	if got := keepDecisions(plan, kept); got != kept {
+		t.Errorf("a rewrite with its own section was changed: %q", got)
+	}
+	if got := keepDecisions("# Plan\n", "# Plan\nrevised\n"); got != "# Plan\nrevised\n" {
+		t.Errorf("a plan with no decisions gained a section: %q", got)
+	}
+}
+
+func TestDecisionsForPR(t *testing.T) {
+	got := decisionsForPR("## Decisions\n\n- Touching ranges merge.\n", "p/plan.md", "p/verify.sh")
+	if !strings.Contains(got, "## Decisions this run made\n\n- Touching ranges merge.\n\nEach is pinned by a test in `p/verify.sh`. To change one, say so in a comment on this PR.") {
+		t.Errorf("with decisions: %q", got)
+	}
+	for _, plan := range []string{"# Plan\n", "## Decisions\n\n## Next\n"} {
+		if got := decisionsForPR(plan, "p/plan.md", "p/verify.sh"); !strings.Contains(got, "The plan recorded no open decisions.") || strings.Contains(got, "pinned") {
+			t.Errorf("%q: %q", plan, got)
+		}
+	}
+	long := "## Decisions\n\n" + strings.Repeat("- a decision that goes on\n", 2000)
+	got = decisionsForPR(long, "p/plan.md", "p/verify.sh")
+	if len(got) > maxDecisions+500 || !strings.Contains(got, "Cut here; the rest is in `p/plan.md`") || strings.Contains(got, "- a decision that goes on\n\n_Cut") == false {
+		t.Errorf("a long section is not cut at a line: %d bytes, ends %q", len(got), got[len(got)-200:])
+	}
+}

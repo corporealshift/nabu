@@ -86,7 +86,13 @@ The watcher pushes with `git push origin HEAD:refs/heads/<head>`. It never uses 
   It includes earlier comments in the same thread as context, marked as already handled.
 - The prompt says:
   - commit, and do not push;
-  - follow the repository's conventions;
+  - follow the repository's conventions, reading its CLAUDE.md or AGENTS.md for how
+    commits are written;
+  - before replying, check each comment against its own diff: quote the line wherever
+    exact wording was asked for, read every line the diff removes, and say which part of
+    a comment it did not do. (Amended 2026-10-06. In liftoff PR #1 a session replied
+    "All 7 items addressed" when two had been done only in part. A later round replaced a
+    whole layout line when it had been asked to move one entry out of it.)
   - if a comment is unclear, change nothing for it and ask the question in the reply.
     Whoever wrote the comment answers on GitHub, which is a new comment and so a new job.
     Waiting on the `ask` tool in a session nobody is watching blocks the session for

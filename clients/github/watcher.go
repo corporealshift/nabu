@@ -259,8 +259,17 @@ func (w *Watcher) start(ctx context.Context, d Daemon, c candidate) error {
 		if r, ok := rs.Reviewed[pr.Number]; ok {
 			prev = &r
 		}
+		job.Through = rs.Handled[pr.Number]
+		var asked []Comment
+		if prev != nil && prev.Handled != job.Through {
+			all, err := w.GH.PRComments(ctx, repo.Name, pr.Number)
+			if err != nil {
+				w.logf("%s#%d: reading comments for the review, which goes ahead without them: %v", repo.Name, pr.Number, err)
+			}
+			asked = Answered(prev.Handled, job.Through, all)
+		}
 		job.Worktree = w.worktreePath(repo.Name, fmt.Sprintf("review-%d-%s", pr.Number, short(pr.HeadSHA)))
-		job.Prompt = ReviewPrompt(repo.Name, pr, prev)
+		job.Prompt = ReviewPrompt(repo.Name, pr, prev, asked)
 		job.MaxTurns = w.Cfg.Review.MaxTurns
 		fetch = func() error { return w.Git.FetchPR(ctx, repo.Clone, pr.Number, pr.BaseRef) }
 	case KindComments:
@@ -352,7 +361,7 @@ func (w *Watcher) advance(ctx context.Context, d Daemon, repo Repo, job Job, pr 
 			// Recorded before jobs kept their prompt: rebuild it for the head
 			// the job recorded, whatever the PR's head is now.
 			pr.Number, pr.HeadSHA, pr.BaseRef = job.PR, job.SHA, job.Base
-			job.Prompt, job.MaxTurns = ReviewPrompt(repo.Name, pr, nil), w.Cfg.Review.MaxTurns
+			job.Prompt, job.MaxTurns = ReviewPrompt(repo.Name, pr, nil, nil), w.Cfg.Review.MaxTurns
 		}
 		return w.begin(ctx, d, repo, job)
 	}
@@ -470,7 +479,7 @@ func (w *Watcher) postReview(ctx context.Context, repo Repo, job Job, answers []
 		summary = summary[:2000]
 	}
 	rs := w.state.Repo(repo.Name)
-	rs.Reviewed[job.PR] = Reviewed{SHA: job.SHA, Summary: summary}
+	rs.Reviewed[job.PR] = Reviewed{SHA: job.SHA, Summary: summary, Handled: job.Through}
 	return w.done(ctx, repo, job, "review")
 }
 
