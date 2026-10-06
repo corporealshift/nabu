@@ -59,6 +59,8 @@ class SessionCardTitleTest {
     fun `a run's home is named by its brief`() {
         val home = SessionCard(SessionRow("H"), prompt = "", options = Options(description = "\n  Add a Count function\n\nIt returns how many..."))
         assertEquals("Add a Count function", home.title)
+        val goalRun = SessionCard(SessionRow("R"), prompt = "", options = Options(description = "# Median\n\nAdd a Median function."))
+        assertEquals("Median", goalRun.title)
         assertEquals("asked", SessionCard(SessionRow("S"), prompt = "asked", options = Options(description = "brief")).title)
         assertEquals("", SessionCard(SessionRow("E"), prompt = "").title)
         assertEquals(

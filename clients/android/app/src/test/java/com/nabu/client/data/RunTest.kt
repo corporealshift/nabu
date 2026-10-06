@@ -64,6 +64,20 @@ class RunTest {
         assertTrue(sent("nabu.session.send_prompt").isEmpty())
     }
 
+    // A goal is handed over as a run is: the text as the description, then
+    // the label, and never a session goal or a prompt.
+    @Test
+    fun `a goal sets the description, then the labels, and never a session goal`() = runBlocking {
+        repo.startGoal(client, "S1", "Add offline sync", listOf("mine", "goal:requested"))
+
+        val options = sent("nabu.session.set_option")
+        assertEquals(2, options.size)
+        assertTrue(options[0], options[0].contains("\"description\"") && options[0].contains("Add offline sync"))
+        assertTrue(options[1], options[1].contains("\"labels\"") && options[1].contains("[\"mine\",\"goal:requested\"]"))
+        assertTrue(sent("nabu.session.set_goal").isEmpty())
+        assertTrue(sent("nabu.session.send_prompt").isEmpty())
+    }
+
     @Test
     fun `a run without a brief only labels the session`() = runBlocking {
         repo.startRun(client, "S1", "  ", listOf("run:requested"))
