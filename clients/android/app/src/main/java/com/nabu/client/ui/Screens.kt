@@ -37,6 +37,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -159,7 +164,7 @@ fun SessionListScreen(
     val counts = remember(sessions) { underCounts(sessions) }
     var archiving by remember { mutableStateOf<SessionCard?>(null) }
     archiving?.let { card ->
-        val under = counts[card.row.id] ?: 0
+        val under = counts[card.row.id]?.total ?: 0
         ArchiveDialog(
             title = card.title.ifBlank { projectName(card.row.workspace.ifBlank { card.row.id }) } +
                 if (under > 0) ", with the $under ${if (under == 1) "session" else "sessions"} under it," else "",
@@ -271,8 +276,9 @@ fun SessionListScreen(
                         onLongClickLabel = "Archive",
                     ),
                 ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(
-                        Modifier.padding(14.dp),
+                        Modifier.weight(1f).padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         // Several sessions can share one workspace, so the last
@@ -298,15 +304,11 @@ fun SessionListScreen(
                                     color = NabuTheme.colors.accent,
                                 )
                             }
-                            counts[s.id]?.let { n ->
-                                val open = s.id in expanded
+                            counts[s.id]?.let { under ->
                                 Text(
-                                    "${if (open) "▾" else "▸"} $n ${if (n == 1) "session" else "sessions"}",
+                                    under.label,
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = NabuTheme.colors.accent,
-                                    modifier = Modifier.clickable(
-                                        onClickLabel = if (open) "Fold" else "Show what is under it",
-                                    ) { onToggle(s.id) },
+                                    color = if (under.working > 0) NabuTheme.colors.accent else NabuTheme.colors.muted,
                                 )
                             }
                             if (!s.synced) {
@@ -327,6 +329,19 @@ fun SessionListScreen(
                                 }
                             }
                         }
+                    }
+                    // Unfolding has a button of its own, a thumb wide; the
+                    // rest of the card opens the session (issue 135).
+                    counts[s.id]?.let {
+                        val open = s.id in expanded
+                        IconButton(onClick = { onToggle(s.id) }, modifier = Modifier.size(48.dp)) {
+                            Icon(
+                                if (open) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (open) "Fold" else "Show the sessions under it",
+                                tint = NabuTheme.colors.accent,
+                            )
+                        }
+                    }
                     }
                 }
             }

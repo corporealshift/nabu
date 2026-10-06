@@ -48,6 +48,17 @@ class GoalsTest {
         assertEquals(listOf(0, 0, 1, 1, 2), placed.map { it.depth })
     }
 
+    // A goal's home never runs: folded, it is the count that says work is going on.
+    @Test
+    fun `a folded card says when something under it is working`() {
+        val step = SessionCard(SessionRow("step", state = "running"), prompt = "step", options = Options(parent = "run1"))
+        val counts = underCounts(listOf(step, card("run1", "goal"), card("goal")))
+        assertEquals(Under(2, working = 1), counts["goal"])
+        assertEquals("2 sessions · 1 working", counts["goal"]!!.label)
+        assertEquals("1 session · 1 working", counts["run1"]!!.label)
+        assertEquals("3 sessions", Under(3).label)
+    }
+
     // Issue 135: families start folded, and open one level at a time.
     @Test
     fun `a family is folded until it is opened, one level at a time`() {
@@ -59,6 +70,6 @@ class GoalsTest {
         // A run opened under a folded goal stays hidden with it.
         assertEquals(listOf("other", "goal"), visible(placed, setOf("run1")).map { it.card.row.id })
 
-        assertEquals(mapOf("goal" to 3, "run1" to 1), underCounts(cards))
+        assertEquals(mapOf("goal" to Under(3), "run1" to Under(1)), underCounts(cards))
     }
 }

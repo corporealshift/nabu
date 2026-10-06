@@ -91,7 +91,8 @@ func TestPickerShowsAGoalThreeDeep(t *testing.T) {
 	}})
 	m = next.(model)
 	// Folded at first: only the goal, saying what is under it (issue 135).
-	if folded := m.picker(); strings.Contains(folded, "the run") || !strings.Contains(folded, "▸ 2 sessions") {
+	// The goal's home is idle; the count says its step is working.
+	if folded := m.picker(); strings.Contains(folded, "the run") || !strings.Contains(folded, "▸ 2 sessions · 1 working") {
 		t.Fatalf("the goal is not folded:\n%s", folded)
 	}
 	key := func(k tea.KeyType) {

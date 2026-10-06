@@ -125,15 +125,28 @@ fun parseRun(text: String): String? {
     return null
 }
 
-/** How many listed sessions are under each session, at any depth. */
-fun underCounts(cards: List<SessionCard>): Map<String, Int> {
+/** What is under a session: how many sessions, and how many of them are working. */
+data class Under(val total: Int, val working: Int = 0) {
+    /** As the card says it: "9 sessions · 1 working". */
+    val label: String
+        get() = "$total ${if (total == 1) "session" else "sessions"}" + if (working > 0) " · $working working" else ""
+}
+
+/**
+ * What is under each session, at any depth. A folded card says when
+ * something under it is running: a goal's home never runs itself, and with
+ * its steps folded away nothing else on the screen would show the work.
+ */
+fun underCounts(cards: List<SessionCard>): Map<String, Under> {
     val parent = cards.associate { it.row.id to it.options.parent }
-    val out = HashMap<String, Int>()
+    val out = HashMap<String, Under>()
     for (card in cards) {
+        val running = card.row.state == "running"
         var p = card.options.parent
         var depth = 0
         while (p.isNotEmpty() && p in parent && depth <= MAX_DEPTH) {
-            out[p] = (out[p] ?: 0) + 1
+            val u = out[p] ?: Under(0)
+            out[p] = Under(u.total + 1, u.working + if (running) 1 else 0)
             p = parent[p].orEmpty()
             depth++
         }

@@ -145,7 +145,8 @@ func (m model) picker() string {
 			b.WriteString("\n")
 		}
 		s := m.sessions[i]
-		fold := fold{under: under(m.all, s.SessionID), open: m.expanded[s.SessionID]}
+		total, working := underCount(m.all, s.SessionID)
+		fold := fold{under: total, working: working, open: m.expanded[s.SessionID]}
 		b.WriteString(pickerRow(s, i == m.cursorAt, depth[s.SessionID], fold, width, now))
 	}
 	b.WriteString("\n" + dim.Render(help))
@@ -198,7 +199,11 @@ func pickerRow(s goclient.SessionSummary, selected bool, depth int, f fold, widt
 		if f.open {
 			mark = "▾"
 		}
-		meta = fmt.Sprintf("%s %d session%s · %s", mark, f.under, plural(f.under), meta)
+		count := fmt.Sprintf("%s %d session%s", mark, f.under, plural(f.under))
+		if f.working > 0 {
+			count += fmt.Sprintf(" · %d working", f.working)
+		}
+		meta = count + " · " + meta
 	}
 	if s.State == string(protocol.StateIdle) {
 		if age := idleAge(s.UpdatedAt, now); age != "" {
@@ -239,29 +244,39 @@ func groupByParent(sessions []goclient.SessionSummary) []goclient.SessionSummary
 	return out
 }
 
-// fold is how a row with sessions under it is drawn: how many, and whether
-// they show.
+// fold is how a row with sessions under it is drawn: how many, how many of
+// them are working, and whether they show.
 type fold struct {
-	under int
-	open  bool
+	under, working int
+	open           bool
 }
 
 // under is how many sessions in the list are below id, at any depth.
 func under(sessions []goclient.SessionSummary, id string) int {
+	n, _ := underCount(sessions, id)
+	return n
+}
+
+// underCount is how many sessions are below id, and how many of those are
+// running. A goal's home never runs itself, so folded, the count is what
+// says work is going on.
+func underCount(sessions []goclient.SessionSummary, id string) (total, working int) {
 	parent := map[string]string{}
 	for _, s := range sessions {
 		parent[s.SessionID] = s.Parent
 	}
-	n := 0
 	for _, s := range sessions {
 		for p, d := s.Parent, 0; p != "" && d < maxDepth+1; p, d = parent[p], d+1 {
 			if p == id {
-				n++
+				total++
+				if s.State == string(protocol.StateRunning) {
+					working++
+				}
 				break
 			}
 		}
 	}
-	return n
+	return total, working
 }
 
 // visible is the grouped list with the children of every session not
