@@ -17,7 +17,7 @@ type action struct {
 	approve bool
 	reason  string
 
-	// text carries a prompt or a goal condition
+	// text carries a prompt or a brief
 	text string
 	// labels are the whole new label list a /run sets.
 	labels []string
@@ -32,8 +32,6 @@ const (
 	actInterrupt
 	actStop
 	actCompact
-	actSetGoal
-	actClearGoal
 	actAttach
 	actListSessions
 	actListArchived
@@ -57,8 +55,6 @@ type commandResult struct {
 
 // commands is every / command, for /help.
 var commands = []struct{ name, what string }{
-	{"/goal <text>", "set a goal"},
-	{"/goal", "clear it"},
 	{"/run [text]", "hand this session to the runner, the text as its brief"},
 	{"/compact", "summarise the history now"},
 	{"/stop", "end the session"},
@@ -102,11 +98,6 @@ func parseCommand(line string) commandResult {
 	rest = strings.TrimSpace(rest)
 
 	switch strings.ToLower(name) {
-	case "/goal":
-		if rest == "" {
-			return commandResult{act: &action{kind: actClearGoal}}
-		}
-		return commandResult{act: &action{kind: actSetGoal, text: rest}}
 	case "/stop":
 		return commandResult{act: &action{kind: actStop}}
 	case "/compact":

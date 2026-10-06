@@ -23,23 +23,6 @@ func TestPromptTextIsVerbatim(t *testing.T) {
 	}
 }
 
-func TestGoalCommands(t *testing.T) {
-	set := parseCommand("/goal the gate is green")
-	if set.act == nil || set.act.kind != actSetGoal {
-		t.Fatalf("want set-goal, got %+v", set)
-	}
-	if set.act.text != "the gate is green" {
-		t.Errorf("condition: got %q", set.act.text)
-	}
-
-	for _, line := range []string{"/goal", "/goal   "} {
-		clear := parseCommand(line)
-		if clear.act == nil || clear.act.kind != actClearGoal {
-			t.Errorf("%q should clear the goal, got %+v", line, clear)
-		}
-	}
-}
-
 func TestStopCommand(t *testing.T) {
 	res := parseCommand("/stop")
 	if res.act == nil || res.act.kind != actStop {
@@ -65,7 +48,7 @@ func TestHelpCommand(t *testing.T) {
 	if res.act != nil {
 		t.Error("/help needs no network action")
 	}
-	for _, cmd := range []string{"/goal", "/stop", "/sessions"} {
+	for _, cmd := range []string{"/run", "/stop", "/sessions"} {
 		if !strings.Contains(res.note, cmd) {
 			t.Errorf("help should mention %s", cmd)
 		}
@@ -104,8 +87,8 @@ func TestEmptyInputDoesNothing(t *testing.T) {
 
 // Commands are recognised whatever case they are typed in.
 func TestCommandsAreCaseInsensitive(t *testing.T) {
-	if res := parseCommand("/GOAL something"); res.act == nil || res.act.kind != actSetGoal {
-		t.Errorf("/GOAL should set a goal, got %+v", res)
+	if res := parseCommand("/RUN something"); res.act == nil || res.act.kind != actRun {
+		t.Errorf("/RUN should start a run, got %+v", res)
 	}
 	if res := parseCommand("/Stop"); res.act == nil || res.act.kind != actStop {
 		t.Errorf("/Stop should stop, got %+v", res)

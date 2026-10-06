@@ -261,12 +261,6 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 			}
 			p.Send(done)
 		}()
-	case actSetGoal:
-		_, err = c.Call(ctx, "nabu.session.set_goal",
-			map[string]any{"session_id": a.sessionID, "condition": a.text})
-	case actClearGoal:
-		_, err = c.Call(ctx, "nabu.session.clear_goal",
-			map[string]any{"session_id": a.sessionID})
 	case actRun:
 		// The brief goes in first, so the runner never sees the request
 		// without it. It is the description, never the goal: a goal starts

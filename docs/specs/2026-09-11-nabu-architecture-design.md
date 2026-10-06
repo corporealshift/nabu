@@ -532,9 +532,12 @@ veto_count}` and a session handle for reading the transcript.
 
 ### 10.3 Run-level goal and the judge (`verify` module; core holds the state)
 
-- **Setting a goal.** `nabu run --done-when "…"`, TUI `/goal …`, or
-  `nabu.session.set_goal`. Core appends a `goal` event (`state: set`) and carries it in
-  session state. It survives compaction and resume. One goal per session.
+- **Setting a goal.** `nabu.session.set_goal`. Core appends a `goal` event (`state: set`)
+  and carries it in session state. It survives compaction and resume. One goal per
+  session. (Amended 2026-10-06, `2026-10-06-goals-design.md`: `nabu run --done-when` and
+  the TUI's `/goal` are gone. This is now the **session goal**, set only by the runner on
+  its work sessions and by the GitHub watcher on comments jobs. `/goal` now starts a
+  goal, a broad piece of work the runner takes through many runs.)
 - **Judging.** At the stop gate, if a goal is set, the module calls the host's model
   API with the condition, the task list with evidence, and the recent transcript. The
   judge runs in a **fresh context** and returns exactly one of `met`, `unmet{reason}`,
