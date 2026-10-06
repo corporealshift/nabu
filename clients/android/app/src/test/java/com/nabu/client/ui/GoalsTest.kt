@@ -47,4 +47,18 @@ class GoalsTest {
         assertEquals(listOf("other", "goal", "run2", "run1", "step"), placed.map { it.card.row.id })
         assertEquals(listOf(0, 0, 1, 1, 2), placed.map { it.depth })
     }
+
+    // Issue 135: families start folded, and open one level at a time.
+    @Test
+    fun `a family is folded until it is opened, one level at a time`() {
+        val cards = listOf(card("step", "run1"), card("run2", "goal"), card("run1", "goal"), card("other"), card("goal"))
+        val placed = groupByParent(cards)
+        assertEquals(listOf("other", "goal"), visible(placed, emptySet()).map { it.card.row.id })
+        assertEquals(listOf("other", "goal", "run2", "run1"), visible(placed, setOf("goal")).map { it.card.row.id })
+        assertEquals(listOf("other", "goal", "run2", "run1", "step"), visible(placed, setOf("goal", "run1")).map { it.card.row.id })
+        // A run opened under a folded goal stays hidden with it.
+        assertEquals(listOf("other", "goal"), visible(placed, setOf("run1")).map { it.card.row.id })
+
+        assertEquals(mapOf("goal" to 3, "run1" to 1), underCounts(cards))
+    }
 }

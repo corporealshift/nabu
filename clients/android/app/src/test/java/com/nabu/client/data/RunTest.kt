@@ -146,6 +146,20 @@ class RunTest {
         assertEquals(listOf("01NEWSESSION"), db.sessions().ids())
     }
 
+    // Issue 135: the daemon archives a home's children with it, and the
+    // mirror lets them go at once rather than at the next sync.
+    @Test
+    fun `archiving a home drops its children from the mirror`() = runBlocking {
+        daemon.listed = listOf("HOME", "STEP1", "STEP2", "OTHER")
+        repo.recordSessions(repo.listSessions(client))
+
+        daemon.listed = listOf("OTHER")
+        repo.archiveSession(client, "HOME")
+
+        assertEquals(listOf("OTHER"), db.sessions().ids())
+        assertEquals(1, sent("nabu.session.archive").size)
+    }
+
     @Test
     fun `a plain session is created with no options`() = runBlocking {
         repo.createSession(client, "C:/proj/breezeway")

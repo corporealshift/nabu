@@ -370,6 +370,23 @@ func (st *Store) ListArchived() ([]Summary, error) {
 	return out, errors.Join(errs...)
 }
 
+// ArchivedEvents reads one archived session's events, and closes it again.
+func (st *Store) ArchivedEvents(id string) ([]protocol.Event, error) {
+	if protocol.ValidateULID(id) != nil {
+		return nil, ErrNotFound
+	}
+	path := filepath.Join(st.archiveDir(), id+".jsonl")
+	if _, err := os.Stat(path); err != nil {
+		return nil, ErrNotFound
+	}
+	s, err := load(id, path)
+	if err != nil {
+		return nil, err
+	}
+	defer s.Close()
+	return s.Events(), nil
+}
+
 // ArchivedLogs reads every archived session's events, for anything that has to
 // count history the active list no longer shows. Each is closed after reading.
 func (st *Store) ArchivedLogs() ([][]protocol.Event, error) {

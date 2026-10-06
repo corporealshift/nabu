@@ -152,11 +152,17 @@ fun SessionListScreen(
     onArchive: (String) -> Unit = {},
     onArchived: () -> Unit = {},
     onNewRun: () -> Unit = {},
+    /** Sessions opened to show what is under them; the rest are folded. */
+    expanded: Set<String> = emptySet(),
+    onToggle: (String) -> Unit = {},
 ) {
+    val counts = remember(sessions) { underCounts(sessions) }
     var archiving by remember { mutableStateOf<SessionCard?>(null) }
     archiving?.let { card ->
+        val under = counts[card.row.id] ?: 0
         ArchiveDialog(
-            title = card.prompt.ifBlank { projectName(card.row.workspace.ifBlank { card.row.id }) },
+            title = card.title.ifBlank { projectName(card.row.workspace.ifBlank { card.row.id }) } +
+                if (under > 0) ", with the $under ${if (under == 1) "session" else "sessions"} under it," else "",
             onArchive = { onArchive(card.row.id); archiving = null },
             onDismiss = { archiving = null },
         )
@@ -252,7 +258,7 @@ fun SessionListScreen(
                     )
                 }
             }
-            items(groupByParent(sessions), key = { it.card.row.id }) { placed ->
+            items(visible(groupByParent(sessions), expanded), key = { it.card.row.id }) { placed ->
                 val card = placed.card
                 val s = card.row
                 Card(
@@ -290,6 +296,17 @@ fun SessionListScreen(
                                     it,
                                     style = MaterialTheme.typography.labelMedium,
                                     color = NabuTheme.colors.accent,
+                                )
+                            }
+                            counts[s.id]?.let { n ->
+                                val open = s.id in expanded
+                                Text(
+                                    "${if (open) "▾" else "▸"} $n ${if (n == 1) "session" else "sessions"}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = NabuTheme.colors.accent,
+                                    modifier = Modifier.clickable(
+                                        onClickLabel = if (open) "Fold" else "Show what is under it",
+                                    ) { onToggle(s.id) },
                                 )
                             }
                             if (!s.synced) {

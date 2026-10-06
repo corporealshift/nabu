@@ -82,6 +82,8 @@ func TestPickerIndentsStepsUnderTheirHome(t *testing.T) {
 		{SessionID: "01HOME", State: "idle", LastPrompt: "add caching", Labels: []string{"run:plan"}},
 		{SessionID: "01ORPH", Parent: "01GONE", State: "idle", LastPrompt: "an orphan"},
 	}})
+	// The home is folded until it is opened (issue 135).
+	next, _ = next.(model).Update(tea.KeyMsg{Type: tea.KeyRight})
 	view := next.(model).picker()
 
 	lineOf := func(text string) string {

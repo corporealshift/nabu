@@ -123,6 +123,37 @@ fun parseRun(text: String): String? {
     return null
 }
 
+/** How many listed sessions are under each session, at any depth. */
+fun underCounts(cards: List<SessionCard>): Map<String, Int> {
+    val parent = cards.associate { it.row.id to it.options.parent }
+    val out = HashMap<String, Int>()
+    for (card in cards) {
+        var p = card.options.parent
+        var depth = 0
+        while (p.isNotEmpty() && p in parent && depth <= MAX_DEPTH) {
+            out[p] = (out[p] ?: 0) + 1
+            p = parent[p].orEmpty()
+            depth++
+        }
+    }
+    return out
+}
+
+/**
+ * The grouped list with the children of every session not in [expanded] left
+ * out: each family starts folded, and opens one level at a time (issue 135).
+ */
+fun visible(placed: List<Placed>, expanded: Set<String>): List<Placed> {
+    val shown = HashSet<String>()
+    return placed.filter { p ->
+        val parent = p.card.options.parent
+        // Grouped order puts a parent before its children, so it is decided first.
+        val show = p.depth == 0 || (parent in shown && parent in expanded)
+        if (show) shown += p.card.row.id
+        show
+    }
+}
+
 /**
  * The text if [text] is a /goal command: "" for a plain /goal, which resumes a
  * blocked goal. Null for anything else.

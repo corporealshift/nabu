@@ -612,20 +612,28 @@ Puts a session away: it leaves the list, is not loaded when the daemon starts, a
 no longer mirrored. Its log is kept whole, and an `info` `notice` saying why is appended
 before it moves. Every subscription to it ends.
 
-**Refused while the session is `running`**, with `nabu_invalid_transition`: archiving
-closes the log under a turn still writing to it. Archiving an archived session does
+**Every session descended from it is archived too**: its children (sessions whose
+`parent` is it), theirs, and so on. Each gets the notice `archived with <session_id>:
+<why>`.
+
+**Refused while the session, or any session descended from it, is `running`**, with
+`nabu_invalid_transition` naming the running session: archiving closes the log under a
+turn still writing to it. Nothing is archived. Archiving an archived session does
 nothing.
 
-The daemon also archives, with the same notice, any session not `running` whose last
-event is older than `daemon.archive_after_days` (default 3; 0 turns this off).
+The daemon also archives, with the same notices, any session with no listed parent when
+neither it nor any session descended from it is `running`, and the newest event among
+them is older than `daemon.archive_after_days` (default 3; 0 turns this off).
 
 An archived session is not found by any other method until it is restored.
 
 ### 7.20 `nabu.session.restore {session_id}` → `{}`
 
 Brings an archived session back, appending an `info` `notice`, which also restarts its
-idle clock. An unknown id is `nabu_session_not_found`; restoring a session that is not
-archived does nothing.
+idle clock. Every session archived with it, whose last event is the notice
+`archived with <session_id>: …`, comes back too. A session archived on its own earlier
+stays archived. An unknown id is `nabu_session_not_found`; restoring a session that is
+not archived does nothing.
 
 ### 7.21 `nabu.session.stats {session_id}` → `SessionStats`
 
