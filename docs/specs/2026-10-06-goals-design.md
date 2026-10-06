@@ -5,7 +5,7 @@
 **Amends:** `2026-09-11-nabu-architecture-design.md` §10.3 (who sets a session goal), and
 `2026-09-30-orchestrated-runs-design.md` (a run's base branch, and a `merge` step).
 
-Three parts, each its own PR, landing in order:
+Three parts, landing in order as one PR with a commit series for each:
 1. Remove the goal surfaces.
 2. Goals in the runner.
 3. Starting and watching goals on Android and in the TUI.
