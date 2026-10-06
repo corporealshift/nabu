@@ -2,7 +2,10 @@
 // pull request through a fixed sequence of named steps, starting one short
 // session for each step that needs the model, doing the mechanical steps
 // itself, and asking Claude at three gates
-// (docs/specs/2026-09-30-orchestrated-runs-design.md).
+// (docs/specs/2026-09-30-orchestrated-runs-design.md). It also drives goals:
+// a broad goal Claude breaks into briefs, worked as runs one after another on
+// a goal branch, and checked until it is met (goal*.go,
+// docs/specs/2026-10-06-goals-design.md).
 //
 // The order is this package's code, never the model's choice. The local model
 // does badly at long tasks and at following a workflow it was only told

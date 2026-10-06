@@ -31,7 +31,8 @@ type Runner struct {
 	Now    func() time.Time
 	Log    io.Writer
 
-	runs map[string]*Run
+	runs  map[string]*Run
+	goals map[string]*Goal
 }
 
 func (rn *Runner) logf(format string, args ...any) {
@@ -48,9 +49,17 @@ func (rn *Runner) load() error {
 	if err != nil {
 		return err
 	}
+	goals, err := LoadGoals(rn.Root)
+	if err != nil {
+		return err
+	}
 	rn.runs = map[string]*Run{}
 	for i := range all {
 		rn.runs[all[i].Home] = &all[i]
+	}
+	rn.goals = map[string]*Goal{}
+	for i := range goals {
+		rn.goals[goals[i].Home] = &goals[i]
 	}
 	return nil
 }
@@ -60,11 +69,17 @@ func (rn *Runner) save(r *Run) error {
 	return r.Save(rn.Root)
 }
 
-// Active is how many runs have not finished.
+// Active is how many runs and goals have not finished. A blocked goal has:
+// it waits for Kyle, not for the runner.
 func (rn *Runner) Active() int {
 	n := 0
 	for _, r := range rn.runs {
 		if !r.Step.Over() {
+			n++
+		}
+	}
+	for _, g := range rn.goals {
+		if !g.Step.Over() {
 			n++
 		}
 	}
@@ -93,15 +108,22 @@ func (rn *Runner) Waiting() int {
 	return n
 }
 
-// Advance picks up runs asked for since the last tick, then moves every run
-// as far as it can go without a new session: observing sessions, and doing
-// the mechanical steps and Claude's gates.
+// Advance picks up runs and goals asked for since the last tick, then moves
+// every goal and every run as far as it can go without a new session:
+// observing sessions, and doing the mechanical steps and Claude's gates.
+// Goals go first, so a run a goal starts moves in the same tick.
 func (rn *Runner) Advance(ctx context.Context, d Daemon) error {
 	if err := rn.load(); err != nil {
 		return err
 	}
 	var errs []error
 	if err := rn.pickUp(ctx, d); err != nil {
+		errs = append(errs, err)
+	}
+	if err := rn.pickUpGoals(ctx, d); err != nil {
+		errs = append(errs, err)
+	}
+	if err := rn.advanceGoals(ctx, d); err != nil {
 		errs = append(errs, err)
 	}
 	homes := make([]string, 0, len(rn.runs))
@@ -120,7 +142,7 @@ func (rn *Runner) Advance(ctx context.Context, d Daemon) error {
 // pickUp turns each home labeled run:requested into a run, or resumes the
 // failed run it already has.
 func (rn *Runner) pickUp(ctx context.Context, d Daemon) error {
-	homes, err := d.Requested(ctx)
+	homes, err := d.Requested(ctx, LabelRequested)
 	if err != nil {
 		return err
 	}
@@ -816,37 +838,53 @@ const noChecksWait = 10 * time.Minute
 
 // ci polls the PR's checks once.
 func (rn *Runner) ci(ctx context.Context, r *Run) Outcome {
-	state, checks, err := rn.GH.PRChecks(ctx, r.Worktree, r.PR)
-	if err != nil {
+	result, failed, err := rn.pollCI(ctx, r.Worktree, r.PR, r.CISince)
+	switch {
+	case err != nil:
 		return Outcome{Why: err.Error()}
+	case result == CIPending:
+		return Outcome{Wait: true}
+	case result == CIFail:
+		r.Output = rn.failures(ctx, r.Worktree, failed)
+		rn.logf("run %s: CI failed", r.Home)
+	case result == CIPass:
+		rn.logf("run %s: CI passed", r.Home)
+	}
+	return Outcome{OK: true, CI: result}
+}
+
+// pollCI reads a PR's state and checks once: merged, closed, pending, failed
+// with the checks that failed, or passed. A PR with no checks is pending
+// until noChecksWait after since, and then passed: the repository has no CI.
+func (rn *Runner) pollCI(ctx context.Context, dir string, n int, since time.Time) (string, []Check, error) {
+	state, checks, err := rn.GH.PRChecks(ctx, dir, n)
+	if err != nil {
+		return "", nil, err
 	}
 	switch strings.ToUpper(state) {
 	case "MERGED":
-		return Outcome{OK: true, CI: CIMerged}
+		return CIMerged, nil, nil
 	case "CLOSED":
-		return Outcome{OK: true, CI: CIClosed}
+		return CIClosed, nil, nil
 	}
 	switch Classify(checks) {
 	case CIPending:
-		return Outcome{Wait: true}
+		return CIPending, nil, nil
 	case CINone:
-		if rn.Now().Sub(r.CISince) < noChecksWait {
-			return Outcome{Wait: true}
+		if rn.Now().Sub(since) < noChecksWait {
+			return CIPending, nil, nil
 		}
-		rn.logf("run %s: no checks reported in %s; done", r.Home, noChecksWait)
-		return Outcome{OK: true, CI: CIPass}
+		rn.logf("PR %d: no checks reported in %s; taken as passed", n, noChecksWait)
+		return CIPass, nil, nil
 	case CIFail:
-		r.Output = rn.failures(ctx, r, Failed(checks))
-		rn.logf("run %s: CI failed", r.Home)
-		return Outcome{OK: true, CI: CIFail}
+		return CIFail, Failed(checks), nil
 	}
-	rn.logf("run %s: CI passed", r.Home)
-	return Outcome{OK: true, CI: CIPass}
+	return CIPass, nil, nil
 }
 
 // failures is each failed check, with the end of its Actions log when it has
 // one. Jobs of one Actions run share a log, so each run is read once.
-func (rn *Runner) failures(ctx context.Context, r *Run, failed []Check) string {
+func (rn *Runner) failures(ctx context.Context, dir string, failed []Check) string {
 	var b strings.Builder
 	seen := map[string]bool{}
 	for _, c := range failed {
@@ -859,7 +897,7 @@ func (rn *Runner) failures(ctx context.Context, r *Run, failed []Check) string {
 			b.WriteString("(the log is above, under another job of the same run)\n\n")
 		default:
 			seen[id] = true
-			log, err := rn.GH.FailedLog(ctx, r.Worktree, id)
+			log, err := rn.GH.FailedLog(ctx, dir, id)
 			if err != nil {
 				fmt.Fprintf(&b, "(the log was not available: %v)\n\n", err)
 				continue

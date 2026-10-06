@@ -22,8 +22,9 @@ type Home struct {
 // never subscribes: with nobody subscribed a permission request is refused
 // at once, so a step session that reaches for the network finds out.
 type Daemon interface {
-	// Requested is every session labeled run:requested.
-	Requested(ctx context.Context) ([]Home, error)
+	// Requested is every session carrying a label: run:requested, or
+	// goal:requested.
+	Requested(ctx context.Context, label string) ([]Home, error)
 	Home(ctx context.Context, id string) (Home, error)
 	// Transcript is a home's conversation, for writing the brief from.
 	Transcript(ctx context.Context, id string) (string, error)
@@ -32,6 +33,12 @@ type Daemon interface {
 	SetDescription(ctx context.Context, id, text string) error
 	SetGoal(ctx context.Context, id, condition string) error
 	Create(ctx context.Context, workspace, parent string, maxTurns int) (string, error)
+	// CreateHome makes a run's home under a goal's: a session that is never
+	// prompted, with the brief as its description.
+	CreateHome(ctx context.Context, workspace, parent, description string) (string, error)
+	// UpdateTasks replaces a session's task list, which is how a goal's
+	// home shows its roadmap.
+	UpdateTasks(ctx context.Context, id string, tasks []protocol.Task) error
 	SendPrompt(ctx context.Context, id, text string) error
 	State(ctx context.Context, id string) (protocol.State, error)
 	Events(ctx context.Context, id string) ([]protocol.Event, error)

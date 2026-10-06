@@ -22,6 +22,10 @@ type fakeHome struct {
 	workspace, description, lastPrompt, transcript string
 	labels                                         []string
 	labelHistory                                   [][]string
+	// parent is the goal a run's home was made under; tasks is the home's
+	// task list.
+	parent string
+	tasks  []protocol.Task
 }
 
 type fakeSession struct {
@@ -51,10 +55,10 @@ func newFakeDaemon() *fakeDaemon {
 	return &fakeDaemon{homes: map[string]*fakeHome{}, sessions: map[string]*fakeSession{}}
 }
 
-func (d *fakeDaemon) Requested(context.Context) ([]Home, error) {
+func (d *fakeDaemon) Requested(_ context.Context, label string) ([]Home, error) {
 	var out []Home
 	for id, h := range d.homes {
-		if slices.Contains(h.labels, LabelRequested) {
+		if slices.Contains(h.labels, label) {
 			out = append(out, Home{ID: id, Workspace: h.workspace, Labels: slices.Clone(h.labels), LastPrompt: h.lastPrompt})
 		}
 	}
@@ -99,6 +103,26 @@ func (d *fakeDaemon) Create(_ context.Context, ws, parent string, turns int) (st
 	d.order = append(d.order, id)
 	d.sessions[id] = &fakeSession{workspace: ws, parent: parent, turns: turns, state: protocol.StateIdle}
 	return id, nil
+}
+
+func (d *fakeDaemon) CreateHome(_ context.Context, ws, parent, description string) (string, error) {
+	id := fmt.Sprintf("R%d", len(d.homes)+1)
+	d.homes[id] = &fakeHome{workspace: ws, parent: parent, description: description}
+	return id, nil
+}
+
+// UpdateTasks checks what the daemon would refuse.
+func (d *fakeDaemon) UpdateTasks(_ context.Context, id string, tasks []protocol.Task) error {
+	if len(tasks) == 0 {
+		return errors.New("tasks must not be empty")
+	}
+	for _, t := range tasks {
+		if t.ID == "" || t.Title == "" || t.BlockedBy == nil || t.Status == "" {
+			return fmt.Errorf("task %+v would be refused", t)
+		}
+	}
+	d.homes[id].tasks = slices.Clone(tasks)
+	return nil
 }
 
 func (d *fakeDaemon) SendPrompt(_ context.Context, id, text string) error {
@@ -152,6 +176,9 @@ type fakeGit struct {
 	pushErrs []error
 	// from is the base of each worktree added, in order.
 	from []string
+	// history is every commit message, in every worktree: log starts again
+	// with each worktree added.
+	history []string
 }
 
 func (g *fakeGit) DefaultBranch(context.Context, string) (string, error) { return "main", nil }
@@ -200,6 +227,7 @@ func (g *fakeGit) ResetHard(_ context.Context, _, sha string) error {
 
 func (g *fakeGit) commit(msg string, files ...string) {
 	g.log = append(g.log, commit{sha: fmt.Sprintf("c%d", len(g.log)), msg: msg, files: files})
+	g.history = append(g.history, msg)
 	for _, f := range files {
 		delete(g.dirty, f)
 	}
@@ -246,12 +274,18 @@ type fakeClaude struct {
 	// kind's easy answer.
 	answers map[string][]string
 	asked   []string
+	// prompts is every prompt, by kind.
+	prompts map[string][]string
 }
 
 func (c *fakeClaude) Available() bool { return !c.missing }
 
 func kindOf(prompt string) string {
 	switch {
+	case strings.Contains(prompt, "break it into briefs"):
+		return "breakdown"
+	case strings.Contains(prompt, "judge whether the goal is met"):
+		return "check"
 	case strings.Contains(prompt, "Report only blockers"):
 		return "final"
 	case strings.Contains(prompt, "Decide who is right"):
@@ -266,6 +300,10 @@ func kindOf(prompt string) string {
 func (c *fakeClaude) Ask(_ context.Context, _, prompt string) (string, error) {
 	k := kindOf(prompt)
 	c.asked = append(c.asked, k)
+	if c.prompts == nil {
+		c.prompts = map[string][]string{}
+	}
+	c.prompts[k] = append(c.prompts[k], prompt)
 	if q := c.answers[k]; len(q) > 0 {
 		c.answers[k] = q[1:]
 		if q[0] == "ERROR" {
@@ -278,6 +316,10 @@ func (c *fakeClaude) Ask(_ context.Context, _, prompt string) (string, error) {
 		"verify": "APPROVED",
 		"revise": "REFUSED: the check is right.",
 		"final":  "```json\n{\"blockers\":[],\"notes\":[\"consider generics\"]}\n```",
+		"breakdown": "```json\n{\"done_when\":[\"stats has Median and Mode\"],\"briefs\":[" +
+			"{\"title\":\"Median\",\"brief\":\"Add a Median function to stats.\"}," +
+			"{\"title\":\"Mode\",\"brief\":\"Add a Mode function to stats.\"}]}\n```",
+		"check": "```json\n{\"met\":true,\"reason\":\"both are there, tested\"}\n```",
 	}[k], nil
 }
 
