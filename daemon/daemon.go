@@ -24,6 +24,7 @@ import (
 	"github.com/corporealshift/nabu/daemon/config"
 	"github.com/corporealshift/nabu/daemon/module"
 	"github.com/corporealshift/nabu/daemon/modules"
+	"github.com/corporealshift/nabu/daemon/notify"
 	"github.com/corporealshift/nabu/daemon/provider"
 	"github.com/corporealshift/nabu/daemon/session"
 	"github.com/corporealshift/nabu/daemon/tools"
@@ -105,6 +106,8 @@ type Daemon struct {
 	shutdownDone chan struct{}
 	// stopSweep ends the archive sweep.
 	stopSweep chan struct{}
+	// stopNotify ends the phone notifier.
+	stopNotify context.CancelFunc
 }
 
 // New builds a Daemon over root without binding anything yet.
@@ -210,11 +213,22 @@ func New(opts Options) (*Daemon, error) {
 	}
 	handler.SetManager(mgr)
 
+	notifier, err := newNotifier(root, cfg.Notify, store, log)
+	if err != nil {
+		_ = store.Close()
+		closeFile(logFile)
+		return nil, err
+	}
+	store.SetObserver(notifier.Observe)
+	handler.Notify = notifier
+	notifyCtx, stopNotify := context.WithCancel(context.Background())
+	go notifier.Run(notifyCtx)
+
 	srv := api.NewServer(handler, &api.Config{Bind: cfg.Daemon.Bind, Token: cfg.Daemon.Token}, log)
 
 	d := &Daemon{root: root, cfg: cfg, log: log, store: store,
 		mgr: mgr, api: srv, providers: providers, logFile: logFile,
-		shutdownDone: make(chan struct{})}
+		shutdownDone: make(chan struct{}), stopNotify: stopNotify}
 
 	// The API exposes shutdown; the daemon owns it. nabu.daemon.stop is what
 	// "nabu daemon stop" calls, because signalling by pid is not gracefully
@@ -228,6 +242,47 @@ func New(opts Options) (*Daemon, error) {
 	}
 
 	return d, nil
+}
+
+// newNotifier builds the phone notifier. A missing or broken service-account
+// key is logged and leaves it sending nothing: phones still register, and a
+// key added later needs nothing from them.
+func newNotifier(root string, cfg config.NotifyConfig, store *session.Store, log *slog.Logger) (*notify.Notifier, error) {
+	devices, err := notify.OpenDevices(root, nil)
+	if err != nil {
+		return nil, fmt.Errorf("daemon: %w", err)
+	}
+	var sender notify.Sender
+	if p := strings.TrimSpace(cfg.ServiceAccount); p != "" {
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(root, p)
+		}
+		acct, err := notify.LoadServiceAccount(p)
+		if err == nil {
+			var fcm *notify.FCM
+			if fcm, err = notify.NewFCM(acct, nil); err == nil {
+				sender = fcm
+			}
+		}
+		if err != nil {
+			log.Warn("phone notifications are off", "error", err)
+		} else {
+			log.Info("phone notifications are on", "project", acct.ProjectID)
+		}
+	}
+	labels := cfg.Labels
+	if labels == nil {
+		labels = notify.DefaultLabels
+	}
+	rules := notify.Rules{Labels: labels, DoneAfter: time.Duration(cfg.DoneAfterSeconds) * time.Second}
+	lookup := func(id string) (protocol.State, bool) {
+		s, err := store.Get(id)
+		if err != nil {
+			return protocol.State{}, false
+		}
+		return s.State(), true
+	}
+	return notify.New(rules, devices, sender, lookup, log), nil
 }
 
 // logPath is where the daemon writes. A relative configured path resolves
@@ -379,6 +434,9 @@ func (d *Daemon) Shutdown(ctx context.Context) error {
 	if d.stopSweep != nil {
 		close(d.stopSweep)
 		d.stopSweep = nil
+	}
+	if d.stopNotify != nil {
+		d.stopNotify()
 	}
 	var errs []error
 	if err := d.api.Shutdown(ctx); err != nil {

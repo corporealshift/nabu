@@ -25,6 +25,21 @@ type Store struct {
 	mu     sync.Mutex
 	open   map[string]*Session
 	lastID string // ensures session ids sort by creation order
+
+	// observe sees every event appended to any session; see SetObserver.
+	observe func(id string, e protocol.Event)
+}
+
+// SetObserver gives the store one observer of every event appended to any
+// session, whether or not a client is attached. It must not block or call
+// back into the session, and it is set once, before sessions are used.
+func (st *Store) SetObserver(f func(id string, e protocol.Event)) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.observe = f
+	for _, s := range st.open {
+		s.observe = f
+	}
 }
 
 // Open creates <root>/sessions if needed and returns a Store.
@@ -53,7 +68,10 @@ func (st *Store) Create(workspace, key string, opts protocol.Options, contextWin
 	if err != nil {
 		return nil, err
 	}
-	s := &Session{id: id, path: path, f: f, subs: map[int]chan protocol.Event{}}
+	st.mu.Lock()
+	observe := st.observe
+	st.mu.Unlock()
+	s := &Session{id: id, path: path, f: f, subs: map[int]chan protocol.Event{}, observe: observe}
 	if _, err := s.Append(protocol.EventSession, protocol.SessionData{
 		Workspace: workspace, WorkspaceKey: key, Options: opts,
 		ContextWindow: contextWindow}); err != nil {
@@ -85,6 +103,7 @@ func (st *Store) Get(id string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.observe = st.observe
 	st.open[id] = s
 	return s, nil
 }

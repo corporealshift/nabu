@@ -32,6 +32,20 @@ type DaemonConfig struct {
 	ArchiveAfterDays *int `json:"archive_after_days"`
 }
 
+// NotifyConfig is phone notifications
+// (docs/specs/2026-10-06-phone-notifications-design.md).
+type NotifyConfig struct {
+	// ServiceAccount is a Firebase service-account key file, relative to the
+	// root unless absolute. Without one, phones register and nothing is sent.
+	ServiceAccount string `json:"service_account"`
+	// Labels notify when they arrive on a session with no parent. Unset
+	// means the run and goal outcomes; an empty list means none.
+	Labels []string `json:"labels"`
+	// DoneAfterSeconds is the shortest turn whose end notifies. Unset or 0
+	// means 60.
+	DoneAfterSeconds int `json:"done_after_seconds"`
+}
+
 // DefaultArchiveAfterDays is how long a session sits untouched before it is
 // archived, when the config does not say.
 const DefaultArchiveAfterDays = 3
@@ -124,6 +138,7 @@ func (c *BudgetConfig) withDefaults() {
 // Config is the top-level configuration.
 type Config struct {
 	Daemon            DaemonConfig              `json:"daemon"`
+	Notify            NotifyConfig              `json:"notify"`
 	Providers         map[string]ProviderConfig `json:"providers"`
 	Budget            BudgetConfig              `json:"budget"`
 	Modules           map[string]map[string]any `json:"modules"`

@@ -25,6 +25,10 @@ type Session struct {
 	subMu   sync.Mutex
 	subs    map[int]chan protocol.Event
 	nextSub int
+
+	// observe, set by the store, sees every appended event. It is called
+	// with the log locked, so it must not block or call back in.
+	observe func(id string, e protocol.Event)
 }
 
 // ErrClosed is returned by Append after Close.
@@ -83,6 +87,9 @@ func (s *Session) Append(t protocol.EventType, data any) (protocol.Event, error)
 	}
 	s.events = append(s.events, e)
 	s.broadcast(e)
+	if s.observe != nil {
+		s.observe(s.id, e)
+	}
 	return e, nil
 }
 
