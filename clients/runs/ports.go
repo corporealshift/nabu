@@ -66,8 +66,12 @@ type GH interface {
 	CreatePR(ctx context.Context, dir, base, head, title, body, label string) (number int, url string, err error)
 	// OpenPRFor is the open PR whose head is a branch, if there is one.
 	OpenPRFor(ctx context.Context, dir, head string) (number int, url string, found bool, err error)
-	// EditPR sets a PR's title and body and adds a label.
+	// EditPR sets a PR's title and body and adds a label. An empty label
+	// adds none, as it does for CreatePR.
 	EditPR(ctx context.Context, dir string, n int, title, body, label string) error
+	// MergePR squash-merges a PR. Only a goal's runs are merged, and only
+	// into the goal's branch.
+	MergePR(ctx context.Context, dir string, n int) error
 	// PRChecks is the PR's state (OPEN, MERGED or CLOSED) and its checks.
 	PRChecks(ctx context.Context, dir string, n int) (state string, checks []Check, err error)
 	// FailedLog is the end of a failed Actions run's log.

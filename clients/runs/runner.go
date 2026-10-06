@@ -753,17 +753,24 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		// before recording it. It is the run's branch, so it is the run's PR;
 		// it gets the run's title, body and label rather than a failure.
 		title, body := prTitle(r.Brief), rn.prBody(r)
+		// A goal's run gets no label: it is merged into the goal's branch as
+		// soon as it is green, so a review or a comments job on it would be
+		// work nobody reads. The goal's own PR carries the label.
+		label := rn.Cfg.Label
+		if r.Goal != "" {
+			label = ""
+		}
 		n, url, found, err := rn.GH.OpenPRFor(ctx, r.Worktree, r.Branch)
 		if err != nil {
 			return Outcome{Why: err.Error()}, nil
 		}
 		if found {
-			if err := rn.GH.EditPR(ctx, r.Worktree, n, title, body, rn.Cfg.Label); err != nil {
+			if err := rn.GH.EditPR(ctx, r.Worktree, n, title, body, label); err != nil {
 				return Outcome{Why: err.Error()}, nil
 			}
 			rn.logf("run %s: took over %s, already open for %s", r.Home, url, r.Branch)
 		} else {
-			if n, url, err = rn.GH.CreatePR(ctx, r.Worktree, r.Base, r.Branch, title, body, rn.Cfg.Label); err != nil {
+			if n, url, err = rn.GH.CreatePR(ctx, r.Worktree, r.Base, r.Branch, title, body, label); err != nil {
 				return Outcome{Why: err.Error()}, nil
 			}
 			rn.logf("run %s: opened %s", r.Home, url)
@@ -772,6 +779,13 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		return Outcome{OK: true}, nil
 	case StepCI:
 		return rn.ci(ctx, r), nil
+	case StepMerge:
+		// Only ever into a goal's branch: Transition sends no other run here.
+		if err := rn.GH.MergePR(ctx, r.Worktree, r.PR); err != nil {
+			return Outcome{Why: err.Error()}, nil
+		}
+		rn.logf("run %s: merged %s into %s", r.Home, r.PRURL, r.Base)
+		return Outcome{OK: true}, nil
 	case StepPush:
 		err := rn.Git.Push(ctx, r.Worktree, r.Branch)
 		if err == nil {
@@ -873,13 +887,16 @@ func (rn *Runner) setup(ctx context.Context, r *Run) Outcome {
 	if err := rn.Git.Fetch(ctx, r.Workspace); err != nil {
 		return Outcome{Why: err.Error()}
 	}
-	base, err := rn.Git.DefaultBranch(ctx, r.Workspace)
-	if err != nil {
-		return Outcome{Why: err.Error()}
+	// A goal's run has its base already: the goal's branch.
+	if r.Base == "" {
+		base, err := rn.Git.DefaultBranch(ctx, r.Workspace)
+		if err != nil {
+			return Outcome{Why: err.Error()}
+		}
+		r.Base = base
 	}
-	r.Base = base
 	if _, err := os.Stat(r.Worktree); err != nil {
-		if err := rn.Git.AddBranchWorktree(ctx, r.Workspace, r.Worktree, r.Branch, base); err != nil {
+		if err := rn.Git.AddBranchWorktree(ctx, r.Workspace, r.Worktree, r.Branch, r.Base); err != nil {
 			return Outcome{Why: err.Error()}
 		}
 	}

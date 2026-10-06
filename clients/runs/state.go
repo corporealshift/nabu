@@ -43,6 +43,7 @@ const (
 	StepCI           Step = "ci"
 	StepCIFix        Step = "ci-fix"
 	StepPush         Step = "push"
+	StepMerge        Step = "merge"
 	StepDone         Step = "done"
 	StepFailed       Step = "failed"
 )
@@ -79,6 +80,11 @@ type Run struct {
 	Branch    string `json:"branch"`
 	Base      string `json:"base,omitempty"`
 	Worktree  string `json:"worktree"`
+	// Goal is the home of the goal this run is one brief of, if any. Such a
+	// run starts from the goal's branch, which Base names, opens its PR
+	// against it, and is merged into it once green
+	// (docs/specs/2026-10-06-goals-design.md).
+	Goal string `json:"goal,omitempty"`
 	// Brief is the text the run was given, when it was given one; empty
 	// means the brief step writes it from the home's conversation.
 	Brief string `json:"brief,omitempty"`

@@ -150,12 +150,15 @@ type fakeGit struct {
 	fetches int
 	// pushErrs are taken in order by Push; an empty queue pushes.
 	pushErrs []error
+	// from is the base of each worktree added, in order.
+	from []string
 }
 
 func (g *fakeGit) DefaultBranch(context.Context, string) (string, error) { return "main", nil }
 func (g *fakeGit) Fetch(context.Context, string) error                   { g.fetches++; return nil }
 
-func (g *fakeGit) AddBranchWorktree(_ context.Context, _, path, _, _ string) error {
+func (g *fakeGit) AddBranchWorktree(_ context.Context, _, path, _, from string) error {
+	g.from = append(g.from, from)
 	g.log = []commit{{sha: "base"}}
 	return os.MkdirAll(path, 0o755)
 }
@@ -315,6 +318,21 @@ type fakeGH struct {
 	// means none. edits are "n|title|label|body".
 	existing int
 	edits    []string
+	// merged is each PR merged; mergeErrs are taken in order by MergePR.
+	merged    []int
+	mergeErrs []error
+}
+
+func (g *fakeGH) MergePR(_ context.Context, _ string, n int) error {
+	if len(g.mergeErrs) > 0 {
+		err := g.mergeErrs[0]
+		g.mergeErrs = g.mergeErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
+	g.merged = append(g.merged, n)
+	return nil
 }
 
 func (g *fakeGH) OpenPRFor(context.Context, string, string) (int, string, bool, error) {
@@ -1117,5 +1135,53 @@ func TestAnOpenPRForTheBranchIsTakenOver(t *testing.T) {
 	}
 	if !strings.Contains(g.log.String(), "took over https://github.com/kyle/x/pull/5") {
 		t.Errorf("log:\n%s", g.log.String())
+	}
+}
+
+// A goal's run starts from the goal's branch, opens its PR against it with no
+// label, and is merged into it once CI is green.
+func TestAGoalsRunIsMergedIntoTheGoalBranch(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	g.d.homes["H1"] = &fakeHome{workspace: t.TempDir(), description: "Add a Median function to stats"}
+	if err := g.rn.load(); err != nil {
+		t.Fatal(err)
+	}
+	r := &Run{Home: "H1", Workspace: g.d.homes["H1"].workspace, Brief: "Add a Median function to stats", Slug: "median",
+		Branch: "nabu/median", Base: "nabu/goal-stats", Goal: "G1", Worktree: filepath.Join(g.rn.Root, "runner", "worktrees", "median"),
+		Step: StepSetup, Started: g.now}
+	g.rn.runs["H1"] = r
+	g.tick()
+	g.finish(map[string]string{r.File(PlanFile): "# Plan\n"})
+	g.tick()
+	g.finish(map[string]string{r.File(TasksFile): twoTasks})
+	g.tick()
+	g.finish(map[string]string{r.File(VerifyFile): "go test ./...\n"})
+	g.tick()
+	g.finish(map[string]string{"stats.go": "x"})
+	g.tick()
+	g.finish(map[string]string{"stats_test.go": "x"})
+	g.tick()
+
+	if r.Step != StepDone {
+		t.Fatalf("run ended at %q (%s)\nlog:\n%s", r.Step, r.Why, g.log.String())
+	}
+	if !slices.Equal(g.git.from, []string{"nabu/goal-stats"}) {
+		t.Errorf("worktree from %q, want the goal branch", g.git.from)
+	}
+	if len(g.gh.prs) != 1 || !strings.HasPrefix(g.gh.prs[0], "nabu/goal-stats|nabu/median|Add a Median function to stats||") {
+		t.Errorf("pr = %q, want against the goal branch with no label", g.gh.prs)
+	}
+	if !slices.Equal(g.gh.merged, []int{7}) {
+		t.Errorf("merged %v", g.gh.merged)
+	}
+}
+
+// A run with no goal is never merged.
+func TestARunIsNeverMergedByTheRunner(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false}
+	if r := g.opened("H1"); r.Step != StepDone || len(g.gh.merged) != 0 {
+		t.Errorf("run at %q, merged %v", r.Step, g.gh.merged)
 	}
 }
