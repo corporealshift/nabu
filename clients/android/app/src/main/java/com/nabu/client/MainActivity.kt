@@ -1,6 +1,18 @@
 package com.nabu.client
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.nabu.client.notify.EXTRA_SESSION_ID
+import com.nabu.client.notify.OnScreen
+import com.nabu.client.notify.ensureChannels
+import com.nabu.client.notify.pushAvailable
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
@@ -51,10 +63,30 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
 class MainActivity : ComponentActivity() {
+    /** A session a tapped notification asked to open, until it is opened. */
+    private val opening = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { App() }
+        ensureChannels(this)
+        opening.value = intent?.getStringExtra(EXTRA_SESSION_ID)
+        setContent { App(opening = opening.value, onOpened = { opening.value = null }) }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(EXTRA_SESSION_ID)?.let { opening.value = it }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        OnScreen.foreground = true
+    }
+
+    override fun onPause() {
+        OnScreen.foreground = false
+        super.onPause()
     }
 }
 
@@ -70,7 +102,7 @@ private sealed interface Screen {
 }
 
 @Composable
-private fun App(vm: NabuViewModel = viewModel()) {
+private fun App(opening: String?, onOpened: () -> Unit, vm: NabuViewModel = viewModel()) {
     val settings by vm.settings.collectAsState()
     val systemDark = isSystemInDarkTheme()
     val chosen = settings
@@ -85,14 +117,14 @@ private fun App(vm: NabuViewModel = viewModel()) {
             val collapsed = chosen?.tasksCollapsed ?: false
             val fold = TaskCardFold(collapsed = collapsed, onToggle = { vm.setTasksCollapsed(!collapsed) })
             CompositionLocalProvider(LocalTaskCardFold provides fold) {
-                Screens(vm = vm, systemDark = systemDark)
+                Screens(vm = vm, systemDark = systemDark, opening = opening, onOpened = onOpened)
             }
         }
     }
 }
 
 @Composable
-private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
+private fun Screens(vm: NabuViewModel, systemDark: Boolean, opening: String?, onOpened: () -> Unit) {
     val settings by vm.settings.collectAsState()
     val sessions by vm.sessions.collectAsState()
     val connection by vm.connection.collectAsState()
@@ -104,6 +136,28 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean) {
 
     // With nowhere to connect to, the first screen is the one that fixes that.
     var screen: Screen by remember { mutableStateOf(Screen.Sessions) }
+
+    // A tapped notification opens its session.
+    LaunchedEffect(opening) {
+        val id = opening ?: return@LaunchedEffect
+        screen = Screen.Transcript(id)
+        onOpened()
+    }
+    // What is on screen, so a push for it is not shown twice.
+    LaunchedEffect(screen) {
+        OnScreen.sessionId = (screen as? Screen.Transcript)?.id
+    }
+    // Asked once a launch, and only by a build that can be pushed to; Android
+    // stops asking by itself after two refusals.
+    val context = LocalContext.current
+    val askToNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= 33 && pushAvailable(context) &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            askToNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     // Keyed on where it connects, not on all of Settings: changing the palette
     // would otherwise drop and rebuild the connection.
