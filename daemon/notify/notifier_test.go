@@ -172,6 +172,13 @@ func TestWhatNotifies(t *testing.T) {
 		r.state(home, to, idle, "resume")
 	}
 
+	// A stop is asked for, so whoever asked already knows.
+	r.state(home, idle, running, "prompt")
+	r.append(home, protocol.EventStateChange, protocol.StateChangeData{From: &running, To: protocol.StateCompleted, Reason: "stopped"})
+	if got := r.sentSince(); len(got) != 0 {
+		t.Errorf("a stopped session notified: %v", kinds(got))
+	}
+
 	// A label from the list does; an unlisted one, or one already there, does not.
 	r.labels(home, []string{"guard:no-push"}, []string{"guard:no-push", "run:plan"})
 	r.labels(home, []string{"run:plan"}, []string{"run:failed"})
