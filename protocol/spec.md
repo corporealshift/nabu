@@ -659,6 +659,22 @@ Turns and tokens per calendar day in the daemon's time zone, across every sessio
 archived ones included (§7.19), oldest day first. Every day in the range is present, a quiet
 one as zeros. `days` defaults to 14 and is capped at 90.
 
+### 7.23 `nabu.device.register {token, name?}` → `{}`
+
+Asks the daemon to notify a phone (`docs/specs/2026-10-06-phone-notifications-design.md`).
+`token` is the phone's push token and is required; `name` says which phone it is. A token
+already registered is refreshed, not added twice. A client registers on every connect and
+whenever its token changes. Registering is allowed whether or not the daemon is set up to
+send; a daemon that keeps no devices answers `internal_error`.
+
+Notifications carry identifiers, states, labels and counts, never text from a log. Which
+events notify is the daemon's configuration, not the protocol's: a client builds the words
+from its own mirror.
+
+### 7.24 `nabu.device.unregister {token}` → `{}`
+
+Stops notifying a phone. An unknown token does nothing.
+
 ## 8. Error codes
 
 | Code | Name | Meaning |

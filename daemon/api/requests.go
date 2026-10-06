@@ -144,6 +144,12 @@ func (h *Handler) ask(ctx context.Context, sessionID, method string, params map[
 		_ = cs.write(req)
 	}
 	h.reqMu.Unlock()
+	if h.Notify != nil {
+		// Someone is waited on; a phone in a pocket hears it now. Closed
+		// however the wait ends, so the notification never outlives it.
+		h.Notify.RequestOpened(sessionID, id, method)
+		defer h.Notify.RequestClosed(sessionID, id)
+	}
 
 	// The entry outlives the wait on purpose. Spec 7.18 requires that a late
 	// responder be told the request is already resolved, and that an answer

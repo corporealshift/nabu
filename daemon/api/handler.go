@@ -50,6 +50,10 @@ type Handler struct {
 	// OnShutdown, when set, is what nabu.daemon.stop calls. The daemon owns
 	// the shutdown; the API only exposes it.
 	OnShutdown func()
+
+	// Notify, when set, keeps the devices that register and hears of each
+	// daemon-to-client request, so a phone in a pocket can be woken for it.
+	Notify Notify
 }
 
 // NewHandler creates a Handler with the read-only session methods registered.
@@ -75,6 +79,8 @@ func NewHandler(m *agent.Manager, st *session.Store, log *slog.Logger) *Handler 
 	h.register("nabu.session.unsubscribe", h.handleSessionUnsubscribe)
 	h.registerMutators()
 	h.register("nabu.daemon.stop", h.handleDaemonStop)
+	h.register("nabu.device.register", h.handleDeviceRegister)
+	h.register("nabu.device.unregister", h.handleDeviceUnregister)
 	return h
 }
 
