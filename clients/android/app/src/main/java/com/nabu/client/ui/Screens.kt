@@ -13,6 +13,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +38,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -140,7 +146,11 @@ fun SettingsScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+)
 @Composable
 fun SessionListScreen(
     sessions: List<SessionCard>,
@@ -160,7 +170,7 @@ fun SessionListScreen(
     val counts = remember(sessions) { underCounts(sessions) }
     var archiving by remember { mutableStateOf<SessionCard?>(null) }
     archiving?.let { card ->
-        val under = counts[card.row.id] ?: 0
+        val under = counts[card.row.id]?.total ?: 0
         ArchiveDialog(
             title = card.title.ifBlank { projectName(card.row.workspace.ifBlank { card.row.id }) } +
                 if (under > 0) ", with the $under ${if (under == 1) "session" else "sessions"} under it," else "",
@@ -273,8 +283,9 @@ fun SessionListScreen(
                         onLongClickLabel = "Archive",
                     ),
                 ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(
-                        Modifier.padding(14.dp),
+                        Modifier.weight(1f).padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         // Several sessions can share one workspace, so the last
@@ -287,7 +298,13 @@ fun SessionListScreen(
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        // Wraps rather than squeezes: in a Row, whatever did not fit was
+                        // crushed to a sliver and stacked a letter at a time, which made a
+                        // card many lines tall.
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
                             Text(
                                 "${projectName(s.workspace.ifBlank { s.id })}  ·  ${s.state}",
                                 style = MaterialTheme.typography.labelMedium,
@@ -300,15 +317,11 @@ fun SessionListScreen(
                                     color = NabuTheme.colors.accent,
                                 )
                             }
-                            counts[s.id]?.let { n ->
-                                val open = s.id in expanded
+                            counts[s.id]?.let { under ->
                                 Text(
-                                    "${if (open) "▾" else "▸"} $n ${if (n == 1) "session" else "sessions"}",
+                                    under.label,
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = NabuTheme.colors.accent,
-                                    modifier = Modifier.clickable(
-                                        onClickLabel = if (open) "Fold" else "Show what is under it",
-                                    ) { onToggle(s.id) },
+                                    color = if (under.working > 0) NabuTheme.colors.accent else NabuTheme.colors.muted,
                                 )
                             }
                             if (!s.synced) {
@@ -319,16 +332,27 @@ fun SessionListScreen(
                                     color = NabuTheme.colors.danger,
                                 )
                             }
-                            if (s.state == "idle") {
-                                idleAge(s.updatedAt, System.currentTimeMillis())?.let {
-                                    Text(
-                                        it,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = NabuTheme.colors.muted,
-                                    )
-                                }
+                            stoppedAge(s.state, s.updatedAt, System.currentTimeMillis())?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = NabuTheme.colors.muted,
+                                )
                             }
                         }
+                    }
+                    // Unfolding has a button of its own, a thumb wide; the
+                    // rest of the card opens the session (issue 135).
+                    counts[s.id]?.let {
+                        val open = s.id in expanded
+                        IconButton(onClick = { onToggle(s.id) }, modifier = Modifier.size(48.dp)) {
+                            Icon(
+                                if (open) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (open) "Fold" else "Show the sessions under it",
+                                tint = NabuTheme.colors.accent,
+                            )
+                        }
+                    }
                     }
                 }
             }

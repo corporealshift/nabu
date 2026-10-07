@@ -207,3 +207,31 @@ func TestArchivedLogsKeepTheirIDs(t *testing.T) {
 		t.Errorf("archived logs = %v, want %s and %s with their events", got, a.ID(), b.ID())
 	}
 }
+
+// A store that is closed stays closed. A Get after Close used to load the
+// session again and hold its file open for good: on Windows the file then
+// could not be deleted, which failed a test's temp-dir cleanup in CI after a
+// server goroutine outlived the store.
+func TestAClosedStoreOpensNothing(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := st.Create("C:/w", "w", protocol.Options{Model: "m", PermissionMode: "auto"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Get(s.ID()); err == nil {
+		t.Error("Get after Close loaded the session again")
+	}
+	if _, err := st.Create("C:/w", "w", protocol.Options{Model: "m", PermissionMode: "auto"}, 0); err == nil {
+		t.Error("Create after Close made a session")
+	}
+	if err := os.Remove(filepath.Join(st.Dir(), s.ID()+".jsonl")); err != nil {
+		t.Errorf("the log is still held open: %v", err)
+	}
+}
