@@ -69,7 +69,8 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
   ```jsonc
   {"calls": [{"session_id": "…", "label": "Room database and DAOs", "at": "…",
               "arguments": {"query": "Room createFromFile copies"},
-              "status": "ok", "kind": "", "result": "…first 400 characters…"}],
+              "status": "ok", "kind": "", "result": "…first 400 characters…",
+              "archived": false}],
    "truncated": false, "skipped": 0}
   ```
 
@@ -81,9 +82,13 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
     `tool_result`'s. A call with no result yet has status `pending`.
   - `label` is the session's description when it has one, else the start of its first
     prompt.
+  - `archived` says the session is archived, so the phone offers to open only the ones
+    it can.
 - `nabu.usage` and `nabu.session.stats` are unchanged.
-- Both methods get a section in `protocol/spec.md`, a JSON schema and a conformance
-  vector.
+- Both methods get a section in `protocol/spec.md` and their names in the JSON schema.
+  They get no conformance vector: the vectors cover what every client computes for
+  itself, and like `nabu.session.stats` and `nabu.usage` these are asked of the daemon
+  instead. (Corrected while planning; the first draft said they would get one.)
 
 ## Rejected
 
@@ -115,7 +120,6 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
     period.
 - `daemon/api`: handler tests for both methods, including `invalid_params` on a bad
   `kind` and a missing `tool`, and archived sessions being counted.
-- Conformance vectors for both methods.
 - `go build ./... && go vet ./... && go test ./...`.
 - The app built and installed on Kyle's phone, showing last week's numbers. The
   `web.search` count is checked against a grep of `~/.nabu/sessions`.
