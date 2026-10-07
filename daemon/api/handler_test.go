@@ -872,7 +872,7 @@ func TestStatsAcrossSessions(t *testing.T) {
 		t.Errorf("tools = %+v", all.Tools)
 	}
 	var runs totals
-	result(t, hn.call(t, 5, "nabu.stats", map[string]any{"days": 1, "kind": "runs"}), &runs)
+	result(t, hn.call(t, 5, "nabu.stats", map[string]any{"days": 1, "kind": "unattended"}), &runs)
 	if runs.Sessions != 1 || runs.Days != 1 || len(runs.Tools) != 1 || runs.Tools[0].Calls != 1 {
 		t.Errorf("runs only = %+v", runs)
 	}
@@ -916,7 +916,7 @@ func TestStatsRefusesWhatItCannotAnswer(t *testing.T) {
 		params map[string]any
 	}{
 		{"nabu.stats", map[string]any{"kind": "goals"}},
-		{"nabu.stats.calls", map[string]any{"kind": "runs"}},
+		{"nabu.stats.calls", map[string]any{"kind": "unattended"}},
 		{"nabu.stats.calls", map[string]any{"tool": "read", "kind": "goals"}},
 	} {
 		resp := hn.call(t, i+1, c.method, c.params)

@@ -47,7 +47,7 @@ class ToolCallsTest {
         assertEquals("today", periodWords(1))
         assertEquals("the last 7 days", periodWords(7))
         assertEquals("every session", kindWords("all"))
-        assertEquals("runs and goals", kindWords("runs"))
+        assertEquals("unattended sessions", kindWords("unattended"))
         assertEquals("interactive sessions", kindWords("interactive"))
     }
 }

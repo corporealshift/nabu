@@ -546,7 +546,7 @@ func statsWindow(days int, kind stats.Kind) (int, stats.Kind, *protocol.RPCError
 	}
 	if !stats.ValidKind(kind) {
 		return 0, "", protocol.NewRPCError(protocol.CodeInvalidParams,
-			"kind must be all, interactive or runs, got "+string(kind))
+			"kind must be all, interactive or unattended, got "+string(kind))
 	}
 	return days, kind, nil
 }

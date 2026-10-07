@@ -48,18 +48,18 @@ class StatsTest {
 
     @Test
     fun `the totals ask for a period and a kind and decode what comes back`() = runBlocking {
-        daemon.results["nabu.stats"] = """{"days":7,"kind":"runs","sessions":3,"turns":40,"prompts":3,
+        daemon.results["nabu.stats"] = """{"days":7,"kind":"unattended","sessions":3,"turns":40,"prompts":3,
             "tokens":{"input":9000,"output":800,"cached":0},
             "tools":[{"tool":"web.search","calls":4,"errors":1,"sessions":2}],
             "compactions":{"summarize":1,"clear_results":2},"vetoes":1,"interruptions":0,
             "working_seconds":3600,"per_day":[{"date":"2026-10-07","turns":40,"input":9000,"output":800}],
             "skipped":1}"""
 
-        val w = repo.windowStats(client, 7, "runs")
+        val w = repo.windowStats(client, 7, "unattended")
 
         val asked = daemon.received.last { it.contains("\"nabu.stats\"") }
         assertTrue("the period must be asked for: $asked", asked.contains("\"days\":7"))
-        assertTrue("the kind must be asked for: $asked", asked.contains("\"kind\":\"runs\""))
+        assertTrue("the kind must be asked for: $asked", asked.contains("\"kind\":\"unattended\""))
         assertEquals(3, w.sessions)
         assertEquals(9000L, w.tokens.input)
         assertEquals(listOf(com.nabu.client.protocol.WindowTool("web.search", 4, 1, 2)), w.tools)

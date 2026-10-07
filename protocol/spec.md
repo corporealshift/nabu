@@ -705,8 +705,11 @@ The work done across sessions over the last `days`, archived sessions included
 ```
 
 The period is whole calendar days in the daemon's time zone, ending today. `days` defaults
-to 7 and is capped at 90. `kind` is `all` (the default), `interactive`, or `runs`: a
-session labelled `unattended` (§3.1) is a run. Any other kind is `invalid_params`.
+to 7 and is capped at 90. `kind` is `all` (the default), `interactive`, or `unattended`.
+A session is unattended when it is labelled `unattended` (§3.1). Logs from before that
+label are known by what only clients working for themselves put on a session: a
+`parent`, a label starting `run:` or `goal:`, or `guard:no-push`. Every other session is
+interactive. Any other kind is `invalid_params`.
 
 A session counts when it has an event in the period, and only those events are counted.
 Each log is cut to the period, measured as §7.21 measures a session, and the results are
@@ -737,8 +740,10 @@ were returned.
 
 `arguments` is the call's, unchanged. `status` and `kind` are the `tool_result`'s, and
 `status` is `pending` when there is no result yet. `result` is the start of the result's
-content, at most 400 characters. `label` is the first line of the session's description,
-else of its first prompt, at most 80 characters. `archived` says the session is archived
+content, at most 400 characters. `label` names the session, at most 80 characters: the
+first line of its description, without a leading `#`; else, for a session with a parent,
+the parent's label, since a step's own prompt is the same for every step; else the first
+line of its first prompt. `archived` says the session is archived
 (§7.19).
 
 ## 8. Error codes

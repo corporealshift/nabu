@@ -23,14 +23,14 @@ type Kind string
 const (
 	KindAll         Kind = "all"
 	KindInteractive Kind = "interactive"
-	// KindRuns is every session labelled unattended: runs, goals and their
-	// steps, anything a client started for itself.
-	KindRuns Kind = "runs"
+	// KindUnattended is work no person was watching: runs, goals and their
+	// steps, GitHub jobs, headless `nabu run`. See unattended.
+	KindUnattended Kind = "unattended"
 )
 
 // ValidKind reports whether k is a kind a caller may ask for.
 func ValidKind(k Kind) bool {
-	return k == KindAll || k == KindInteractive || k == KindRuns
+	return k == KindAll || k == KindInteractive || k == KindUnattended
 }
 
 // Window is the work done across sessions over a stretch of time.
@@ -153,6 +153,10 @@ const labelChars = 80
 // the limit let through.
 func Calls(logs []Log, q CallQuery) ([]Call, bool) {
 	out := []Call{}
+	byID := make(map[string]Log, len(logs))
+	for _, l := range logs {
+		byID[l.ID] = l
+	}
 	for _, l := range logs {
 		if q.SessionID != "" {
 			if l.ID != q.SessionID {
@@ -181,7 +185,7 @@ func Calls(logs []Log, q CallQuery) ([]Call, bool) {
 				continue
 			}
 			if label == "" {
-				label = labelOf(l.Events)
+				label = labelOf(l.Events, byID)
 			}
 			c := Call{SessionID: l.ID, Label: label, At: e.Timestamp, Arguments: d.Arguments,
 				Status: "pending", Archived: l.Archived}
@@ -213,20 +217,42 @@ func isKind(events []protocol.Event, kind Kind) bool {
 	if kind == KindAll || kind == "" {
 		return true
 	}
-	run := false
-	for _, l := range protocol.Project(events).Options.Labels {
-		if l == protocol.LabelUnattended {
-			run = true
+	return unattended(protocol.Project(events).Options) == (kind == KindUnattended)
+}
+
+// unattended says no person was watching the session. The label says so for
+// sessions made since it existed. Older logs are known by what only clients
+// working for themselves put on a session: a parent (a run's or goal's step),
+// a run: or goal: label (their homes, which never carried the label), or the
+// guard:no-push every runner and GitHub job asked for.
+func unattended(o protocol.Options) bool {
+	if o.Parent != "" {
+		return true
+	}
+	for _, l := range o.Labels {
+		if l == protocol.LabelUnattended || l == "guard:no-push" ||
+			strings.HasPrefix(l, "run:") || strings.HasPrefix(l, "goal:") {
+			return true
 		}
 	}
-	return run == (kind == KindRuns)
+	return false
 }
 
 // labelOf names a session the way a person would recognise it: its
-// description's first line, else its first prompt's.
-func labelOf(events []protocol.Event) string {
-	if d := protocol.Project(events).Options.Description; d != "" {
-		return firstLine(d)
+// description's first line; else, for a step, the label of what it is a step
+// of, since its own prompt is the same few words for every step; else its
+// first prompt's first line.
+func labelOf(events []protocol.Event, byID map[string]Log) string {
+	for depth := 0; depth < 4; depth++ {
+		o := protocol.Project(events).Options
+		if o.Description != "" {
+			return firstLine(strings.TrimLeft(strings.TrimSpace(o.Description), "# "))
+		}
+		parent, ok := byID[o.Parent]
+		if o.Parent == "" || !ok {
+			break
+		}
+		events = parent.Events
 	}
 	for _, e := range events {
 		var d protocol.MessageData

@@ -70,7 +70,7 @@ data class OverallStatsState(
 val statsPeriods = listOf(1, 7, 30)
 
 /** The kinds of session offered (spec 7.25), as the daemon names them. */
-val statsKinds = listOf("all", "interactive", "runs")
+val statsKinds = listOf("all", "interactive", "unattended")
 
 /** A period as words: today, the last 7 days. */
 fun periodWords(days: Int): String = if (days == 1) "today" else "the last $days days"
@@ -78,7 +78,7 @@ fun periodWords(days: Int): String = if (days == 1) "today" else "the last $days
 /** A kind as words, for a sentence: every session, interactive sessions, runs. */
 fun kindWords(kind: String): String = when (kind) {
     "interactive" -> "interactive sessions"
-    "runs" -> "runs and goals"
+    "unattended" -> "unattended sessions"
     else -> "every session"
 }
 

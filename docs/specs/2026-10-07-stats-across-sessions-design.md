@@ -22,8 +22,13 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
 - **Stats**, opened from the session list. The per-session Stats screen's layout, over a
   period and many sessions.
   - Filters: period (today, 7 days, 30 days; default 7) and kind (all, interactive,
-    runs). A run is any session labelled `unattended` (`protocol.LabelUnattended`), so
-    runs and goals and their steps all count as runs.
+    unattended). An unattended session is one labelled `unattended`
+    (`protocol.LabelUnattended`): runs' and goals' steps, GitHub jobs, `nabu run`.
+    Logs from before that label (2026-10-07), and run and goal homes, which never carry
+    it, are known by a `parent`, a `run:` or `goal:` label, or `guard:no-push`.
+    (Changed while building: the first draft called this kind `runs` and used the label
+    alone, which on Kyle's logs found 10 of the week's unattended sessions and called
+    the rest interactive.)
   - Tiles: sessions, turns, prompts, working time, tokens in, tokens out, vetoes.
   - Calls per day, the way `DayColumns` draws them.
   - Tool bars with calls and errors. Each bar is tappable.
@@ -53,7 +58,7 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
 
   - `days` defaults to 7 and is capped at 90, as `nabu.usage` is. The period is whole
     calendar days in the daemon's time zone, ending today.
-  - `kind` is `all` (default), `interactive` or `runs`. Anything else is
+  - `kind` is `all` (default), `interactive` or `unattended`. Anything else is
     `invalid_params`.
   - A session counts if it has any event in the period. Only its events in the period
     are counted: each log is cut to the period, then measured by the existing
@@ -80,8 +85,9 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
     calls matched than were returned.
   - `result` is the result content cut to 400 characters. `status` and `kind` are the
     `tool_result`'s. A call with no result yet has status `pending`.
-  - `label` is the session's description when it has one, else the start of its first
-    prompt.
+  - `label` is the first line of the session's description when it has one; else, for a
+    step, its parent's label, since every step's prompt reads "Do task 2 of 6 of this
+    run"; else the first line of its first prompt.
   - `archived` says the session is archived, so the phone offers to open only the ones
     it can.
 - `nabu.usage` and `nabu.session.stats` are unchanged.
@@ -114,7 +120,7 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
   - the totals equal the sum of `stats.Of` over each log cut to the period;
   - events outside the period are not counted, and a session with none inside is not
     counted at all;
-  - `kind` keeps runs or interactive sessions only;
+  - `kind` keeps unattended or interactive sessions only, older logs included;
   - calls come newest first, results are cut to 400 characters, `limit` and
     `truncated` agree, a call with no result is `pending`, `session_id` ignores the
     period.

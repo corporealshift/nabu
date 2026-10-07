@@ -91,7 +91,7 @@ func TestTotalsSumOfOverThePeriod(t *testing.T) {
 	}{
 		{KindAll, []Log{interactive, run}},
 		{KindInteractive, []Log{interactive}},
-		{KindRuns, []Log{run}},
+		{KindUnattended, []Log{run}},
 	}
 	for _, c := range cases {
 		t.Run(string(c.kind), func(t *testing.T) {
@@ -152,7 +152,7 @@ func TestCalls(t *testing.T) {
 	}{
 		{"newest first within the period", period,
 			[]row{{"R", "pending", "", true}, {"R", "ok", "", true}, {"I", "ok", "", false}}, false},
-		{"runs only", with(period, func(q *CallQuery) { q.Kind = KindRuns }),
+		{"runs only", with(period, func(q *CallQuery) { q.Kind = KindUnattended }),
 			[]row{{"R", "pending", "", true}, {"R", "ok", "", true}}, false},
 		{"interactive only", with(period, func(q *CallQuery) { q.Kind = KindInteractive }),
 			[]row{{"I", "ok", "", false}}, false},
@@ -161,7 +161,7 @@ func TestCalls(t *testing.T) {
 		{"a limit nothing reaches", with(period, func(q *CallQuery) { q.Limit = 3 }),
 			[]row{{"R", "pending", "", true}, {"R", "ok", "", true}, {"I", "ok", "", false}}, false},
 		{"one session ignores the period and kind",
-			with(period, func(q *CallQuery) { q.SessionID = "I"; q.Kind = KindRuns }),
+			with(period, func(q *CallQuery) { q.SessionID = "I"; q.Kind = KindUnattended }),
 			[]row{{"I", "ok", "", false}, {"I", "ok", "", false}}, false},
 		{"errors carry their kind", with(period, func(q *CallQuery) { q.Tool = "read" }),
 			[]row{{"I", "error", protocol.ToolErrorNotFound, false}}, false},
@@ -207,7 +207,7 @@ func TestCallDetails(t *testing.T) {
 }
 
 func TestValidKind(t *testing.T) {
-	for k, want := range map[Kind]bool{KindAll: true, KindInteractive: true, KindRuns: true, "": false, "goals": false} {
+	for k, want := range map[Kind]bool{KindAll: true, KindInteractive: true, KindUnattended: true, "": false, "goals": false} {
 		if ValidKind(k) != want {
 			t.Errorf("ValidKind(%q) = %v", k, !want)
 		}
@@ -217,4 +217,58 @@ func TestValidKind(t *testing.T) {
 func with(q CallQuery, change func(*CallQuery)) CallQuery {
 	change(&q)
 	return q
+}
+
+// Logs from before the unattended label are known by what runners and GitHub
+// jobs put on their sessions anyway.
+func TestUnattendedFromOlderLogs(t *testing.T) {
+	for name, o := range map[string]protocol.Options{
+		"labelled":         {Labels: []string{protocol.LabelUnattended}},
+		"a step":           {Parent: "H"},
+		"a run's home":     {Labels: []string{"run:work"}},
+		"a goal's home":    {Labels: []string{"goal:runs", "goal:round:2"}},
+		"a runner's guard": {Labels: []string{"guard:no-push"}},
+	} {
+		if !unattended(o) {
+			t.Errorf("%s should be unattended", name)
+		}
+	}
+	for name, o := range map[string]protocol.Options{
+		"bare":               {},
+		"some other label":   {Labels: []string{"wip"}},
+		"only a model":       {Model: "qwen"},
+		"only a description": {Description: "notes"},
+	} {
+		if unattended(o) {
+			t.Errorf("%s should be interactive", name)
+		}
+	}
+}
+
+// A step's own prompt is the same few words for every step; the run it
+// belongs to is what a person recognises.
+func TestAStepIsNamedByItsRun(t *testing.T) {
+	home := Log{ID: "H", Events: []protocol.Event{opened(0, "# Navigation shell\n\nGive Liftoff its shell", "run:work")}}
+	step := Log{ID: "S", Events: []protocol.Event{
+		at(1, protocol.EventSession, protocol.SessionData{Workspace: "/w", Options: protocol.Options{Parent: "H"}}),
+		said(1, "Do task 2 of 6 of this run:"),
+		called(2, "s1", "web.search", search("compose nav")),
+		answered(2, "s1", "web.search", "ok", "", "use NavHost"),
+	}}
+	orphan := Log{ID: "O", Events: []protocol.Event{
+		at(1, protocol.EventSession, protocol.SessionData{Workspace: "/w", Options: protocol.Options{Parent: "GONE"}}),
+		said(1, "Do task 1 of 2 of this run:"),
+		called(3, "o1", "web.search", search("x")),
+	}}
+	calls, _ := Calls([]Log{home, step, orphan}, CallQuery{Tool: "web.search", From: from, To: to, Kind: KindAll})
+	got := map[string]string{}
+	for _, c := range calls {
+		got[c.SessionID] = c.Label
+	}
+	if got["S"] != "Navigation shell" {
+		t.Errorf("a step is named by its run's description, got %q", got["S"])
+	}
+	if got["O"] != "Do task 1 of 2 of this run:" {
+		t.Errorf("a step whose run is gone falls back to its prompt, got %q", got["O"])
+	}
 }
