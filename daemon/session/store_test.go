@@ -1,6 +1,8 @@
 package session
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -176,5 +178,32 @@ func TestArchiveAndRestore(t *testing.T) {
 	}
 	if err := st.Archive("01ARZ3NDEKTSV4RRFFQ69G5FAV"); err != ErrNotFound {
 		t.Errorf("an unknown id should be not found, got %v", err)
+	}
+}
+
+func TestArchivedLogsKeepTheirIDs(t *testing.T) {
+	st := newStore(t)
+	a, _ := st.Create("C:/w", "w-1", opts, 0)
+	b, _ := st.Create("C:/w", "w-1", opts, 0)
+	for _, s := range []*Session{a, b} {
+		if err := st.Archive(s.ID()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A log that cannot be read costs only itself.
+	if err := os.WriteFile(filepath.Join(st.archiveDir(), "01ARZ3NDEKTSV4RRFFQ69G5FAV.jsonl"), []byte("not json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	logs, err := st.ArchivedLogs()
+	if err == nil {
+		t.Error("the unreadable log should be reported")
+	}
+	got := map[string]int{}
+	for _, l := range logs {
+		got[l.ID] = len(l.Events)
+	}
+	if len(got) != 2 || got[a.ID()] == 0 || got[b.ID()] == 0 {
+		t.Errorf("archived logs = %v, want %s and %s with their events", got, a.ID(), b.ID())
 	}
 }

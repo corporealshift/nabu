@@ -459,8 +459,10 @@ func (h *Handler) handleUsage(_ context.Context, _ *connState, params json.RawMe
 	}
 	// Archived sessions still happened: a session archived after three idle
 	// days would otherwise vanish from the days it was busy.
-	if archived, err := h.store.ArchivedLogs(); err == nil {
-		logs = append(logs, archived...)
+	// One unreadable archive costs only itself, not the rest.
+	archived, _ := h.store.ArchivedLogs()
+	for _, a := range archived {
+		logs = append(logs, a.Events)
 	}
 	now := time.Now()
 	first := now.AddDate(0, 0, -(p.Days - 1))
