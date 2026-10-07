@@ -102,8 +102,10 @@ func (c Client) Create(ctx context.Context, workspace, parent string, maxTurns i
 		"workspace": workspace,
 		// guard:no-push: a step session commits, and the runner pushes and
 		// posts once the work is checked.
+		// unattended: nobody watches a step, so it is offered no tool that
+		// needs a person.
 		"options": map[string]any{"permission_mode": string(protocol.PermissionAuto), "parent": parent,
-			"labels": []string{NoPushLabel}},
+			"labels": []string{NoPushLabel, protocol.LabelUnattended}},
 		"budget": map[string]any{"max_turns": maxTurns, "source": "client"},
 	}, &out)
 	return out.SessionID, err
@@ -116,7 +118,7 @@ func (c Client) CreateHome(ctx context.Context, workspace, parent, description s
 	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
 		"workspace": workspace,
 		// Never prompted, so it never runs; the label is there in case.
-		"options": map[string]any{"parent": parent, "description": description, "labels": []string{NoPushLabel}},
+		"options": map[string]any{"parent": parent, "description": description, "labels": []string{NoPushLabel, protocol.LabelUnattended}},
 	}, &out)
 	return out.SessionID, err
 }

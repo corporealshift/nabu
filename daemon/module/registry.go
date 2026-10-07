@@ -130,6 +130,27 @@ func (r *Registry) Tools() ([]Tool, error) {
 	return out, nil
 }
 
+// SessionTools collects the tools active modules add for one session, in
+// order. A name some module already offers every session is not added again.
+func (r *Registry) SessionTools(s Session, taken func(name string) bool) []Tool {
+	var out []Tool
+	seen := map[string]bool{}
+	for _, m := range r.Modules() {
+		sp, ok := m.(SessionToolProvider)
+		if !ok || r.isDisabled(s.ID(), m.Name()) {
+			continue
+		}
+		for _, t := range sp.SessionTools(s) {
+			if seen[t.Name] || (taken != nil && taken(t.Name)) {
+				continue
+			}
+			seen[t.Name] = true
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // call runs fn under recover() and a timeout. On panic or timeout the module
 // is disabled for the session and a notice is appended. It returns false if
 // the hook did not complete normally.

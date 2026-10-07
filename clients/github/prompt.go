@@ -69,7 +69,7 @@ func ReviewPrompt(repo string, pr PR, prev *Reviewed, asked []Comment) string {
 
 This is a review only. Change no files: do not edit, create or delete anything, and do not commit or push. Posting the review is done for you once you finish.
 
-Nobody is watching this session, so do not use the ask tool: a question would only wait ten minutes for an answer that never comes. Find out what you can from the repository yourself, and put anything you could not settle in the summary as a question for the author.
+Nobody is watching this session, so there is no one to ask. Find out what you can from the repository yourself; if you are stuck on something, look it up first: web.search finds documentation and answers, and web.fetch reads a page. If you have tried that and still cannot settle it, ask Claude with claude.ask, saying what you tried and what you are choosing between. Put anything still unsettled in the summary as a question for the author.
 
 End your final message with exactly one fenced json block:
 

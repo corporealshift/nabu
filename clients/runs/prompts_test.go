@@ -34,7 +34,7 @@ func TestSessionPrompts(t *testing.T) {
 					t.Errorf("lacks %q", s)
 				}
 			}
-			for _, s := range []string{"do not use the ask tool", "Do not push"} {
+			for _, s := range []string{"there is no one to ask", "web.search", "claude.ask", "Do not push"} {
 				if !strings.Contains(tt.prompt, s) {
 					t.Errorf("lacks %q", s)
 				}

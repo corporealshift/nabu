@@ -100,8 +100,14 @@ Every `source` field, where present, is one of `daemon`, `model`, `client`, or
   because setting a goal on an idle session starts the loop (§7.11). The home would then
   start working on the brief in the owner's own checkout.
 
-The daemon records both and attaches no meaning to either: grouping sessions under a
-parent, or acting on a label, is for clients. An absent `parent` or `labels` means none.
+The daemon's core records both and attaches no meaning to either: grouping sessions under
+a parent, or acting on a label, is for clients and modules. An absent `parent` or `labels`
+means none. Two labels are read by modules compiled into the daemon:
+- `guard:no-push`: the guard refuses the session anything that publishes.
+- `unattended`: no person watches the session. A client that starts a session for itself
+  (a run's step, a GitHub job, `nabu run`) sets it. Tools that need a person, such as
+  `ask`, are not offered to the session. The label says what the session is, not which
+  tools it gets: each module decides that for its own tools.
 
 `context_window` is the model's context size in tokens, as configured when the session
 was created. It is recorded so a client can say how full the context is: the daemon

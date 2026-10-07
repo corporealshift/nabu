@@ -17,8 +17,8 @@ func (c Client) Create(ctx context.Context, workspace string, maxTurns int) (str
 	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
 		"workspace": workspace,
 		// guard:no-push: the watcher pushes and posts itself, from what a
-		// finished session left.
-		"options": map[string]any{"permission_mode": string(protocol.PermissionAuto), "labels": []string{"guard:no-push"}},
+		// finished session left. unattended: nobody watches a job.
+		"options": map[string]any{"permission_mode": string(protocol.PermissionAuto), "labels": []string{"guard:no-push", protocol.LabelUnattended}},
 		"budget":  map[string]any{"max_turns": maxTurns, "source": "client"},
 	}, &out)
 	return out.SessionID, err

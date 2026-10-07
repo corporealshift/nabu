@@ -12,9 +12,11 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/protocol"
 )
 
 // maxChoices keeps a question answerable on a phone. A list longer than this
@@ -39,12 +41,21 @@ func (m *Module) Init(h module.Host, cfg module.Config) error {
 	return nil
 }
 
-// Tools implements module.ToolProvider.
-func (m *Module) Tools() []module.Tool {
-	if !m.enabled || m.host == nil {
+// SessionTools implements module.SessionToolProvider. The tool is offered
+// only to a session a person can answer: never to one labeled unattended,
+// which a client starts for itself. Telling such sessions in their prompt not
+// to ask did not hold: steps of one goal's runs asked six times in a day, and
+// every question went to the owner's phone.
+func (m *Module) SessionTools(s module.Session) []module.Tool {
+	if !m.enabled || m.host == nil || s == nil || slices.Contains(s.State().Options.Labels, protocol.LabelUnattended) {
 		return nil
 	}
-	return []module.Tool{{
+	return []module.Tool{m.tool()}
+}
+
+// tool is the ask tool.
+func (m *Module) tool() module.Tool {
+	return module.Tool{
 		Name: "ask",
 		Description: "Ask the person watching, and wait for their answer. " +
 			"Use it when the work genuinely forks and the right branch is theirs to " +
@@ -68,7 +79,7 @@ func (m *Module) Tools() []module.Tool {
 			`"question":{"type":"string","description":"one clear question about one decision"},` +
 			`"choices":{"type":"array","items":{"type":"string"},"description":"up to 6 mutually exclusive answers to it"}}}}}}`),
 		Run: m.run,
-	}}
+	}
 }
 
 // item is one question and the answers offered to it.
@@ -138,14 +149,17 @@ func (m *Module) run(ctx context.Context, s module.Session, args json.RawMessage
 			}
 			return "", errors.New(msg)
 		}
-		answer = strings.TrimSpace(answer)
-		if answer == "" {
-			answer = "they gave no answer"
-		}
 		if len(items) == 1 {
-			return answer, nil
+			return said(answer, it.Choices), nil
 		}
-		answers = append(answers, fmt.Sprintf("%d. %s\n   → %s", i+1, firstLine(it.Question), answer))
+		// In a list, the question beside it already says whose answer it is.
+		line := strings.TrimSpace(answer)
+		if line == "" {
+			line = "they gave no answer"
+		} else if len(it.Choices) > 0 && !slices.Contains(it.Choices, line) {
+			line += " (written, not one of your choices: act on it)"
+		}
+		answers = append(answers, fmt.Sprintf("%d. %s\n   → %s", i+1, firstLine(it.Question), line))
 	}
 	return strings.Join(answers, "\n"), nil
 }
@@ -165,6 +179,22 @@ func bundled(q string) int {
 		return n
 	}
 	return 1
+}
+
+// said is an answer as the model reads it. Bare, an answer was taken for
+// something else: a session that had been told nobody was watching got
+// "ask Claude" back, and went on "The user didn't answer". So it is quoted as
+// theirs, and an answer written instead of picked is said to be one.
+func said(answer string, choices []string) string {
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return "They gave no answer."
+	}
+	out := fmt.Sprintf("They answered: %q.", answer)
+	if len(choices) > 0 && !slices.Contains(choices, answer) {
+		out += " That is not one of your choices: it is what they want, so act on it."
+	}
+	return out
 }
 
 // firstLine is a question's opening, to label its answer by.

@@ -30,7 +30,7 @@ func TestCommentsPrompt(t *testing.T) {
 		"**new comment, id 12, by kyle:**",
 		"### b.go:9", "**new comment, id 20, by kyle:**",
 		"## Comments on the whole PR", "**new review, id 5, by kyle:**", "**new comment, id 900, by kyle:**",
-		"Do not push", "do not use the ask tool", `{"replies": [{"id": 123456`,
+		"Do not push", "there is no one to ask", "web.search", "claude.ask", `{"replies": [{"id": 123456`,
 		// The check against its own diff, before it claims anything is done.
 		"CLAUDE.md", "your own diff, `git diff abc`", "character for character", "every line your diff removes",
 	} {

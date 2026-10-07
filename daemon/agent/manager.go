@@ -115,20 +115,43 @@ func New(deps Deps, cfg Config) (*Manager, error) {
 	return m, nil
 }
 
-// toolsFor is the tools offered to one provider's model. A provider may
-// decline the task tools; see provider.Config.TasksEnabled.
-func (m *Manager) toolsFor(pcfg provider.Config) []provider.ToolSpec {
-	if pcfg.TasksEnabled == nil || *pcfg.TasksEnabled {
-		return m.toolSpecs
-	}
+// toolsFor is the tools offered to one session's model: every session's,
+// then whatever modules add for this one. A provider may decline the task
+// tools; see provider.Config.TasksEnabled.
+func (m *Manager) toolsFor(pcfg provider.Config, s module.Session) []provider.ToolSpec {
+	noTasks := pcfg.TasksEnabled != nil && !*pcfg.TasksEnabled
 	out := make([]provider.ToolSpec, 0, len(m.toolSpecs))
 	for _, t := range m.toolSpecs {
-		if strings.HasPrefix(t.Name, "task.") {
+		if noTasks && strings.HasPrefix(t.Name, "task.") {
 			continue
 		}
 		out = append(out, t)
 	}
+	for _, t := range m.sessionTools(s) {
+		out = append(out, provider.ToolSpec{Name: t.Name, Description: t.Description, Parameters: t.Schema})
+	}
 	return out
+}
+
+// sessionTools is what modules add for one session.
+func (m *Manager) sessionTools(s module.Session) []module.Tool {
+	if s == nil {
+		return nil
+	}
+	return m.deps.Modules.SessionTools(s, func(name string) bool { _, ok := m.toolsByName[name]; return ok })
+}
+
+// tool finds a tool this session was offered.
+func (m *Manager) tool(s module.Session, name string) (module.Tool, bool) {
+	if t, ok := m.toolsByName[name]; ok {
+		return t, true
+	}
+	for _, t := range m.sessionTools(s) {
+		if t.Name == name {
+			return t, true
+		}
+	}
+	return module.Tool{}, false
 }
 
 // toolNames lists registered tools, sorted, for error messages.
@@ -747,7 +770,7 @@ func (m *Manager) executeTool(ctx context.Context, h *sessionHandle, call protoc
 			CallID: call.CallID, Tool: call.Tool, Content: msg, Status: "error", Kind: kind,
 		}
 	}
-	tool, ok := m.toolsByName[call.Tool]
+	tool, ok := m.tool(h, call.Tool)
 	if !ok {
 		return fail(protocol.ToolErrorNotFound,
 			fmt.Sprintf("unknown tool %q; available: %s", call.Tool, strings.Join(m.toolNames(), ", ")))
