@@ -317,14 +317,12 @@ fun SessionListScreen(
                                     color = NabuTheme.colors.danger,
                                 )
                             }
-                            if (s.state == "idle") {
-                                idleAge(s.updatedAt, System.currentTimeMillis())?.let {
-                                    Text(
-                                        it,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = NabuTheme.colors.muted,
-                                    )
-                                }
+                            stoppedAge(s.state, s.updatedAt, System.currentTimeMillis())?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = NabuTheme.colors.muted,
+                                )
                             }
                         }
                     }
