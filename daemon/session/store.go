@@ -28,6 +28,10 @@ type Store struct {
 
 	// observe sees every event appended to any session; see SetObserver.
 	observe func(id string, e protocol.Event)
+
+	// closed is set by Close. A closed store opens nothing: a session loaded
+	// after Close would hold its file open with nothing left to close it.
+	closed bool
 }
 
 // SetObserver gives the store one observer of every event appended to any
@@ -60,6 +64,10 @@ func (st *Store) Create(workspace, key string, opts protocol.Options, contextWin
 	// Session ids order listings, so two sessions created in the same
 	// millisecond must still sort by creation order.
 	st.mu.Lock()
+	if st.closed {
+		st.mu.Unlock()
+		return nil, ErrClosed
+	}
 	id := protocol.NewULIDAfter(st.lastID)
 	st.lastID = id
 	st.mu.Unlock()
@@ -90,6 +98,9 @@ func (st *Store) Create(workspace, key string, opts protocol.Options, contextWin
 func (st *Store) Get(id string) (*Session, error) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
+	if st.closed {
+		return nil, ErrClosed
+	}
 	if s, ok := st.open[id]; ok {
 		return s, nil
 	}
@@ -174,6 +185,7 @@ func (st *Store) Close() error {
 		sessions = append(sessions, s)
 	}
 	st.open = map[string]*Session{}
+	st.closed = true
 	st.mu.Unlock()
 	var errs []error
 	for _, s := range sessions {
