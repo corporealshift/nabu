@@ -20,6 +20,10 @@ const LabelRequested = "run:requested"
 // push, or a post to GitHub.
 const NoPushLabel = "guard:no-push"
 
+// AskClaudeLabel sends a session's questions to Claude instead of a person:
+// nobody watches a step session, and its questions reached the owner's phone.
+const AskClaudeLabel = "ask:claude"
+
 // Client is the Daemon over a goclient connection.
 type Client struct{ C *goclient.Client }
 
@@ -101,9 +105,9 @@ func (c Client) Create(ctx context.Context, workspace, parent string, maxTurns i
 	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
 		"workspace": workspace,
 		// guard:no-push: a step session commits, and the runner pushes and
-		// posts once the work is checked.
+		// posts once the work is checked. ask:claude: nobody watches it.
 		"options": map[string]any{"permission_mode": string(protocol.PermissionAuto), "parent": parent,
-			"labels": []string{NoPushLabel}},
+			"labels": []string{NoPushLabel, AskClaudeLabel}},
 		"budget": map[string]any{"max_turns": maxTurns, "source": "client"},
 	}, &out)
 	return out.SessionID, err

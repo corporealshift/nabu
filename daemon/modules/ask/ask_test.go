@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/protocol"
 )
 
 // fakeUI stands in for whoever is watching.
@@ -64,8 +65,54 @@ func TestTheQuestionReachesTheHuman(t *testing.T) {
 	if strings.Join(ui.choices, ",") != "a,b" {
 		t.Errorf("choices = %v", ui.choices)
 	}
-	if got != "the second one" {
+	// Written rather than picked: quoted as theirs, and said to be neither choice.
+	if got != `They answered: "the second one". That is not one of your choices: it is what they want, so act on it.` {
 		t.Errorf("answer = %q", got)
+	}
+}
+
+// Seen live: a session told nobody was watching got a bare "ask Claude" back
+// and went on "The user didn't answer". An answer is quoted as theirs.
+func TestAnAnswerIsQuotedAsTheirs(t *testing.T) {
+	ui := &fakeUI{answer: "b"}
+	m := moduleWith(t, ui)
+	got, err := run(t, m, `{"question":"which design do you want?","choices":["a","b"]}`)
+	if err != nil || got != `They answered: "b".` {
+		t.Errorf("a picked choice = %q, %v", got, err)
+	}
+	ui.answer = "ask Claude"
+	got, _ = run(t, m, `{"question":"which design do you want?"}`)
+	if got != `They answered: "ask Claude".` {
+		t.Errorf("with no choices offered = %q", got)
+	}
+}
+
+// labeled is a session carrying labels, for the module's one look at state.
+type labeled struct {
+	module.Session
+	labels []string
+}
+
+func (l labeled) State() protocol.State {
+	return protocol.State{Options: protocol.Options{Labels: l.labels}}
+}
+
+// A session nobody watches asks Claude, not the person: the prompt saying so
+// was not enough.
+func TestASessionNobodyWatchesIsSentToClaude(t *testing.T) {
+	ui := &fakeUI{answer: "a"}
+	m := moduleWith(t, ui)
+	_, err := m.run(context.Background(), labeled{labels: []string{"guard:no-push", ClaudeLabel}},
+		json.RawMessage(`{"question":"which design?","choices":["a","b"]}`))
+	if err == nil || !strings.Contains(err.Error(), "claude.ask") {
+		t.Fatalf("err = %v", err)
+	}
+	if ui.asked != 0 {
+		t.Error("the question reached a person")
+	}
+	if got, err := m.run(context.Background(), labeled{labels: []string{"guard:no-push"}},
+		json.RawMessage(`{"question":"which design?"}`)); err != nil || ui.asked != 1 {
+		t.Errorf("a session without the label: %q, %v, asked %d", got, err, ui.asked)
 	}
 }
 

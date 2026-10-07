@@ -29,7 +29,7 @@ func rules(r Run) string {
 - This session does one step of an automated run. Do that step and nothing else; later steps have their own sessions.
 - Never create, edit, rename or delete %s. The runner checks, and throws away any session that touches it.
 - Do not push, and do not open a pull request. The runner does both at the end.
-- Nobody is watching, so do not use the ask tool: a question would only wait ten minutes for an answer that never comes.
+- Nobody is watching, so the ask tool reaches no person. If you are stuck on something you have tried and cannot settle, ask Claude with claude.ask, saying what you tried and what you are choosing between.
 - Commit your work before you finish.
 `, r.File(VerifyFile))
 }
@@ -113,7 +113,7 @@ This script is the definition of done for the whole run. Once it is committed, o
 - This session does one step of an automated run. Write the script and nothing else.
 - Write only %[4]s. Change no other file: do not write the feature or its tests, which belong to later steps, and the runner throws away a session that changes anything else.
 - Do not push, and do not open a pull request.
-- Nobody is watching, so do not use the ask tool.
+- Nobody is watching, so the ask tool reaches no person; if you are stuck, ask Claude with claude.ask.
 - Commit your work before you finish.
 `, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile), DecisionsHeading, expectation)
 }
