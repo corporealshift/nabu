@@ -286,7 +286,7 @@ private fun ToolBars(tools: List<WindowTool>, subtitle: String, limit: Int, onTo
     val shown = tools.take(limit)
     val top = shown.maxOf { it.calls }.coerceAtLeast(1)
     // Across sessions the tip also says how many used it, so the bars leave it more room.
-    val longest = if (shown.any { it.sessions > 0 }) 0.45f else 0.6f
+    val longest = if (shown.any { it.sessions > 0 }) 0.35f else 0.6f
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Heading("Tools", subtitle)
         shown.forEach { t ->
