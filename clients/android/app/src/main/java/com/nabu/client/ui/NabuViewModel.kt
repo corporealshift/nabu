@@ -661,6 +661,63 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val _overall = MutableStateFlow(OverallStatsState())
+
+    /** The stats screen across sessions (spec 7.25). */
+    val overall: StateFlow<OverallStatsState> = _overall.asStateFlow()
+
+    /**
+     * Asks the daemon for the work across sessions over [days] of [kind]. The
+     * numbers already shown stay up while the new ones load, so changing the
+     * period does not blank the screen.
+     */
+    fun loadOverallStats(days: Int = _overall.value.days, kind: String = _overall.value.kind) {
+        _overall.value = _overall.value.copy(days = days, kind = kind, loading = true, error = null)
+        viewModelScope.launch {
+            val c = client ?: run {
+                _overall.value = OverallStatsState(days, kind, error = "not connected")
+                return@launch
+            }
+            runCatching { repo.windowStats(c, days, kind) }
+                .onSuccess { w ->
+                    // A slower answer to an earlier choice must not overwrite a newer one.
+                    if (_overall.value.days == days && _overall.value.kind == kind) {
+                        _overall.value = OverallStatsState(days, kind, window = w)
+                    }
+                }
+                .onFailure { _overall.value = OverallStatsState(days, kind, error = it.message ?: "could not load the stats") }
+        }
+    }
+
+    private val _toolCalls = MutableStateFlow(ToolCallsState())
+
+    /** One tool's calls, the drill-down from either stats screen (spec 7.26). */
+    val toolCalls: StateFlow<ToolCallsState> = _toolCalls.asStateFlow()
+
+    /**
+     * Asks for [tool]'s calls: one session's when [sessionId] is set, else
+     * across the sessions the overall screen is showing.
+     */
+    fun loadToolCalls(tool: String, sessionId: String?) {
+        val days = _overall.value.days
+        val kind = _overall.value.kind
+        val asked = ToolCallsState(tool, sessionId, days, kind, loading = true)
+        _toolCalls.value = asked
+        viewModelScope.launch {
+            val c = client ?: run {
+                _toolCalls.value = asked.copy(loading = false, error = "not connected")
+                return@launch
+            }
+            runCatching { repo.toolCalls(c, tool, days, kind, sessionId) }
+                .onSuccess { got ->
+                    if (_toolCalls.value == asked) {
+                        _toolCalls.value = asked.copy(loading = false, calls = got.calls, truncated = got.truncated)
+                    }
+                }
+                .onFailure { _toolCalls.value = asked.copy(loading = false, error = it.message ?: "could not load the calls") }
+        }
+    }
+
     /** The id that makes a retry safe to repeat. */
     private fun newClientId(): String =
         "outbox-" + java.util.UUID.randomUUID().toString().replace("-", "").take(20)
