@@ -723,6 +723,7 @@ type SessionStarter  interface { SessionStart(ctx, Session) ([]Context, error) }
 type RequestHook     interface { BeforeRequest(ctx, Session) ([]Context, error) }   // suffix blocks for this request only
 type ToolGate        interface { GateTool(ctx, Session, ToolCall) Verdict }         // Allow | Deny{reason} | Ask{prompt, risk} | Halt{reason, summary}
 type ToolProvider    interface { Tools() []Tool }                                   // registered through the same registry as built-ins
+type SessionToolProvider interface { SessionTools(Session) []Tool }             // added 2026-10-07: tools for one session on top of every session's; ask is offered only where a person can answer (not to a session labeled `unattended`)
 type ToolObserver    interface { ToolResult(ctx, Session, ToolCall, ToolResult) }
 type TurnObserver    interface { TurnEnd(ctx, Session) }
 type StopGate        interface { BeforeStop(ctx, Session, StopInfo) StopVerdict }   // Allow | Veto{reason}

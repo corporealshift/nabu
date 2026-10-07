@@ -100,6 +100,10 @@ func ValidDescription(d string) error {
 	return nil
 }
 
+// LabelUnattended marks a session no person watches: one a client started
+// for itself. Modules offer it no tool that needs a person (spec §3.1).
+const LabelUnattended = "unattended"
+
 // Limits on labels (spec §3.1). A label is machine-readable and a list row
 // carries them, so they are short and few.
 const (

@@ -180,7 +180,8 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 	var created struct {
 		SessionID string `json:"session_id"`
 	}
-	create := map[string]any{"workspace": ws}
+	// A headless run has nobody to answer a question: the CLI answers none.
+	create := map[string]any{"workspace": ws, "options": map[string]any{"labels": []string{protocol.LabelUnattended}}}
 	if *maxTurns > 0 {
 		// Spec 12: the budget is set at creation. A fresh session is idle
 		// rather than paused, so resume cannot carry it.

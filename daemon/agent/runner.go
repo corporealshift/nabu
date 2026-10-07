@@ -56,7 +56,7 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 	log = h.s.Events()
 
 	maxTokens := replyCap(log, pcfg, m.cfg.MaxTokens)
-	req := buildRequest(log, m.cfg.SystemPrompt, modelName, m.toolsFor(pcfg), maxTokens)
+	req := buildRequest(log, m.cfg.SystemPrompt, modelName, m.toolsFor(pcfg, h), maxTokens)
 	turnID := protocol.NewULID()
 	// Each stream is watched on its own. A reply that starts repeating a
 	// passage ends the call within a few copies rather than at the cap.

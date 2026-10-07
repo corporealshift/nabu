@@ -161,9 +161,19 @@ type Tool struct {
 	Run func(ctx context.Context, s Session, args json.RawMessage) (string, error)
 }
 
-// ToolProvider contributes tools to the registry at daemon start.
+// ToolProvider contributes tools to the registry at daemon start. They are
+// offered to every session.
 type ToolProvider interface {
 	Tools() []Tool
+}
+
+// SessionToolProvider adds tools for one session, on top of what every
+// session has: a tool that only makes sense with a person there, say. The
+// session's labels say what kind it is (protocol.LabelUnattended), and each
+// module decides what that means for its own tools. It is asked before every
+// request and on every call, so it decides from the session alone, quickly.
+type SessionToolProvider interface {
+	SessionTools(s Session) []Tool
 }
 
 // ToolObserver is told about every tool result after it is logged.

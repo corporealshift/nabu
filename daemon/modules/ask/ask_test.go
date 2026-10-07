@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/protocol"
 )
 
 // fakeUI stands in for whoever is watching.
@@ -64,8 +65,52 @@ func TestTheQuestionReachesTheHuman(t *testing.T) {
 	if strings.Join(ui.choices, ",") != "a,b" {
 		t.Errorf("choices = %v", ui.choices)
 	}
-	if got != "the second one" {
+	// Written rather than picked: quoted as theirs, and said to be neither choice.
+	if got != `They answered: "the second one". That is not one of your choices: it is what they want, so act on it.` {
 		t.Errorf("answer = %q", got)
+	}
+}
+
+// Seen live: a session told nobody was watching got a bare "ask Claude" back
+// and went on "The user didn't answer". An answer is quoted as theirs.
+func TestAnAnswerIsQuotedAsTheirs(t *testing.T) {
+	ui := &fakeUI{answer: "b"}
+	m := moduleWith(t, ui)
+	got, err := run(t, m, `{"question":"which design do you want?","choices":["a","b"]}`)
+	if err != nil || got != `They answered: "b".` {
+		t.Errorf("a picked choice = %q, %v", got, err)
+	}
+	ui.answer = "ask Claude"
+	got, _ = run(t, m, `{"question":"which design do you want?"}`)
+	if got != `They answered: "ask Claude".` {
+		t.Errorf("with no choices offered = %q", got)
+	}
+}
+
+// labeled is a session carrying labels, for the module's one look at state.
+type labeled struct {
+	module.Session
+	labels []string
+}
+
+func (l labeled) State() protocol.State {
+	return protocol.State{Options: protocol.Options{Labels: l.labels}}
+}
+
+// A session nobody watches is never offered the tool: telling it in its
+// prompt not to ask was not enough. Every other session is.
+func TestAnUnattendedSessionHasNoAskTool(t *testing.T) {
+	m := moduleWith(t, &fakeUI{})
+	if tools := m.SessionTools(labeled{labels: []string{"guard:no-push", protocol.LabelUnattended}}); len(tools) != 0 {
+		t.Errorf("an unattended session was offered %v", tools)
+	}
+	for _, labels := range [][]string{nil, {"guard:no-push"}, {"run:done"}} {
+		if tools := m.SessionTools(labeled{labels: labels}); len(tools) != 1 || tools[0].Name != "ask" {
+			t.Errorf("a session labeled %q was offered %v", labels, tools)
+		}
+	}
+	if tools := m.SessionTools(nil); len(tools) != 0 {
+		t.Error("no session, no tool")
 	}
 }
 
@@ -144,7 +189,7 @@ func TestADisabledModuleOffersNoTool(t *testing.T) {
 	if err := m.Init(nil, module.Config{"enabled": false}); err != nil {
 		t.Fatal(err)
 	}
-	if n := len(m.Tools()); n != 0 {
+	if n := len(m.SessionTools(labeled{})); n != 0 {
 		t.Errorf("a disabled module offered %d tools", n)
 	}
 }
@@ -153,7 +198,7 @@ func TestTheToolIsCalledAsk(t *testing.T) {
 	ui := &fakeUI{}
 	m := moduleWith(t, ui)
 
-	tools := m.Tools()
+	tools := m.SessionTools(labeled{})
 	if len(tools) != 1 || tools[0].Name != "ask" {
 		t.Fatalf("tools = %v", tools)
 	}

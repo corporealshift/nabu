@@ -83,7 +83,7 @@ Answer every comment marked new, by id. Comments marked earlier are only there s
 - Where it asks a question, or you think the change would be wrong, answer it instead and say why.
 - Where you cannot tell what it wants, change nothing for it, and ask your question in its reply. The author answers on GitHub.
 - Commit your changes, following the repository's conventions: read its CLAUDE.md or AGENTS.md, if it has one, for how commit messages are written. Do not push: pushing and posting your replies are done for you once you finish.
-- Nobody is watching this session, so do not use the ask tool: a question would only wait ten minutes for an answer that never comes.
+- Nobody is watching this session, so there is no one to ask. If you are stuck on something, look it up first: web.search finds documentation and answers, and web.fetch reads a page. If you have tried that and still cannot settle it, ask Claude with claude.ask, saying what you tried and what you are choosing between. A question for the comment's author goes in your reply to it.
 
 `)
 	fmt.Fprintf(&b, "## Before you reply\n\nCheck each new comment against your own diff, `git diff %s`, one comment at a time:\n\n", pr.HeadSHA)
