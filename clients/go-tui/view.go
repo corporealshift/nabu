@@ -205,8 +205,17 @@ func pickerRow(s goclient.SessionSummary, selected bool, depth int, f fold, widt
 		}
 		meta = count + " · " + meta
 	}
-	if s.State == string(protocol.StateIdle) {
+	// When it stopped: an idle session after a quiet spell, and a finished
+	// one (completed, paused, blocked, error) always, since when it finished
+	// is the point of looking.
+	switch s.State {
+	case string(protocol.StateRunning):
+	case string(protocol.StateIdle):
 		if age := idleAge(s.UpdatedAt, now); age != "" {
+			meta += " · " + age
+		}
+	default:
+		if age := ago(s.UpdatedAt, now); age != "" {
 			meta += " · " + age
 		}
 	}
@@ -475,19 +484,31 @@ func (m model) keysPanel() string {
 const idleThreshold = 5 * time.Minute
 
 func idleAge(at, now time.Time) string {
+	if at.IsZero() || now.Before(at) || now.Sub(at) < idleThreshold {
+		return ""
+	}
+	return ago(at, now)
+}
+
+// ago is how long before now something happened, in the largest unit that
+// reads naturally: "just now", minutes, hours, then days past two of them.
+func ago(at, now time.Time) string {
 	if at.IsZero() || now.Before(at) {
 		return ""
 	}
 	age := now.Sub(at)
-	if age < idleThreshold {
-		return ""
-	}
-	if age >= time.Hour {
+	switch {
+	case age >= 48*time.Hour:
+		days := int(age / (24 * time.Hour))
+		return fmt.Sprintf("%d day%s ago", days, plural(days))
+	case age >= time.Hour:
 		hours := int(age / time.Hour)
 		return fmt.Sprintf("%d hour%s ago", hours, plural(hours))
+	case age >= time.Minute:
+		minutes := int(age / time.Minute)
+		return fmt.Sprintf("%d minute%s ago", minutes, plural(minutes))
 	}
-	minutes := int(age / time.Minute)
-	return fmt.Sprintf("%d minute%s ago", minutes, plural(minutes))
+	return "just now"
 }
 
 func plural(n int) string {

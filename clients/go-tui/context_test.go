@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/corporealshift/nabu/clients/goclient"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -125,5 +126,36 @@ func TestMessageTimestampAndIdleAge(t *testing.T) {
 	}
 	if got := idleAge(time.Unix(0, 0), time.Unix(4*60, 0)); got != "" {
 		t.Errorf("idle age before threshold = %q, want empty", got)
+	}
+}
+
+// A finished session says when it finished, however recently; an idle one
+// waits out the quiet spell; a running one says nothing.
+func TestThePickerSaysWhenASessionStopped(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	for _, tt := range []struct {
+		state string
+		ago   time.Duration
+		want  string
+	}{
+		{"completed", 20 * time.Second, "completed · just now"},
+		{"blocked", 3 * time.Minute, "blocked · 3 minutes ago"},
+		{"error", 5 * time.Hour, "error · 5 hours ago"},
+		{"paused", 72 * time.Hour, "paused · 3 days ago"},
+		{"idle", 10 * time.Minute, "idle · 10 minutes ago"},
+	} {
+		row := pickerRow(goclient.SessionSummary{SessionID: "01S", Workspace: "C:/w/nabu", State: tt.state, LastPrompt: "x",
+			UpdatedAt: now.Add(-tt.ago)}, false, 0, fold{}, 100, now)
+		if !strings.Contains(row, tt.want) {
+			t.Errorf("%s %s ago: %q lacks %q", tt.state, tt.ago, row, tt.want)
+		}
+	}
+	for _, s := range []goclient.SessionSummary{
+		{SessionID: "01R", State: "running", UpdatedAt: now.Add(-time.Hour)},
+		{SessionID: "01I", State: "idle", UpdatedAt: now.Add(-3 * time.Minute)},
+	} {
+		if row := pickerRow(s, false, 0, fold{}, 100, now); strings.Contains(row, "ago") || strings.Contains(row, "just now") {
+			t.Errorf("%s: %q says when it stopped", s.State, row)
+		}
 	}
 }

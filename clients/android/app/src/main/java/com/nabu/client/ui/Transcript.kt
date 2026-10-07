@@ -146,15 +146,36 @@ internal fun formatMessageTime(timestamp: String, zone: ZoneId = ZoneId.systemDe
  * session that went quiet a moment ago is not news.
  */
 internal fun idleAge(updatedAt: Long, now: Long): String? {
-    val age = now - updatedAt
-    if (updatedAt <= 0L || age < 5 * 60 * 1000L) return null
-    return if (age >= 60 * 60 * 1000L) {
-        val hours = age / (60 * 60 * 1000L)
-        "$hours hour${if (hours == 1L) "" else "s"} ago"
-    } else {
-        val minutes = age / (60 * 1000L)
-        "$minutes minute${if (minutes == 1L) "" else "s"} ago"
+    if (updatedAt <= 0L || now - updatedAt < 5 * 60 * 1000L) return null
+    return ago(updatedAt, now)
+}
+
+/**
+ * How long before [now] something happened, in the largest unit that reads
+ * naturally: "just now", minutes, hours, then days past two of them.
+ */
+internal fun ago(at: Long, now: Long): String? {
+    if (at <= 0L || now < at) return null
+    val age = now - at
+    val minute = 60 * 1000L
+    val hour = 60 * minute
+    fun plural(n: Long, unit: String) = "$n $unit${if (n == 1L) "" else "s"} ago"
+    return when {
+        age >= 48 * hour -> plural(age / (24 * hour), "day")
+        age >= hour -> plural(age / hour, "hour")
+        age >= minute -> plural(age / minute, "minute")
+        else -> "just now"
     }
+}
+
+/**
+ * When a session stopped, for the list: after a quiet spell for an idle one,
+ * and always for a finished one, since when it finished is the point.
+ */
+internal fun stoppedAge(state: String, updatedAt: Long, now: Long): String? = when (state) {
+    "running" -> null
+    "idle" -> idleAge(updatedAt, now)
+    else -> ago(updatedAt, now)
 }
 
 /** The argument worth showing: the command, path, pattern, name or query. */

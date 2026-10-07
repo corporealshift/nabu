@@ -47,6 +47,21 @@ class TranscriptTest {
         assertEquals(null, idleAge(1L, 1L + 4 * 60 * 1000L))
     }
 
+    /** A finished session says when it finished, however recently; an idle one waits five minutes; a running one says nothing. */
+    @Test
+    fun `when a session stopped is shown for every state but running`() {
+        val minute = 60 * 1000L
+        val t0 = 1_000_000L
+        assertEquals("just now", stoppedAge("completed", t0, t0 + 20_000L))
+        assertEquals("3 minutes ago", stoppedAge("blocked", t0, t0 + 3 * minute))
+        assertEquals("5 hours ago", stoppedAge("error", t0, t0 + 5 * 60 * minute))
+        assertEquals("3 days ago", stoppedAge("paused", t0, t0 + 3 * 24 * 60 * minute))
+        assertEquals(null, stoppedAge("idle", t0, t0 + 3 * minute))
+        assertEquals("10 minutes ago", stoppedAge("idle", t0, t0 + 10 * minute))
+        assertEquals(null, stoppedAge("running", t0, t0 + 3 * 24 * 60 * minute))
+        assertEquals(null, stoppedAge("completed", 0L, t0))
+    }
+
     /** An assistant message with no text is the model calling a tool. */
     @Test
     fun `an empty message is not a line`() {
