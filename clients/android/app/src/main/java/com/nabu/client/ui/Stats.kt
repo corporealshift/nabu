@@ -2,6 +2,7 @@ package com.nabu.client.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +44,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nabu.client.protocol.SessionStats
 import com.nabu.client.protocol.UsageDay
+import com.nabu.client.protocol.WindowStats
+import com.nabu.client.protocol.WindowTool
 import com.nabu.client.ui.theme.NabuTheme
 
 /** What the stats screen is showing, or why it is not. */
@@ -53,6 +56,31 @@ data class StatsState(
     val days: List<UsageDay> = emptyList(),
     val error: String? = null,
 )
+
+/** What the stats screen across sessions is showing (spec 7.25), or why it is not. */
+data class OverallStatsState(
+    val days: Int = 7,
+    val kind: String = "all",
+    val loading: Boolean = false,
+    val window: WindowStats? = null,
+    val error: String? = null,
+)
+
+/** The periods offered, in days. */
+val statsPeriods = listOf(1, 7, 30)
+
+/** The kinds of session offered (spec 7.25), as the daemon names them. */
+val statsKinds = listOf("all", "interactive", "unattended")
+
+/** A period as words: today, the last 7 days. */
+fun periodWords(days: Int): String = if (days == 1) "today" else "the last $days days"
+
+/** A kind as words, for a sentence: every session, interactive sessions, runs. */
+fun kindWords(kind: String): String = when (kind) {
+    "interactive" -> "interactive sessions"
+    "unattended" -> "unattended sessions"
+    else -> "every session"
+}
 
 /** A count the way a person reads one: 1,284 → 1.3K, 77085054 → 77.1M. */
 fun compactCount(n: Long): String = when {
@@ -94,7 +122,7 @@ fun nearestIndex(x: Float, width: Float, count: Int): Int {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StatsScreen(state: StatsState, onBack: () -> Unit) {
+fun StatsScreen(state: StatsState, onBack: () -> Unit, onTool: (String) -> Unit = {}) {
     val c = NabuTheme.colors
     Scaffold(containerColor = c.background, topBar = {
         TopAppBar(
@@ -137,7 +165,14 @@ fun StatsScreen(state: StatsState, onBack: () -> Unit) {
             )
 
             if (s.perTurn.isNotEmpty()) ContextChart(s)
-            if (s.tools.isNotEmpty()) ToolBars(s)
+            if (s.tools.isNotEmpty()) {
+                ToolBars(
+                    s.tools.map { WindowTool(it.tool, it.calls, it.errors) },
+                    "Calls per tool; failures beside them. Tap one to see its calls.",
+                    limit = 8,
+                    onTool = onTool,
+                )
+            }
             if (s.rereads.isNotEmpty()) Rereads(s)
             if (state.days.isNotEmpty()) DayColumns(state.days)
 
@@ -241,16 +276,24 @@ private fun ContextChart(s: SessionStats) {
     }
 }
 
-/** Tool calls, most used first: bars grow from one baseline, value at the tip. */
+/**
+ * Tool calls, most used first: bars grow from one baseline, value at the tip.
+ * Tapping a tool opens its calls.
+ */
 @Composable
-private fun ToolBars(s: SessionStats) {
+private fun ToolBars(tools: List<WindowTool>, subtitle: String, limit: Int, onTool: (String) -> Unit) {
     val c = NabuTheme.colors
-    val shown = s.tools.take(8)
+    val shown = tools.take(limit)
     val top = shown.maxOf { it.calls }.coerceAtLeast(1)
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Heading("Tools", "Calls per tool; failures beside them.")
+    // Across sessions the tip also says how many used it, so the bars leave it more room.
+    val longest = if (shown.any { it.sessions > 0 }) 0.35f else 0.6f
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Heading("Tools", subtitle)
         shown.forEach { t ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().clickable { onTool(t.tool) }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
                     t.tool,
                     style = MaterialTheme.typography.labelMedium,
@@ -260,9 +303,9 @@ private fun ToolBars(s: SessionStats) {
                     modifier = Modifier.width(84.dp),
                 )
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    // The longest bar takes 60% of the row, so the count and
-                    // failures at its tip always have room.
-                    val frac = 0.6f * t.calls / top
+                    // The longest bar takes at most 60% of the row, so the
+                    // count and failures at its tip always have room.
+                    val frac = longest * t.calls / top
                     if (frac > 0f) {
                         Box(
                             Modifier.weight(frac).height(12.dp)
@@ -271,7 +314,8 @@ private fun ToolBars(s: SessionStats) {
                         )
                     }
                     Text(
-                        " ${t.calls}" + if (t.errors > 0) "  ·  ${t.errors} failed" else "",
+                        " ${t.calls}" + (if (t.errors > 0) "  ·  ${t.errors} failed" else "") +
+                            if (t.sessions > 0) "  ·  ${t.sessions} ${if (t.sessions == 1) "session" else "sessions"}" else "",
                         style = MaterialTheme.typography.labelMedium,
                         color = c.muted,
                         maxLines = 1,
@@ -307,14 +351,14 @@ private fun Rereads(s: SessionStats) {
 
 /** Tokens per day across every session, oldest first; tapping reads out a day. */
 @Composable
-private fun DayColumns(days: List<UsageDay>) {
+private fun DayColumns(days: List<UsageDay>, kind: String = "all") {
     val c = NabuTheme.colors
     val totals = days.map { it.input + it.output }
     val top = niceMax(totals.max())
     var picked by remember(days) { mutableStateOf<Int?>(null) }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Heading("Tokens per day", "Every session, the last ${days.size} days.")
+        Heading("Tokens per day", "${kindWords(kind).replaceFirstChar { it.uppercase() }}, ${periodWords(days.size)}.")
         Text(
             picked?.let { "${days[it].date}: ${compactCount(totals[it])} tokens, ${days[it].turns} turns" }
                 ?: "Busiest: ${compactCount(totals.max())}. Tap a day to read it.",
@@ -351,6 +395,101 @@ private fun DayColumns(days: List<UsageDay>) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(days.first().date, style = MaterialTheme.typography.labelSmall, color = c.muted)
             Text(days.last().date, style = MaterialTheme.typography.labelSmall, color = c.muted)
+        }
+    }
+}
+
+/**
+ * The work done across sessions over a period (spec 7.25): the per-session
+ * screen's numbers summed, with the tools to drill into. No context chart and
+ * no rereads: those describe one conversation, and summed they mean nothing.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OverallStatsScreen(
+    state: OverallStatsState,
+    onChange: (days: Int, kind: String) -> Unit,
+    onTool: (String) -> Unit,
+    onBack: () -> Unit,
+) {
+    val c = NabuTheme.colors
+    Scaffold(containerColor = c.background, topBar = {
+        TopAppBar(
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = c.background, titleContentColor = c.ink),
+            title = { Text("Stats", style = MaterialTheme.typography.titleSmall) },
+            navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+        )
+    }) { padding ->
+        Column(
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Choices(statsPeriods, state.days, { if (it == 1) "Today" else "$it days" }) { onChange(it, state.kind) }
+                Choices(statsKinds, state.kind, { it.replaceFirstChar { ch -> ch.uppercase() } }) { onChange(state.days, it) }
+            }
+            val w = state.window
+            if (w == null) {
+                Text(
+                    state.error ?: "Loading…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.muted,
+                )
+                return@Column
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Tile("Sessions", w.sessions.toString(), Modifier.weight(1f))
+                Tile("Turns", w.turns.toString(), Modifier.weight(1f))
+                Tile("Prompts", w.prompts.toString(), Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Tile("Working", spanOf(w.workingSeconds), Modifier.weight(1f))
+                Tile("Tokens in", compactCount(w.tokens.input), Modifier.weight(1f))
+                Tile("Tokens out", compactCount(w.tokens.output), Modifier.weight(1f))
+            }
+            if (w.perDay.isNotEmpty()) DayColumns(w.perDay, w.kind)
+            if (w.tools.isNotEmpty()) {
+                ToolBars(
+                    w.tools,
+                    "Calls per tool, failures, and how many sessions used it. Tap one to see its calls.",
+                    limit = w.tools.size,
+                    onTool = onTool,
+                )
+            } else {
+                Text(
+                    "No tool calls in ${kindWords(w.kind)} over ${periodWords(w.days)}.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.muted,
+                )
+            }
+            Text(
+                "Vetoes: ${w.vetoes}. Compactions: ${w.compactions.summarize} summarised, " +
+                    "${w.compactions.clearResults} tool-output clears. Interrupted ${w.interruptions}×." +
+                    if (w.skipped > 0) " ${w.skipped} session logs could not be read and are not counted." else "",
+                style = MaterialTheme.typography.bodySmall,
+                color = c.muted,
+            )
+        }
+    }
+}
+
+/** A row of mutually exclusive choices, the chosen one filled. */
+@Composable
+private fun <T> Choices(options: List<T>, chosen: T, label: (T) -> String, onChoose: (T) -> Unit) {
+    val c = NabuTheme.colors
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { o ->
+            val on = o == chosen
+            Text(
+                label(o),
+                style = MaterialTheme.typography.labelLarge,
+                color = if (on) c.onAccent else c.ink,
+                modifier = Modifier
+                    .background(if (on) c.accent else c.surface, RoundedCornerShape(16.dp))
+                    .clickable(enabled = !on) { onChoose(o) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            )
         }
     }
 }

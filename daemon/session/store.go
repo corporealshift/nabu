@@ -418,9 +418,17 @@ func (st *Store) ArchivedEvents(id string) ([]protocol.Event, error) {
 	return s.Events(), nil
 }
 
+// Archived is one archived session's log.
+type Archived struct {
+	ID     string
+	Events []protocol.Event
+}
+
 // ArchivedLogs reads every archived session's events, for anything that has to
 // count history the active list no longer shows. Each is closed after reading.
-func (st *Store) ArchivedLogs() ([][]protocol.Event, error) {
+// A log that cannot be read is left out and its error joined into the one
+// returned, alongside every log that could be.
+func (st *Store) ArchivedLogs() ([]Archived, error) {
 	entries, err := os.ReadDir(st.archiveDir())
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -428,19 +436,20 @@ func (st *Store) ArchivedLogs() ([][]protocol.Event, error) {
 	if err != nil {
 		return nil, err
 	}
-	var out [][]protocol.Event
+	var out []Archived
 	var errs []error
 	for _, ent := range entries {
 		name := ent.Name()
 		if ent.IsDir() || !strings.HasSuffix(name, ".jsonl") {
 			continue
 		}
-		s, err := load(strings.TrimSuffix(name, ".jsonl"), filepath.Join(st.archiveDir(), name))
+		id := strings.TrimSuffix(name, ".jsonl")
+		s, err := load(id, filepath.Join(st.archiveDir(), name))
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		out = append(out, s.Events())
+		out = append(out, Archived{ID: id, Events: s.Events()})
 		_ = s.Close()
 	}
 	return out, errors.Join(errs...)

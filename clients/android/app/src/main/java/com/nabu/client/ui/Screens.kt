@@ -161,6 +161,7 @@ fun SessionListScreen(
     onNewSession: () -> Unit,
     onArchive: (String) -> Unit = {},
     onArchived: () -> Unit = {},
+    onStats: () -> Unit = {},
     onNewRun: () -> Unit = {},
     /** Sessions opened to show what is under them; the rest are folded. */
     expanded: Set<String> = emptySet(),
@@ -211,6 +212,7 @@ fun SessionListScreen(
                     color = NabuTheme.colors.muted,
                     modifier = Modifier.padding(end = 12.dp),
                 )
+                TextButton(onClick = onStats) { Text("Stats") }
                 TextButton(onClick = onArchived) { Text("Archived") }
                 TextButton(onClick = onSettings) { Text("Settings") }
             },

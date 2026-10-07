@@ -341,6 +341,37 @@ class SessionRepository(
             ?: emptyList()
     }
 
+    /** The work done across sessions over the last [days] (spec 7.25). [kind] is all, interactive or runs. */
+    suspend fun windowStats(client: DaemonClient, days: Int, kind: String): com.nabu.client.protocol.WindowStats {
+        val result = client.callOrThrow("nabu.stats", buildJsonObject {
+            put("days", days)
+            put("kind", kind)
+        })
+        return NabuJson.decodeFromJsonElement(com.nabu.client.protocol.WindowStats.serializer(), result)
+    }
+
+    /**
+     * One tool's calls, newest first (spec 7.26). With [sessionId], that
+     * session's calls only, whatever the period and kind.
+     */
+    suspend fun toolCalls(
+        client: DaemonClient,
+        tool: String,
+        days: Int,
+        kind: String,
+        sessionId: String? = null,
+        limit: Int = 100,
+    ): com.nabu.client.protocol.ToolCalls {
+        val result = client.callOrThrow("nabu.stats.calls", buildJsonObject {
+            put("tool", tool)
+            put("days", days)
+            put("kind", kind)
+            if (sessionId != null) put("session_id", sessionId)
+            put("limit", limit)
+        })
+        return NabuJson.decodeFromJsonElement(com.nabu.client.protocol.ToolCalls.serializer(), result)
+    }
+
     suspend fun resumeSession(client: DaemonClient, sessionId: String) {
         client.callOrThrow("nabu.session.resume", buildJsonObject {
             put("session_id", sessionId)

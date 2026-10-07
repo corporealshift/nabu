@@ -50,6 +50,9 @@ class FakeDaemon {
     /** What nabu.session.list answers: session ids, each in C:/proj and idle. */
     @Volatile var listed: List<String> = emptyList()
 
+    /** Canned results by method name, as raw JSON, for calls whose answer a test reads. */
+    val results = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     /** Held open to prove a notification arrives while a call is in flight. */
     @Volatile var holdCall: CountDownLatch? = null
 
@@ -120,7 +123,8 @@ class FakeDaemon {
         server.shutdown()
     }
 
-    private fun resultFor(id: kotlinx.serialization.json.JsonElement, method: String) = when (method) {
+    private fun resultFor(id: kotlinx.serialization.json.JsonElement, method: String) = results[method]
+        ?.let { """{"jsonrpc":"2.0","id":${id},"result":$it}""" } ?: when (method) {
         "nabu.session.send_prompt" ->
             """{"jsonrpc":"2.0","id":${id},"result":{"event_id":"01SENT${sent.incrementAndGet()}"}}"""
         "nabu.session.create" ->

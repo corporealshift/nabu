@@ -51,3 +51,50 @@ data class UsageDay(
     val input: Long = 0,
     val output: Long = 0,
 )
+
+/** The work done across sessions over the last days (spec 7.25). */
+@Serializable
+data class WindowStats(
+    val days: Int = 0,
+    val kind: String = "all",
+    val sessions: Int = 0,
+    val turns: Int = 0,
+    val prompts: Int = 0,
+    val tokens: TokenStats = TokenStats(),
+    val tools: List<WindowTool> = emptyList(),
+    val compactions: CompactionStats = CompactionStats(),
+    val vetoes: Int = 0,
+    val interruptions: Int = 0,
+    @SerialName("working_seconds") val workingSeconds: Long = 0,
+    @SerialName("per_day") val perDay: List<UsageDay> = emptyList(),
+    val skipped: Int = 0,
+)
+
+/** One tool across sessions: how often, how often it failed, and how many sessions used it. */
+@Serializable
+data class WindowTool(
+    val tool: String = "",
+    val calls: Int = 0,
+    val errors: Int = 0,
+    val sessions: Int = 0,
+)
+
+/** One tool call and the start of what came back (spec 7.26). */
+@Serializable
+data class ToolCall(
+    @SerialName("session_id") val sessionId: String = "",
+    val label: String = "",
+    val at: String = "",
+    val arguments: kotlinx.serialization.json.JsonElement? = null,
+    val status: String = "",
+    val kind: String = "",
+    val result: String = "",
+    val archived: Boolean = false,
+)
+
+@Serializable
+data class ToolCalls(
+    val calls: List<ToolCall> = emptyList(),
+    val truncated: Boolean = false,
+    val skipped: Int = 0,
+)

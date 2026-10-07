@@ -820,3 +820,108 @@ func TestUsageCountsArchivedSessions(t *testing.T) {
 		t.Fatalf("an archived session's turn is missing from today: %+v", u.Days)
 	}
 }
+
+// A web search in an interactive session and one in a run since archived:
+// both count, each kind narrows to its own, and the calls say whose they are.
+func TestStatsAcrossSessions(t *testing.T) {
+	hn := newHarness(t)
+	interactive := hn.mustCreate(t)
+	var created struct {
+		SessionID string `json:"session_id"`
+	}
+	result(t, hn.call(t, 2, "nabu.session.create", map[string]any{"workspace": hn.dir,
+		"options": map[string]any{"labels": []string{protocol.LabelUnattended}, "description": "Room DAOs"}}), &created)
+	run := created.SessionID
+
+	search := func(id, call, query, answer string) {
+		t.Helper()
+		s, err := hn.store.Get(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		args, _ := json.Marshal(map[string]string{"query": query})
+		if _, err := s.Append(protocol.EventToolCall, protocol.ToolCallData{CallID: call, Tool: "web.search", Arguments: args, Source: "model"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Append(protocol.EventToolResult, protocol.ToolResultData{CallID: call, Tool: "web.search", Status: "ok", Content: answer}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	search(interactive, "c1", "createFromFile", "it copies")
+	search(run, "r1", "room 2.6.1", "yes")
+	result(t, hn.call(t, 3, "nabu.session.archive", map[string]any{"session_id": run}), &struct{}{})
+
+	type totals struct {
+		Days     int    `json:"days"`
+		Kind     string `json:"kind"`
+		Sessions int    `json:"sessions"`
+		Tools    []struct {
+			Tool     string `json:"tool"`
+			Calls    int    `json:"calls"`
+			Sessions int    `json:"sessions"`
+		} `json:"tools"`
+		PerDay  []any `json:"per_day"`
+		Skipped int   `json:"skipped"`
+	}
+	var all totals
+	result(t, hn.call(t, 4, "nabu.stats", map[string]any{}), &all)
+	if all.Days != 7 || all.Kind != "all" || all.Sessions != 2 || len(all.PerDay) != 7 || all.Skipped != 0 {
+		t.Fatalf("stats = %+v", all)
+	}
+	if len(all.Tools) != 1 || all.Tools[0].Tool != "web.search" || all.Tools[0].Calls != 2 || all.Tools[0].Sessions != 2 {
+		t.Errorf("tools = %+v", all.Tools)
+	}
+	var runs totals
+	result(t, hn.call(t, 5, "nabu.stats", map[string]any{"days": 1, "kind": "unattended"}), &runs)
+	if runs.Sessions != 1 || runs.Days != 1 || len(runs.Tools) != 1 || runs.Tools[0].Calls != 1 {
+		t.Errorf("runs only = %+v", runs)
+	}
+
+	type calls struct {
+		Calls []struct {
+			SessionID string          `json:"session_id"`
+			Label     string          `json:"label"`
+			Arguments json.RawMessage `json:"arguments"`
+			Status    string          `json:"status"`
+			Result    string          `json:"result"`
+			Archived  bool            `json:"archived"`
+		} `json:"calls"`
+		Truncated bool `json:"truncated"`
+	}
+	var every calls
+	result(t, hn.call(t, 6, "nabu.stats.calls", map[string]any{"tool": "web.search"}), &every)
+	if len(every.Calls) != 2 || every.Truncated {
+		t.Fatalf("calls = %+v", every)
+	}
+	var one calls
+	result(t, hn.call(t, 7, "nabu.stats.calls", map[string]any{"tool": "web.search", "session_id": run, "limit": 5}), &one)
+	if len(one.Calls) != 1 {
+		t.Fatalf("one session's calls = %+v", one)
+	}
+	if c := one.Calls[0]; c.SessionID != run || c.Label != "Room DAOs" || !c.Archived || c.Result != "yes" ||
+		string(c.Arguments) != `{"query":"room 2.6.1"}` {
+		t.Errorf("call = %+v", c)
+	}
+	var limited calls
+	result(t, hn.call(t, 8, "nabu.stats.calls", map[string]any{"tool": "web.search", "limit": 1}), &limited)
+	if len(limited.Calls) != 1 || !limited.Truncated {
+		t.Errorf("limited = %+v", limited)
+	}
+}
+
+func TestStatsRefusesWhatItCannotAnswer(t *testing.T) {
+	hn := newHarness(t)
+	for i, c := range []struct {
+		method string
+		params map[string]any
+	}{
+		{"nabu.stats", map[string]any{"kind": "goals"}},
+		{"nabu.stats.calls", map[string]any{"kind": "unattended"}},
+		{"nabu.stats.calls", map[string]any{"tool": "read", "kind": "goals"}},
+	} {
+		resp := hn.call(t, i+1, c.method, c.params)
+		if resp == nil || resp.Error == nil || resp.Error.Code != protocol.CodeInvalidParams {
+			t.Errorf("%s %v: want invalid_params, got %+v", c.method, c.params, resp)
+		}
+	}
+}

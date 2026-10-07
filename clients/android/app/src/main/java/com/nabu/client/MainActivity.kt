@@ -50,7 +50,9 @@ import com.nabu.client.ui.ArtifactScreen
 import com.nabu.client.ui.AskSheet
 import com.nabu.client.ui.Line
 import com.nabu.client.ui.LocalOpenArtifact
+import com.nabu.client.ui.OverallStatsScreen
 import com.nabu.client.ui.StatsScreen
+import com.nabu.client.ui.ToolCallsScreen
 import com.nabu.client.ui.PermissionSheet
 import com.nabu.client.ui.BriefScreen
 import com.nabu.client.ui.BrowseScreen
@@ -99,6 +101,9 @@ private sealed interface Screen {
     data class Transcript(val id: String) : Screen
     data class Artifact(val sessionId: String, val line: Line.Artifact) : Screen
     data class Stats(val id: String) : Screen
+    data object OverallStats : Screen
+    /** One tool's calls; [sessionId] when they are one session's, opened from its stats. */
+    data class ToolCalls(val tool: String, val sessionId: String?) : Screen
 }
 
 @Composable
@@ -199,7 +204,31 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean, opening: String?, on
 
         is Screen.Stats -> {
             val stats by vm.stats.collectAsState()
-            StatsScreen(state = stats, onBack = { screen = Screen.Transcript(s.id) })
+            StatsScreen(
+                state = stats,
+                onBack = { screen = Screen.Transcript(s.id) },
+                onTool = { tool -> vm.loadToolCalls(tool, s.id); screen = Screen.ToolCalls(tool, s.id) },
+            )
+        }
+
+        is Screen.OverallStats -> {
+            val overall by vm.overall.collectAsState()
+            OverallStatsScreen(
+                state = overall,
+                onChange = { days, kind -> vm.loadOverallStats(days, kind) },
+                onTool = { tool -> vm.loadToolCalls(tool, null); screen = Screen.ToolCalls(tool, null) },
+                onBack = { screen = Screen.Sessions },
+            )
+        }
+
+        is Screen.ToolCalls -> {
+            val calls by vm.toolCalls.collectAsState()
+            ToolCallsScreen(
+                state = calls,
+                onOpenSession = { screen = Screen.Transcript(it) },
+                // Back to whichever stats it was opened from; both keep what they showed.
+                onBack = { screen = s.sessionId?.let { Screen.Stats(it) } ?: Screen.OverallStats },
+            )
         }
 
         is Screen.Browse -> {
@@ -242,6 +271,7 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean, opening: String?, on
             onNewRun = { vm.startBrowsing(Purpose.Run); screen = Screen.Browse },
             onArchive = { vm.archiveSession(it) },
             onArchived = { vm.loadArchived(); screen = Screen.Archived },
+            onStats = { vm.loadOverallStats(); screen = Screen.OverallStats },
             expanded = expanded,
             onToggle = { vm.toggleExpanded(it) },
         )

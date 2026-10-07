@@ -75,6 +75,8 @@ func NewHandler(m *agent.Manager, st *session.Store, log *slog.Logger) *Handler 
 	h.register("nabu.session.state", h.handleSessionState)
 	h.register("nabu.session.stats", h.handleSessionStats)
 	h.register("nabu.usage", h.handleUsage)
+	h.register("nabu.stats", h.handleStats)
+	h.register("nabu.stats.calls", h.handleStatsCalls)
 	h.register("nabu.session.subscribe", h.handleSessionSubscribe)
 	h.register("nabu.session.unsubscribe", h.handleSessionUnsubscribe)
 	h.registerMutators()
@@ -459,12 +461,134 @@ func (h *Handler) handleUsage(_ context.Context, _ *connState, params json.RawMe
 	}
 	// Archived sessions still happened: a session archived after three idle
 	// days would otherwise vanish from the days it was busy.
-	if archived, err := h.store.ArchivedLogs(); err == nil {
-		logs = append(logs, archived...)
+	// One unreadable archive costs only itself, not the rest.
+	archived, _ := h.store.ArchivedLogs()
+	for _, a := range archived {
+		logs = append(logs, a.Events)
 	}
 	now := time.Now()
 	first := now.AddDate(0, 0, -(p.Days - 1))
 	return map[string]any{"days": stats.Usage(logs, first, now, time.Local)}, nil
+}
+
+// A week answers "what has it been doing lately"; the cap is nabu.usage's.
+// Calls are rows on a phone: a hundred is more than a screen, and five
+// hundred is plenty to scroll.
+const (
+	defaultStatsDays  = 7
+	defaultCallsLimit = 100
+	maxCallsLimit     = 500
+)
+
+// handleStats implements nabu.stats (spec 7.25): the work done across
+// sessions over the last days.
+func (h *Handler) handleStats(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
+	var p struct {
+		Days int        `json:"days"`
+		Kind stats.Kind `json:"kind"`
+	}
+	if rpcErr := decodeParams(params, &p); rpcErr != nil {
+		return nil, rpcErr
+	}
+	days, kind, rpcErr := statsWindow(p.Days, p.Kind)
+	if rpcErr != nil {
+		return nil, rpcErr
+	}
+	logs, skipped := h.allLogs()
+	from, to := lastDays(days)
+	return struct {
+		Days int        `json:"days"`
+		Kind stats.Kind `json:"kind"`
+		stats.Window
+		Skipped int `json:"skipped"`
+	}{days, kind, stats.Totals(logs, from, to, time.Local, kind), skipped}, nil
+}
+
+// handleStatsCalls implements nabu.stats.calls (spec 7.26): one tool's calls
+// and what came back, newest first.
+func (h *Handler) handleStatsCalls(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
+	var p struct {
+		Tool      string     `json:"tool"`
+		Days      int        `json:"days"`
+		Kind      stats.Kind `json:"kind"`
+		SessionID string     `json:"session_id"`
+		Limit     int        `json:"limit"`
+	}
+	if rpcErr := decodeParams(params, &p); rpcErr != nil {
+		return nil, rpcErr
+	}
+	if p.Tool == "" {
+		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, "tool is required")
+	}
+	days, kind, rpcErr := statsWindow(p.Days, p.Kind)
+	if rpcErr != nil {
+		return nil, rpcErr
+	}
+	if p.Limit <= 0 {
+		p.Limit = defaultCallsLimit
+	}
+	p.Limit = min(p.Limit, maxCallsLimit)
+	logs, skipped := h.allLogs()
+	from, to := lastDays(days)
+	calls, truncated := stats.Calls(logs, stats.CallQuery{Tool: p.Tool, From: from, To: to,
+		Kind: kind, SessionID: p.SessionID, Limit: p.Limit})
+	return map[string]any{"calls": calls, "truncated": truncated, "skipped": skipped}, nil
+}
+
+// statsWindow applies the defaults and limits shared by the stats methods.
+func statsWindow(days int, kind stats.Kind) (int, stats.Kind, *protocol.RPCError) {
+	if days <= 0 {
+		days = defaultStatsDays
+	}
+	days = min(days, maxUsageDays)
+	if kind == "" {
+		kind = stats.KindAll
+	}
+	if !stats.ValidKind(kind) {
+		return 0, "", protocol.NewRPCError(protocol.CodeInvalidParams,
+			"kind must be all, interactive or unattended, got "+string(kind))
+	}
+	return days, kind, nil
+}
+
+// lastDays is the period of whole local days ending with today.
+func lastDays(days int) (from, to time.Time) {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	return today.AddDate(0, 0, -(days - 1)), today.AddDate(0, 0, 1)
+}
+
+// allLogs reads every session's log, archived ones included, and counts the
+// ones it could not read so a total is never silently short.
+func (h *Handler) allLogs() ([]stats.Log, int) {
+	var logs []stats.Log
+	sums, err := h.store.List()
+	skipped := countErrors(err)
+	for _, sum := range sums {
+		s, err := h.store.Get(sum.SessionID)
+		if err != nil {
+			skipped++
+			continue
+		}
+		logs = append(logs, stats.Log{ID: s.ID(), Events: s.Events()})
+	}
+	archived, err := h.store.ArchivedLogs()
+	skipped += countErrors(err)
+	for _, a := range archived {
+		logs = append(logs, stats.Log{ID: a.ID, Events: a.Events, Archived: true})
+	}
+	return logs, skipped
+}
+
+// countErrors counts the errors joined into err.
+func countErrors(err error) int {
+	if err == nil {
+		return 0
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		return len(joined.Unwrap())
+	}
+	return 1
 }
 
 // BrowseRoots bound what nabu.workspace.browse may list. Empty falls back to

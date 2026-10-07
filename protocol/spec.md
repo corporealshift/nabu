@@ -689,6 +689,63 @@ from its own mirror.
 
 Stops notifying a phone. An unknown token does nothing.
 
+### 7.25 `nabu.stats {days?, kind?}` → `Window`
+
+The work done across sessions over the last `days`, archived sessions included
+(`docs/specs/2026-10-07-stats-across-sessions-design.md`):
+
+```jsonc
+{"days": 7, "kind": "all", "sessions": 23, "turns": 812, "prompts": 40,
+ "tokens": {"input": 41000000, "output": 390000, "cached": 0},
+ "tools": [{"tool": "read", "calls": 1200, "errors": 14, "sessions": 21}],
+ "compactions": {"summarize": 3, "clear_results": 9},
+ "vetoes": 6, "interruptions": 2, "working_seconds": 86000,
+ "per_day": [{"date": "2026-10-01", "turns": 120, "input": 6000000, "output": 50000}],
+ "skipped": 0}
+```
+
+The period is whole calendar days in the daemon's time zone, ending today. `days` defaults
+to 7 and is capped at 90. `kind` is `all` (the default), `interactive`, or `unattended`.
+A session is unattended when it is labelled `unattended` (§3.1). Logs from before that
+label are known by what only clients working for themselves put on a session: a
+`parent`, a label starting `run:` or `goal:`, or `guard:no-push`. Every other session is
+interactive. Any other kind is `invalid_params`.
+
+A session counts when it has an event in the period, and only those events are counted.
+Each log is cut to the period, measured as §7.21 measures a session, and the results are
+added up. A session already running when the period began counts its working time from
+its first state change inside it. `tools` is ordered by calls; `sessions` there is how
+many sessions called the tool at least once. `per_day` is §7.22's series over the period.
+`skipped` is how many logs could not be read and were left out. Arrays are always
+present, possibly empty.
+
+Not normative in the way §5 is: clients ask for it rather than computing it.
+
+### 7.26 `nabu.stats.calls {tool, days?, kind?, session_id?, limit?}` → `{calls, truncated, skipped}`
+
+One tool's calls and what came back, newest first:
+
+```jsonc
+{"calls": [{"session_id": "…", "label": "Room database and DAOs", "at": "…",
+            "arguments": {"query": "Room createFromFile copies"},
+            "status": "ok", "kind": "", "result": "…", "archived": false}],
+ "truncated": false, "skipped": 0}
+```
+
+`tool` is required; without it the call is `invalid_params`. A tool nothing called gives
+an empty list. `days` and `kind` are as in §7.25 and pick calls by when they were made.
+With `session_id`, only that session's calls are listed, whatever the period and kind.
+`limit` defaults to 100 and is capped at 500. `truncated` says more calls matched than
+were returned.
+
+`arguments` is the call's, unchanged. `status` and `kind` are the `tool_result`'s, and
+`status` is `pending` when there is no result yet. `result` is the start of the result's
+content, at most 400 characters. `label` names the session, at most 80 characters: the
+first line of its description, without a leading `#`; else, for a session with a parent,
+the parent's label, since a step's own prompt is the same for every step; else the first
+line of its first prompt. `archived` says the session is archived
+(§7.19).
+
 ## 8. Error codes
 
 | Code | Name | Meaning |
