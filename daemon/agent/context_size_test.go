@@ -20,22 +20,26 @@ func TestTheStageFollowsTheProvidersWindowAndThresholds(t *testing.T) {
 		pcfg  provider.Config
 		input int
 		want  protocol.CompactionMode
+		size  string
 	}{
-		{"nothing set: below 0.70 of the model's window", provider.Config{ContextWindow: 128000}, 80000, ""},
-		{"nothing set: clears at 0.70 of it", provider.Config{ContextWindow: 128000}, 90000, protocol.CompactionClearResults},
-		{"nothing set: summarizes at 0.85 of it", provider.Config{ContextWindow: 128000}, 109000, protocol.CompactionSummarize},
-		{"a normal window: nothing below its 0.70", local, 44000, ""},
-		{"a normal window: clears at its 0.70", local, 46000, protocol.CompactionClearResults},
-		{"a normal window: summarizes at its 0.85", local, 55000, protocol.CompactionSummarize},
-		{"clearing off: never clears", noClear, 50000, ""},
-		{"clearing off: still summarizes", noClear, 55000, protocol.CompactionSummarize},
-		{"its own summarize_at", provider.Config{ContextWindow: 100000, SummarizeAt: 0.5, ClearAt: -1}, 50000, protocol.CompactionSummarize},
-		{"its own clear_at", provider.Config{ContextWindow: 100000, ClearAt: 0.4}, 41000, protocol.CompactionClearResults},
-		{"a normal window not below the model's is ignored", provider.Config{ContextWindow: 64000, NormalWindow: 128000}, 50000, protocol.CompactionClearResults},
-		{"no window, no compaction", provider.Config{NormalWindow: 64000}, 1000000, ""},
+		{"nothing set: below 0.70 of the model's window", provider.Config{ContextWindow: 128000}, 80000, "", ""},
+		{"nothing set: clears at 0.70 of it", provider.Config{ContextWindow: 128000}, 90000, protocol.CompactionClearResults, ""},
+		{"nothing set: summarizes at 0.85 of it", provider.Config{ContextWindow: 128000}, 109000, protocol.CompactionSummarize, ""},
+		{"a normal window: nothing below its 0.70", local, 44000, "", ""},
+		{"a normal window: clears at its 0.70", local, 46000, protocol.CompactionClearResults, ""},
+		{"a normal window: summarizes at its 0.85", local, 55000, protocol.CompactionSummarize, ""},
+		{"clearing off: never clears", noClear, 50000, "", ""},
+		{"clearing off: still summarizes", noClear, 55000, protocol.CompactionSummarize, ""},
+		{"its own summarize_at", provider.Config{ContextWindow: 100000, SummarizeAt: 0.5, ClearAt: -1}, 50000, protocol.CompactionSummarize, ""},
+		{"its own clear_at", provider.Config{ContextWindow: 100000, ClearAt: 0.4}, 41000, protocol.CompactionClearResults, ""},
+		{"a normal window not below the model's is ignored", provider.Config{ContextWindow: 64000, NormalWindow: 128000}, 50000, protocol.CompactionClearResults, ""},
+		{"no window, no compaction", provider.Config{NormalWindow: 64000}, 1000000, "", ""},
+		{"a large session: nothing at 55K", noClear, 55000, "", protocol.ContextLarge},
+		{"a large session: summarizes at 0.85 of the model's window", noClear, 109000, protocol.CompactionSummarize, protocol.ContextLarge},
+		{"a normal session said so", noClear, 55000, protocol.CompactionSummarize, protocol.ContextNormal},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := stageFor(tc.input, tc.pcfg, daemon); got != tc.want {
+			if got := stageFor(tc.input, tc.pcfg, daemon, tc.size); got != tc.want {
 				t.Errorf("stageFor(%d) = %q, want %q", tc.input, got, tc.want)
 			}
 		})
@@ -76,5 +80,45 @@ func TestTheReplyCapIgnoresTheNormalWindow(t *testing.T) {
 	got := replyCap(log, provider.Config{MaxTokens: 16384, ContextWindow: 128000, NormalWindow: 64000}, 0)
 	if got != 16384 {
 		t.Errorf("reply cap = %d, want the provider's 16384: 68K of room remains", got)
+	}
+}
+
+// A large session holds what a normal one would summarize; switched to
+// normal, it summarizes at the next turn end.
+func TestALargeSessionSwitchedToNormalSummarizes(t *testing.T) {
+	h := newHarnessWithProvider(t, provider.Config{Name: "fake", ContextWindow: 16000, NormalWindow: 8000, ClearAt: -1},
+		[]provider.Response{
+			{ToolCalls: globCall("c0"), Usage: bigUsage(0.90)}, // 7200: 45% of the model's window
+			{Content: "done", Usage: bigUsage(0.10)},
+			{ToolCalls: globCall("c1"), Usage: bigUsage(0.90)}, // 90% of the normal one
+			{Content: "the summary"},
+			{Content: "ok", Usage: bigUsage(0.10)},
+		})
+	s, err := h.m.Create(context.Background(), h.dir, CreateOptions{Context: protocol.ContextLarge})
+	if err != nil {
+		t.Fatal(err)
+	}
+	summaries := func() int {
+		n := 0
+		for _, e := range s.Events() {
+			if e.Type == protocol.EventCompaction && protocol.MustData[protocol.CompactionData](e).Mode == protocol.CompactionSummarize {
+				n++
+			}
+		}
+		return n
+	}
+
+	h.m.Prompt(context.Background(), s.ID(), "go")
+	h.m.WaitIdle(s.ID())
+	if n := summaries(); n != 0 {
+		t.Fatalf("a large session summarized at 45%% of the model's window (%d summaries)", n)
+	}
+	if _, err := h.m.SetOption(context.Background(), s.ID(), "context", protocol.ContextNormal); err != nil {
+		t.Fatal(err)
+	}
+	h.m.Prompt(context.Background(), s.ID(), "more")
+	h.m.WaitIdle(s.ID())
+	if n := summaries(); n != 1 {
+		t.Errorf("summaries after switching to normal = %d, want 1", n)
 	}
 }

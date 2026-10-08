@@ -109,6 +109,14 @@ func ValidateEvent(e Event) error {
 			if err := ValidDescription(desc); err != nil {
 				return fail(err.Error())
 			}
+		case "context":
+			var size string
+			if err := json.Unmarshal(d.To, &size); err != nil || size == "" {
+				return fail("context must be normal or large")
+			}
+			if err := ValidContext(size); err != nil {
+				return fail(err.Error())
+			}
 		default:
 			return fail(fmt.Sprintf("key %q invalid", d.Key))
 		}
@@ -244,6 +252,9 @@ func validateOptions(o Options) error {
 	}
 	if err := ValidDescription(o.Description); err != nil {
 		return fmt.Errorf("options.description: %w", err)
+	}
+	if err := ValidContext(o.Context); err != nil {
+		return fmt.Errorf("options.context: %w", err)
 	}
 	return nil
 }

@@ -48,12 +48,13 @@ func lastInputTokens(log []protocol.Event) int {
 	return 0
 }
 
-// compactWindow is the window a session's compaction measures against: the
-// provider's normal window when it has one smaller than the model's, else the
-// model's own. The reply cap never uses it: the server's real room does not
-// change with how early a session chooses to compact.
-func compactWindow(pcfg provider.Config) int {
-	if pcfg.NormalWindow > 0 && pcfg.NormalWindow < pcfg.ContextWindow {
+// compactWindow is the window a session's compaction measures against: for a
+// normal session, the provider's normal window when it has one smaller than
+// the model's; for a large one, and otherwise, the model's own. The reply cap
+// never uses it: the server's real room does not change with how early a
+// session chooses to compact.
+func compactWindow(pcfg provider.Config, size string) int {
+	if size != protocol.ContextLarge && pcfg.NormalWindow > 0 && pcfg.NormalWindow < pcfg.ContextWindow {
 		return pcfg.NormalWindow
 	}
 	return pcfg.ContextWindow
@@ -96,7 +97,7 @@ func (m *Manager) maybeCompact(ctx context.Context, h *sessionHandle, pcfg provi
 		}
 		return nil
 	}
-	switch stageFor(lastInputTokens(log), pcfg, m.cfg.Compaction) {
+	switch stageFor(lastInputTokens(log), pcfg, m.cfg.Compaction, st.Options.Context) {
 	case protocol.CompactionSummarize:
 		return m.summarize(ctx, h)
 	case protocol.CompactionClearResults:
@@ -105,10 +106,10 @@ func (m *Manager) maybeCompact(ctx context.Context, h *sessionHandle, pcfg provi
 	return nil
 }
 
-// stageFor is the compaction a request of input tokens calls for, or "" for
-// none.
-func stageFor(input int, pcfg provider.Config, c CompactionConfig) protocol.CompactionMode {
-	window := compactWindow(pcfg)
+// stageFor is the compaction a request of input tokens calls for in a session
+// of the given context size, or "" for none.
+func stageFor(input int, pcfg provider.Config, c CompactionConfig, size string) protocol.CompactionMode {
+	window := compactWindow(pcfg, size)
 	if window <= 0 {
 		return ""
 	}

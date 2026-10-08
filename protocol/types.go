@@ -87,6 +87,26 @@ type Options struct {
 	// the brief of an orchestrated run. Unlike a goal it starts nothing, and
 	// the daemon attaches no meaning to it.
 	Description string `json:"description,omitempty"`
+	// Context is how much of the model's window the session uses before it
+	// is summarized: ContextNormal or ContextLarge. Absent means normal.
+	Context string `json:"context,omitempty"`
+}
+
+// The two context sizes (spec §3.1). What each means in tokens is the
+// provider's configuration, not the protocol's.
+const (
+	ContextNormal = "normal"
+	ContextLarge  = "large"
+)
+
+// ValidContext reports whether a context size is allowed. Empty is, and means
+// normal.
+func ValidContext(c string) error {
+	switch c {
+	case "", ContextNormal, ContextLarge:
+		return nil
+	}
+	return fmt.Errorf("context must be normal or large, got %q", c)
 }
 
 // MaxDescription is how long a description may be, in bytes (spec 3.1).
