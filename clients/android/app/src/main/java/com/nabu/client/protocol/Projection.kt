@@ -56,6 +56,8 @@ fun project(log: List<Event>, from: State = State()): State {
                             st.copy(options = st.options.copy(permissionMode = to?.content ?: ""))
                         "description" ->
                             st.copy(options = st.options.copy(description = to?.content ?: ""))
+                        "context" ->
+                            st.copy(options = st.options.copy(context = to?.content ?: ""))
                         "labels" ->
                             st.copy(options = st.options.copy(
                                 labels = (d.to as? JsonArray)

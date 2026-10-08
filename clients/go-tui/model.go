@@ -110,6 +110,9 @@ type model struct {
 	// run points at the run's home; the home's labels say how far it is.
 	parent string
 	labels []string
+	// contextSize is the session's context option: "" in a log from before
+	// it, which is normal.
+	contextSize string
 
 	// artifacts are the pages the agent made, latest version of each by name,
 	// and lastArtifact the most recent: what o opens.
@@ -239,6 +242,7 @@ func (m *model) appendEventWithoutRefresh(ev protocol.Event) {
 		if unmarshal(ev, &d) == nil {
 			m.contextWindow = d.ContextWindow
 			m.parent, m.labels = d.Options.Parent, d.Options.Labels
+			m.contextSize = d.Options.Context
 		}
 	}
 	if ev.Type == protocol.EventOptionsChange {
@@ -247,6 +251,12 @@ func (m *model) appendEventWithoutRefresh(ev protocol.Event) {
 			var labels []string
 			if json.Unmarshal(d.To, &labels) == nil {
 				m.labels = labels
+			}
+		}
+		if unmarshal(ev, &d) == nil && d.Key == "context" {
+			var size string
+			if json.Unmarshal(d.To, &size) == nil {
+				m.contextSize = size
 			}
 		}
 	}
@@ -340,6 +350,7 @@ func (m *model) reset(sessionID string) {
 	m.tasks = nil
 	m.goal = nil
 	m.parent, m.labels = "", nil
+	m.contextSize = ""
 	m.artifacts, m.lastArtifact = nil, ""
 	m.contextWindow = 0
 	m.lastInput = 0

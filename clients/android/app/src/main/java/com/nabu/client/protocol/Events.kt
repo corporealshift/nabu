@@ -45,6 +45,8 @@ data class Options(
     val labels: List<String> = emptyList(),
     // Spec 3.1: text clients set for each other, such as a run's brief.
     val description: String = "",
+    // Spec 3.1: "normal" or "large"; empty in a log from before it, which is normal.
+    val context: String = "",
 )
 
 @Serializable

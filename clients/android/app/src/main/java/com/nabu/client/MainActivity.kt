@@ -335,6 +335,7 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean, opening: String?, on
                 onResume = { vm.resumeSession(s.id) },
                 onInterrupt = { vm.interruptSession(s.id) },
                 onCompact = { vm.compactSession(s.id) },
+                onContext = { vm.setContext(s.id, it) },
                 onStats = { vm.loadStats(s.id); screen = Screen.Stats(s.id) },
                 onRetryBlocked = { vm.retryBlocked(it) },
                 onDiscardBlocked = { vm.discardBlocked(it) },

@@ -321,6 +321,7 @@ type CreateSessionOptions struct {
 	Parent            string   `json:"parent,omitempty"`
 	Labels            []string `json:"labels,omitempty"`
 	Description       string   `json:"description,omitempty"`
+	Context           string   `json:"context,omitempty"`
 }
 
 // handleSessionCreate implements nabu.session.create (spec 7.3).
@@ -346,6 +347,7 @@ func (h *Handler) handleSessionCreate(ctx context.Context, _ *connState, params 
 		co.CompactionEnabled = p.Options.CompactionEnabled
 		co.Parent = p.Options.Parent
 		co.Labels = p.Options.Labels
+		co.Context = p.Options.Context
 		co.Description = p.Options.Description
 	}
 

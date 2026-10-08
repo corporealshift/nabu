@@ -177,6 +177,7 @@ type CreateOptions struct {
 	Parent            string                  // "" = none; must name a known session
 	Labels            []string                // must pass protocol.ValidLabels
 	Description       string                  // must pass protocol.ValidDescription
+	Context           string                  // "" = normal; must pass protocol.ValidContext
 }
 
 func (o CreateOptions) resolve(defaultModel string) protocol.Options {
@@ -200,6 +201,10 @@ func (o CreateOptions) resolve(defaultModel string) protocol.Options {
 		out.CompactionEnabled = *o.CompactionEnabled
 	}
 	out.Parent, out.Labels, out.Description = o.Parent, o.Labels, o.Description
+	out.Context = o.Context
+	if out.Context == "" {
+		out.Context = protocol.ContextNormal
+	}
 	return out
 }
 
@@ -215,6 +220,9 @@ func (m *Manager) Create(ctx context.Context, workspacePath string, co CreateOpt
 		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
 	}
 	if err := protocol.ValidDescription(co.Description); err != nil {
+		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
+	}
+	if err := protocol.ValidContext(co.Context); err != nil {
 		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
 	}
 	ws, err := workspace.Resolve(workspacePath)
@@ -439,6 +447,16 @@ func (m *Manager) SetOption(ctx context.Context, id, key string, value any) (pro
 		}
 		if err := protocol.ValidDescription(desc); err != nil {
 			return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
+		}
+	case "context":
+		// A log from before the option has none, which is normal.
+		from = opts.Context
+		if from == "" {
+			from = protocol.ContextNormal
+		}
+		size, ok := value.(string)
+		if !ok || size == "" || protocol.ValidContext(size) != nil {
+			return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams, "context must be normal or large")
 		}
 	case "parent":
 		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams,

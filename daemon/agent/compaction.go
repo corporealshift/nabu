@@ -48,6 +48,33 @@ func lastInputTokens(log []protocol.Event) int {
 	return 0
 }
 
+// compactWindow is the window a session's compaction measures against: for a
+// normal session, the provider's normal window when it has one smaller than
+// the model's; for a large one, and otherwise, the model's own. The reply cap
+// never uses it: the server's real room does not change with how early a
+// session chooses to compact.
+func compactWindow(pcfg provider.Config, size string) int {
+	if size != protocol.ContextLarge && pcfg.NormalWindow > 0 && pcfg.NormalWindow < pcfg.ContextWindow {
+		return pcfg.NormalWindow
+	}
+	return pcfg.ContextWindow
+}
+
+// thresholds are the provider's compaction fractions over the daemon's. A
+// clearAt below zero means stage 0 never runs: on a local server every clear
+// breaks the prompt cache and costs the model what it read, and frees about
+// one turn's growth (docs/specs/2026-10-08-context-size-design.md).
+func thresholds(pcfg provider.Config, c CompactionConfig) (clearAt, summarizeAt float64) {
+	clearAt, summarizeAt = c.ClearAt, c.SummarizeAt
+	if pcfg.ClearAt != 0 {
+		clearAt = pcfg.ClearAt
+	}
+	if pcfg.SummarizeAt != 0 {
+		summarizeAt = pcfg.SummarizeAt
+	}
+	return clearAt, summarizeAt
+}
+
 // maybeCompact runs between turns. It returns an error only when the session
 // cannot continue.
 func (m *Manager) maybeCompact(ctx context.Context, h *sessionHandle, pcfg provider.Config) error {
@@ -56,10 +83,13 @@ func (m *Manager) maybeCompact(ctx context.Context, h *sessionHandle, pcfg provi
 	}
 	log := h.s.Events()
 	st := protocol.Project(log)
-	used := float64(lastInputTokens(log)) / float64(pcfg.ContextWindow)
 
 	if !st.Options.CompactionEnabled {
-		if used >= m.cfg.Compaction.SummarizeAt {
+		_, summarizeAt := thresholds(pcfg, m.cfg.Compaction)
+		// Nothing compacts, so the limit is the model's real window: a normal
+		// window only says when to compact.
+		used := float64(lastInputTokens(log)) / float64(pcfg.ContextWindow)
+		if used >= summarizeAt {
 			h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "error",
 				Message: fmt.Sprintf("context limit reached (%.0f%% of %d tokens) and compaction is disabled for this session",
 					used*100, pcfg.ContextWindow)})
@@ -67,13 +97,31 @@ func (m *Manager) maybeCompact(ctx context.Context, h *sessionHandle, pcfg provi
 		}
 		return nil
 	}
-	if used >= m.cfg.Compaction.SummarizeAt {
+	switch stageFor(lastInputTokens(log), pcfg, m.cfg.Compaction, st.Options.Context) {
+	case protocol.CompactionSummarize:
 		return m.summarize(ctx, h)
-	}
-	if used >= m.cfg.Compaction.ClearAt {
+	case protocol.CompactionClearResults:
 		return m.clearResults(ctx, h)
 	}
 	return nil
+}
+
+// stageFor is the compaction a request of input tokens calls for in a session
+// of the given context size, or "" for none.
+func stageFor(input int, pcfg provider.Config, c CompactionConfig, size string) protocol.CompactionMode {
+	window := compactWindow(pcfg, size)
+	if window <= 0 {
+		return ""
+	}
+	used := float64(input) / float64(window)
+	clearAt, summarizeAt := thresholds(pcfg, c)
+	switch {
+	case used >= summarizeAt:
+		return protocol.CompactionSummarize
+	case clearAt >= 0 && used >= clearAt:
+		return protocol.CompactionClearResults
+	}
+	return ""
 }
 
 // clearResults is stage 0: stub out tool results older than KeepTurns

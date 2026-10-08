@@ -320,6 +320,11 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 			v.days, _ = c.Usage(ctx, 14)
 			p.Send(statsMsg{view: v})
 		}
+	case actContext:
+		if _, err = c.Call(ctx, "nabu.session.set_option",
+			map[string]any{"session_id": a.sessionID, "key": "context", "value": a.text}); err == nil {
+			p.Send(noteMsg{text: contextWords(a.text)})
+		}
 	case actAttach:
 		return a.sessionID
 	}

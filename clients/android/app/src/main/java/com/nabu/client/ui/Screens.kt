@@ -378,6 +378,7 @@ fun TranscriptScreen(
     onInterrupt: () -> Unit,
     onCompact: () -> Unit,
     onStats: () -> Unit = {},
+    onContext: (String) -> Unit = {},
     onRetryBlocked: (String) -> Unit,
     onDiscardBlocked: (String) -> Unit,
     onBack: () -> Unit,
@@ -387,6 +388,14 @@ fun TranscriptScreen(
     parentTitle: String? = null,
     onOpenParent: () -> Unit = {},
 ) {
+    var choosingContext by remember { mutableStateOf(false) }
+    if (choosingContext) {
+        ContextDialog(
+            current = view.options.context,
+            onPick = { onContext(it); choosingContext = false },
+            onDismiss = { choosingContext = false },
+        )
+    }
     var running by remember { mutableStateOf(false) }
     if (running) {
         RunDialog(
@@ -419,7 +428,7 @@ fun TranscriptScreen(
                 ),
                 title = { Text(title, style = MaterialTheme.typography.titleSmall) },
                 actions = {
-                    ContextBadge(view.contextUsed)
+                    ContextBadge(view.contextUsed, view.options.context) { choosingContext = true }
                     // A step of a run is the runner's, not a thing to hand over.
                     if (view.options.parent.isBlank()) {
                         TextButton(onClick = { running = true }) {
@@ -903,25 +912,64 @@ private fun ThoughtLine(line: Line.Thought) {
 }
 
 /**
- * How full the model's context is, warning before compaction rather than after.
+ * What the context badge says: how full the model's context is, and whether
+ * the session is large. With no percentage it still says "context", because
+ * it is where the size is chosen, and a new session is the one most worth
+ * choosing for.
  *
- * Silent when the window was never configured: a percentage of an unknown
- * number would be an invention.
+ * The percentage is left out when the window was never configured: a
+ * percentage of an unknown number would be an invention.
+ */
+fun contextBadgeText(used: Float?, size: String): String {
+    val full = used?.let { "context ${(it * 100).toInt()}%" } ?: "context"
+    return if (size == "large") "$full · large" else full
+}
+
+/** How full the model's context is, warning before compaction rather than after. */
+@Composable
+private fun ContextBadge(used: Float?, size: String, onClick: () -> Unit) {
+    val c = NabuTheme.colors
+    TextButton(onClick = onClick) {
+        Text(
+            contextBadgeText(used, size),
+            style = MaterialTheme.typography.labelMedium,
+            color = when {
+                used == null -> c.muted
+                used >= 0.85f -> c.danger
+                used >= 0.6f -> c.accent
+                else -> c.muted
+            },
+        )
+    }
+}
+
+/**
+ * Normal or large: how much of the model's window the session fills before
+ * it is summarized (docs/specs/2026-10-08-context-size-design.md).
  */
 @Composable
-private fun ContextBadge(used: Float?) {
-    used ?: return
+private fun ContextDialog(current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val c = NabuTheme.colors
-
-    Text(
-        "context ${(used * 100).toInt()}%",
-        style = MaterialTheme.typography.labelMedium,
-        color = when {
-            used >= 0.85f -> c.danger
-            used >= 0.6f -> c.accent
-            else -> c.muted
+    val large = current == "large"
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = c.surface,
+        titleContentColor = c.ink,
+        textContentColor = c.muted,
+        title = { Text(if (large) "This session is large" else "This session is normal") },
+        text = {
+            Text(
+                "Normal is summarized sooner, which keeps a local model quick. Large fills the " +
+                    "model's whole window first, for work that has to hold a lot at once, such as " +
+                    "long documents. A run or goal started from this session uses the same size.",
+            )
         },
-        modifier = Modifier.padding(end = 12.dp),
+        confirmButton = {
+            TextButton(onClick = { onPick(if (large) "normal" else "large") }) {
+                Text(if (large) "Make it normal" else "Make it large")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 

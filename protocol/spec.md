@@ -99,6 +99,11 @@ Every `source` field, where present, is one of `daemon`, `model`, `client`, or
   An orchestrated run's brief is its home's description. A goal cannot hold the brief,
   because setting a goal on an idle session starts the loop (§7.11). The home would then
   start working on the brief in the owner's own checkout.
+- `context`: `normal` or `large`, how much of the model's window the session fills
+  before it is summarized. Absent means `normal`. What each size is in tokens is the
+  daemon's provider configuration: a normal session may compact against a window
+  smaller than the model's, and a large one uses all of it. Unlike `parent`, `labels`
+  and `description`, the daemon acts on it, when it decides to compact.
 
 The daemon's core records both and attaches no meaning to either: grouping sessions under
 a parent, or acting on a label, is for clients and modules. An absent `parent` or `labels`
@@ -113,7 +118,8 @@ means none. Two labels are read by modules compiled into the daemon:
 was created. It is recorded so a client can say how full the context is: the daemon
 knows the size and the log carries the usage, but without this a client holds only the
 numerator. Zero or absent means the size was not configured, and a client should then
-say nothing rather than guess.
+say nothing rather than guess. It is the model's window whatever the session's
+`context`: the same usage then always reads as the same fullness.
 
 #### `message`
 
@@ -187,7 +193,7 @@ code, so its absence and a value of `0` are different facts.
 {"key":"permission_mode","from":"ask","to":"auto","source":"client"}
 ```
 
-`key` ∈ `model | compaction_enabled | permission_mode | labels | description`. A `labels` change
+`key` ∈ `model | compaction_enabled | permission_mode | labels | description | context`. A `labels` change
 carries the whole new list in `to`, which replaces the old one; it is never a diff.
 `parent` never changes, so it is never a key.
 
@@ -429,11 +435,11 @@ any it holds that a full listing leaves out: they were archived.
 ### 7.3 `nabu.session.create {workspace, options?}` → `{session_id, event}`
 
 `options` defaults: model from config, `compaction_enabled: true`,
-`permission_mode: "ask"`, no `parent`, no `labels`, no `description`. The returned `event` is the
+`permission_mode: "ask"`, no `parent`, no `labels`, no `description`, `context: "normal"`. The returned `event` is the
 `session` event.
 
 A `parent` that names no session, live or archived, is `nabu_invalid_params`, and so are
-labels outside the rules in §3.1. In both cases no session is created.
+labels outside the rules in §3.1 and a `context` other than `normal` or `large`. In both cases no session is created.
 
 ### 7.4 `nabu.session.send_prompt {session_id, content, client_id?}` → `{event_id}`
 
@@ -509,7 +515,7 @@ Appends `goal {state: cleared}`; `nabu_invalid_transition` if no goal is active.
 ### 7.13 `nabu.session.set_option {session_id, key, value}` → `{event_id}`
 
 Appends `options_change`. `key` ∈ `model | compaction_enabled | permission_mode | labels |
-description`. Setting any option starts nothing: a description is not a goal.
+description | context`. Setting any option starts nothing: a description is not a goal.
 For `labels`, `value` is the whole new list. `parent` is `nabu_invalid_params`, because it
 is set at creation. An invalid value appends nothing.
 

@@ -536,6 +536,20 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Sets a session's context size; a refusal shows in the banner. */
+    fun setContext(sessionId: String, size: String) {
+        viewModelScope.launch {
+            val c = client
+            if (c == null) {
+                _error.value = "not connected"
+                return@launch
+            }
+            runCatching { repo.setContext(c, sessionId, size) }
+                .onSuccess { _error.value = null }
+                .onFailure { _error.value = "context not changed: ${it.message}" }
+        }
+    }
+
     // ------------------------------------------------------------- archive
 
     private val _archived = MutableStateFlow<List<SessionSummary>?>(null)

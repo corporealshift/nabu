@@ -322,6 +322,18 @@ func (rn *Runner) Start(ctx context.Context, d Daemon, n int) (int, error) {
 	return started, errors.Join(errs...)
 }
 
+// contextOf is a home's context size, for a session made under it to copy.
+// A home that cannot be read gives "", which the daemon takes as normal: the
+// step goes on at the usual size rather than failing over a setting.
+func (rn *Runner) contextOf(ctx context.Context, d Daemon, home string) string {
+	h, err := d.Home(ctx, home)
+	if err != nil {
+		rn.logf("home %s: context size unknown, so normal: %v", home, err)
+		return ""
+	}
+	return h.Context
+}
+
 // begin starts the current step's session. The session id is saved before
 // the prompt is sent, so a restart in between sends it, and never makes a
 // second session.
@@ -337,7 +349,7 @@ func (rn *Runner) begin(ctx context.Context, d Daemon, r *Run) error {
 	if r.Step == StepWork || r.Step == StepFix || r.Step == StepCIFix {
 		turns = rn.Cfg.WorkTurns
 	}
-	id, err := d.Create(ctx, r.Worktree, r.Home, turns)
+	id, err := d.Create(ctx, r.Worktree, r.Home, turns, rn.contextOf(ctx, d, r.Home))
 	if err != nil {
 		return err
 	}

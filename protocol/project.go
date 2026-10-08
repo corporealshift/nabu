@@ -41,6 +41,10 @@ func Project(log []Event) State {
 				var desc string
 				_ = json.Unmarshal(d.To, &desc)
 				st.Options.Description = desc
+			case "context":
+				var size string
+				_ = json.Unmarshal(d.To, &size)
+				st.Options.Context = size
 			}
 		case EventStateChange:
 			st.State = MustData[StateChangeData](e).To

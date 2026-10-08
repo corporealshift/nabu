@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/corporealshift/nabu/protocol"
 )
 
 // action is something the human asked for that needs the network. Update is
@@ -40,6 +42,7 @@ const (
 	actStats
 	actRun
 	actGoal
+	actContext
 )
 
 // commandResult is what a line of composer input means: something to do, or
@@ -59,6 +62,7 @@ var commands = []struct{ name, what string }{
 	{"/run [text]", "hand this session to the runner, the text as its brief"},
 	{"/goal [text]", "hand the runner a broad goal to work as many runs; bare /goal resumes a blocked one"},
 	{"/compact", "summarise the history now"},
+	{"/context [normal|large]", "how much of the model's window this session fills before it is summarised"},
 	{"/stop", "end the session"},
 	{"/archive", "put this session away"},
 	{"/stats", "how much work this session was"},
@@ -119,6 +123,12 @@ func parseCommand(line string) commandResult {
 		return commandResult{act: &action{kind: actRun, text: rest}}
 	case "/goal":
 		return commandResult{act: &action{kind: actGoal, text: rest}}
+	case "/context":
+		switch size := strings.ToLower(rest); size {
+		case "", protocol.ContextNormal, protocol.ContextLarge:
+			return commandResult{act: &action{kind: actContext, text: size}}
+		}
+		return commandResult{note: "/context takes normal or large"}
 	case "/help":
 		return commandResult{note: helpText}
 	default:

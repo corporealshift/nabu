@@ -518,6 +518,14 @@ func plural(n int) string {
 	return "s"
 }
 
+// contextWords says what a session's context size means, for /context.
+func contextWords(size string) string {
+	if size == protocol.ContextLarge {
+		return "context: large — it fills the model's whole window before it is summarised · /context normal to change"
+	}
+	return "context: normal — it is summarised sooner, where the provider sets a smaller normal window · /context large to change"
+}
+
 // contextBadge says how full the context is, and warns before compaction
 // rather than after it. Nothing is shown when the window was never configured:
 // a percentage of an unknown number would be an invention.
@@ -527,6 +535,9 @@ func (m model) contextBadge() string {
 	}
 	used := float64(m.lastInput) / float64(m.contextWindow)
 	label := fmt.Sprintf("context %.0f%%", used*100)
+	if m.contextSize == protocol.ContextLarge {
+		label += " large"
+	}
 
 	switch {
 	case used >= 0.85:

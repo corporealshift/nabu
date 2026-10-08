@@ -51,7 +51,7 @@ func (c Client) Home(ctx context.Context, id string) (Home, error) {
 		if err != nil {
 			return Home{}, err
 		}
-		h.Brief = st.Options.Description
+		h.Brief, h.Context = st.Options.Description, st.Options.Context
 		return h, nil
 	}
 	return Home{}, fmt.Errorf("runs: session %s is not listed", id)
@@ -94,31 +94,39 @@ func (c Client) SetGoal(ctx context.Context, id, condition string) error {
 		map[string]any{"session_id": id, "condition": condition}, nil)
 }
 
-func (c Client) Create(ctx context.Context, workspace, parent string, maxTurns int) (string, error) {
+func (c Client) Create(ctx context.Context, workspace, parent string, maxTurns int, size string) (string, error) {
 	var out struct {
 		SessionID string `json:"session_id"`
 	}
+	// guard:no-push: a step session commits, and the runner pushes and posts
+	// once the work is checked.
+	// unattended: nobody watches a step, so it is offered no tool that needs
+	// a person.
+	opts := map[string]any{"permission_mode": string(protocol.PermissionAuto), "parent": parent,
+		"labels": []string{NoPushLabel, protocol.LabelUnattended}}
+	if size != "" {
+		opts["context"] = size
+	}
 	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
 		"workspace": workspace,
-		// guard:no-push: a step session commits, and the runner pushes and
-		// posts once the work is checked.
-		// unattended: nobody watches a step, so it is offered no tool that
-		// needs a person.
-		"options": map[string]any{"permission_mode": string(protocol.PermissionAuto), "parent": parent,
-			"labels": []string{NoPushLabel, protocol.LabelUnattended}},
-		"budget": map[string]any{"max_turns": maxTurns, "source": "client"},
+		"options":   opts,
+		"budget":    map[string]any{"max_turns": maxTurns, "source": "client"},
 	}, &out)
 	return out.SessionID, err
 }
 
-func (c Client) CreateHome(ctx context.Context, workspace, parent, description string) (string, error) {
+func (c Client) CreateHome(ctx context.Context, workspace, parent, description, size string) (string, error) {
 	var out struct {
 		SessionID string `json:"session_id"`
 	}
+	// Never prompted, so it never runs; the label is there in case.
+	opts := map[string]any{"parent": parent, "description": description, "labels": []string{NoPushLabel, protocol.LabelUnattended}}
+	if size != "" {
+		opts["context"] = size
+	}
 	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
 		"workspace": workspace,
-		// Never prompted, so it never runs; the label is there in case.
-		"options": map[string]any{"parent": parent, "description": description, "labels": []string{NoPushLabel, protocol.LabelUnattended}},
+		"options":   opts,
 	}, &out)
 	return out.SessionID, err
 }
