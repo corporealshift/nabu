@@ -81,9 +81,9 @@ whoever creates or sets it.
 ### Choosing it
 
 - **TUI:** `/context normal|large` sets the option on the current session; `/context`
-  with no argument says which it is and what that means for this provider.
-- **Android:** the session menu offers normal or large. The header shows "large context"
-  when it is large.
+  with no argument says which it is.
+- **Android:** tapping the context badge in the session's top bar offers normal or
+  large. The badge marks a large session.
 - **The runner:** every session it creates copies `context` from its parent: a goal's run
   homes from the goal home, and a run's step sessions from the run home. Marking a goal
   or a run's home large then makes all of its work large. The core attaches no meaning to
