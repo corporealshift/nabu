@@ -245,7 +245,7 @@ func (rn *Runner) goalRun(ctx context.Context, d Daemon, g *Goal) (GoalOutcome, 
 		// The run's brief opens with its title, which names its branch and
 		// its PR.
 		brief := "# " + br.Title + "\n\n" + strings.TrimSpace(br.Brief)
-		id, err := d.CreateHome(ctx, g.Workspace, g.Home, brief)
+		id, err := d.CreateHome(ctx, g.Workspace, g.Home, brief, rn.contextOf(ctx, d, g.Home))
 		if err != nil {
 			return GoalOutcome{}, err
 		}

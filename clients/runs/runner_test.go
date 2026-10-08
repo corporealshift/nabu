@@ -26,13 +26,15 @@ type fakeHome struct {
 	// task list.
 	parent string
 	tasks  []protocol.Task
+	// context is the home's context size.
+	context string
 }
 
 type fakeSession struct {
-	workspace, parent string
-	turns             int
-	goals, prompts    []string
-	state             protocol.SessionState
+	workspace, parent, context string
+	turns                      int
+	goals, prompts             []string
+	state                      protocol.SessionState
 	// log is the session's messages: a user one per prompt, an assistant
 	// one per finish.
 	log []protocol.Event
@@ -70,7 +72,7 @@ func (d *fakeDaemon) Home(_ context.Context, id string) (Home, error) {
 	if !ok {
 		return Home{}, errors.New("no home")
 	}
-	return Home{ID: id, Workspace: h.workspace, Brief: h.description, Labels: slices.Clone(h.labels), LastPrompt: h.lastPrompt}, nil
+	return Home{ID: id, Workspace: h.workspace, Brief: h.description, Labels: slices.Clone(h.labels), LastPrompt: h.lastPrompt, Context: h.context}, nil
 }
 
 func (d *fakeDaemon) Transcript(_ context.Context, id string) (string, error) {
@@ -98,16 +100,16 @@ func (d *fakeDaemon) SetGoal(_ context.Context, id, condition string) error {
 	return nil
 }
 
-func (d *fakeDaemon) Create(_ context.Context, ws, parent string, turns int) (string, error) {
+func (d *fakeDaemon) Create(_ context.Context, ws, parent string, turns int, size string) (string, error) {
 	id := fmt.Sprintf("S%d", len(d.order)+1)
 	d.order = append(d.order, id)
-	d.sessions[id] = &fakeSession{workspace: ws, parent: parent, turns: turns, state: protocol.StateIdle}
+	d.sessions[id] = &fakeSession{workspace: ws, parent: parent, context: size, turns: turns, state: protocol.StateIdle}
 	return id, nil
 }
 
-func (d *fakeDaemon) CreateHome(_ context.Context, ws, parent, description string) (string, error) {
+func (d *fakeDaemon) CreateHome(_ context.Context, ws, parent, description, size string) (string, error) {
 	id := fmt.Sprintf("R%d", len(d.homes)+1)
-	d.homes[id] = &fakeHome{workspace: ws, parent: parent, description: description}
+	d.homes[id] = &fakeHome{workspace: ws, parent: parent, description: description, context: size}
 	return id, nil
 }
 

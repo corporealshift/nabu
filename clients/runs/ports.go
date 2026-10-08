@@ -16,6 +16,9 @@ type Home struct {
 	Labels []string
 	// LastPrompt names the run when there is no brief yet.
 	LastPrompt string
+	// Context is the home's context size, which every session the runner
+	// makes under it copies (docs/specs/2026-10-08-context-size-design.md).
+	Context string
 }
 
 // Daemon is the part of the protocol the runner uses. Like the watcher, it
@@ -32,10 +35,12 @@ type Daemon interface {
 	// SetDescription sets a session's description, which starts nothing.
 	SetDescription(ctx context.Context, id, text string) error
 	SetGoal(ctx context.Context, id, condition string) error
-	Create(ctx context.Context, workspace, parent string, maxTurns int) (string, error)
+	// Create makes a step's session. size is its context size; "" leaves
+	// the daemon's default.
+	Create(ctx context.Context, workspace, parent string, maxTurns int, size string) (string, error)
 	// CreateHome makes a run's home under a goal's: a session that is never
 	// prompted, with the brief as its description.
-	CreateHome(ctx context.Context, workspace, parent, description string) (string, error)
+	CreateHome(ctx context.Context, workspace, parent, description, size string) (string, error)
 	// UpdateTasks replaces a session's task list, which is how a goal's
 	// home shows its roadmap.
 	UpdateTasks(ctx context.Context, id string, tasks []protocol.Task) error
