@@ -157,6 +157,21 @@ allowance. Each call is slow and real money, from a process you are not watching
 timeout bounds one call, nothing bounds how many a run makes. Set `enabled: false` to turn
 it off.
 
+**nabu also asks on its own when a session has gone on too long.** After 100 turns since
+anyone last sent the session a message — you, or a runner's prompt — it asks Claude what
+is going wrong, in the background, while the model keeps working. The question carries
+the task, what the model has been saying, what keeps failing and the files it keeps
+changing. The answer lands in the conversation as an ordinary `claude.ask` call, so the
+model reads it and the transcript and Stats show it. It asks again at 200, then stops
+asking. Any message to the session starts the count again. Sessions in `ask` permission
+mode are left alone: you are there to be asked.
+
+```json
+{ "modules": { "claude": { "auto_ask_after": 100, "auto_ask_max": 2 } } }
+```
+
+`auto_ask_after: 0` turns it off. Each ask spends allowance like any other call.
+
 ### Working notes
 
 The agent keeps notes on what it worked out in a repository — dead ends, why one thing
