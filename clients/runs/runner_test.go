@@ -174,6 +174,9 @@ type fakeGit struct {
 	resets  []string
 	pushed  []string
 	fetches int
+	// cleanErr is what ResetHard returns after resetting, for a file it
+	// could not remove.
+	cleanErr error
 	// pushErrs are taken in order by Push; an empty queue pushes.
 	pushErrs []error
 	// from is the base of each worktree added, in order.
@@ -224,7 +227,7 @@ func (g *fakeGit) ResetHard(_ context.Context, _, sha string) error {
 		}
 	}
 	g.dirty = nil
-	return nil
+	return g.cleanErr
 }
 
 func (g *fakeGit) commit(msg string, files ...string) {
@@ -789,6 +792,43 @@ func TestAFailedSessionIsRetriedClean(t *testing.T) {
 	g.tick()
 	if r.Step != StepPlan || r.Attempt != 1 || len(g.git.resets) != 1 || len(g.d.order) != 2 {
 		t.Errorf("run = %+v, resets %q, sessions %d", r, g.git.resets, len(g.d.order))
+	}
+}
+
+// Seen live: a file named nul, which git cannot delete on Windows, made every
+// reset fail, so the run never recorded the failed session and reset again
+// at every poll.
+func TestAFileTheResetCannotRemoveDoesNotStopTheRetry(t *testing.T) {
+	g := newRig(t)
+	g.ask("H1", "Add a Median function")
+	g.tick()
+	r := g.run("H1")
+	_, s := g.d.last()
+	s.state = protocol.StateBlocked
+	g.git.cleanErr = &UncleanError{Err: errors.New("git clean -fd: warning: failed to remove nul: Permission denied")}
+	g.tick()
+	if r.Step != StepPlan || r.Attempt != 1 || len(g.git.resets) != 1 || len(g.d.order) != 2 {
+		t.Errorf("run = %+v, resets %q, sessions %d", r, g.git.resets, len(g.d.order))
+	}
+	if !strings.Contains(g.log.String(), "failed to remove nul") {
+		t.Errorf("the file left behind is not logged:\n%s", g.log.String())
+	}
+}
+
+// Any other reset failure still stops the step, to be tried at the next poll.
+func TestAFailedResetIsNotRecordedAsDone(t *testing.T) {
+	g := newRig(t)
+	g.ask("H1", "Add a Median function")
+	g.tick()
+	r := g.run("H1")
+	_, s := g.d.last()
+	s.state = protocol.StateBlocked
+	g.git.cleanErr = errors.New("git reset --hard: fatal: index.lock exists")
+	if err := g.rn.Advance(context.Background(), g.d); err == nil || !strings.Contains(err.Error(), "index.lock") {
+		t.Errorf("advance = %v, want the reset's error", err)
+	}
+	if r.Attempt != 0 || len(g.d.order) != 1 {
+		t.Errorf("run = %+v, sessions %d", r, len(g.d.order))
 	}
 }
 

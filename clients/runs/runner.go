@@ -531,11 +531,26 @@ func (rn *Runner) observe(ctx context.Context, d Daemon, r *Run) (Outcome, bool,
 // discard throws away a failed session's commits, so its retry starts clean.
 func (rn *Runner) discard(ctx context.Context, r *Run, why string) (Outcome, bool, error) {
 	if r.Start != "" {
-		if err := rn.Git.ResetHard(ctx, r.Worktree, r.Start); err != nil {
+		if err := rn.resetHard(ctx, r.Worktree, r.Start); err != nil {
 			return Outcome{}, false, err
 		}
 	}
 	return Outcome{Why: fmt.Sprintf("%s (session %s)", why, r.Session)}, true, nil
+}
+
+// resetHard is Git.ResetHard, except that a file left behind is logged rather
+// than returned. Seen live: a session's shell made a file named nul, which
+// git cannot delete on Windows, and the run reset and failed on every poll
+// for hours. The tracked files are back where they should be; one stray
+// file is not worth stopping a run for.
+func (rn *Runner) resetHard(ctx context.Context, dir, sha string) error {
+	err := rn.Git.ResetHard(ctx, dir, sha)
+	var unclean *UncleanError
+	if errors.As(err, &unclean) {
+		rn.logf("worktree %s: %v; carrying on", dir, err)
+		return nil
+	}
+	return err
 }
 
 // missing is what a session that ended its turn still owes its step, as the
@@ -836,7 +851,7 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		if err := rn.Git.Fetch(ctx, r.Worktree); err != nil {
 			return Outcome{Why: err.Error()}, nil
 		}
-		if err := rn.Git.ResetHard(ctx, r.Worktree, "origin/"+r.Branch); err != nil {
+		if err := rn.resetHard(ctx, r.Worktree, "origin/"+r.Branch); err != nil {
 			return Outcome{Why: err.Error()}, nil
 		}
 		rn.logf("run %s: %s moved while it was being fixed; watching its new head", r.Home, r.Branch)
