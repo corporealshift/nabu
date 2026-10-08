@@ -86,6 +86,15 @@ type Config struct {
 	// while it streams. 0 means DefaultRepeatLimit; below 0 turns it off.
 	// How a model degenerates depends on the model, so it is set here.
 	RepeatLimit int
+	// NormalWindow is the window a normal session compacts against; a large
+	// one uses ContextWindow. 0, or not below ContextWindow, means the same.
+	NormalWindow int
+	// ClearAt and SummarizeAt are the compaction thresholds, as fractions of
+	// the session's window. 0 means the daemon's default; ClearAt below 0
+	// never clears. They are per provider because what clearing costs
+	// depends on how the server caches (docs/specs/2026-10-08-context-size-design.md).
+	ClearAt     float64
+	SummarizeAt float64
 }
 
 // DefaultRepeatLimit is the copies in a row that stop a reply. The reply that

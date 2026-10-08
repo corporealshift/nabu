@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -89,6 +90,43 @@ type ProviderConfig struct {
 	// RepeatLimit is how many copies in a row of one passage stop a reply as
 	// it streams. Zero means the daemon's default, 8; below zero turns it off.
 	RepeatLimit int `json:"repeat_limit"`
+	// NormalWindow is the window a normal session compacts against, in
+	// tokens; a large one uses ContextWindow. Zero, or a value not below
+	// ContextWindow, makes the two the same.
+	// (docs/specs/2026-10-08-context-size-design.md)
+	NormalWindow int `json:"normal_window"`
+	// ClearAt is the fraction of the window at which tool results are
+	// cleared. Zero means the daemon's default, 0.70; below zero never clears.
+	ClearAt float64 `json:"clear_at"`
+	// SummarizeAt is the fraction at which the conversation is summarized.
+	// Zero means the daemon's default, 0.85.
+	SummarizeAt float64 `json:"summarize_at"`
+}
+
+// defaultSummarizeAt is the daemon's own summarize threshold, the one a
+// provider that sets none gets (agent.CompactionConfig). It is repeated here
+// only to refuse a clear_at that could never run.
+const defaultSummarizeAt = 0.85
+
+// validate refuses compaction settings that cannot mean what they say.
+func (c ProviderConfig) validate(name string) error {
+	bad := func(key string, why string) error {
+		return fmt.Errorf("config: provider %q: %s %s", name, key, why)
+	}
+	if c.NormalWindow < 0 {
+		return bad("normal_window", "must not be negative")
+	}
+	if c.SummarizeAt < 0 || c.SummarizeAt > 1 {
+		return bad("summarize_at", "must be between 0 and 1")
+	}
+	summarize := c.SummarizeAt
+	if summarize == 0 {
+		summarize = defaultSummarizeAt
+	}
+	if c.ClearAt > 0 && c.ClearAt >= summarize {
+		return bad("clear_at", fmt.Sprintf("must be below summarize_at (%.2f), or below 0 to never clear", summarize))
+	}
+	return nil
 }
 
 func (c *ProviderConfig) withDefaults() {
@@ -169,7 +207,25 @@ func Load(root string) (*Config, error) {
 	}
 
 	cfg.applyDefaults()
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
 	return cfg, nil
+}
+
+// validate checks every provider, in name order so the error is stable.
+func (c *Config) validate() error {
+	names := make([]string, 0, len(c.Providers))
+	for name := range c.Providers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if err := c.Providers[name].validate(name); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // applyDefaults fills every unset value. Providers are written back into the
@@ -259,5 +315,5 @@ func (c *Config) ApplyOverlay(overlayPath string) error {
 
 	// Overlay entries arrive raw, so defaults must be reapplied.
 	c.applyDefaults()
-	return nil
+	return c.validate()
 }

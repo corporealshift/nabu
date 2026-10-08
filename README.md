@@ -89,6 +89,27 @@ turns it off. The copies are not logged, and the session blocks for you to look.
 that repeats is only trimmed from the log; the turn goes on, and a server's reasoning
 budget or the reply cap ends it.
 
+**Compaction** runs in two stages as the context fills. At 70% of the window, old tool
+results are swapped for one-line stubs. At 85%, the conversation is summarized. Three
+settings per provider change that:
+
+- **`normal_window`**: the window a normal session compacts against, smaller than
+  `context_window`. A large session uses all of `context_window`.
+- **`clear_at`**: the fraction at which results are cleared. Below 0 means never.
+- **`summarize_at`**: the fraction at which the conversation is summarized.
+
+For a local server, this is a good start:
+
+```json
+"local": { "context_window": 128000, "normal_window": 64000, "clear_at": -1 }
+```
+
+Clearing changes messages a few turns back, so a local server's prompt cache misses and
+it reprocesses everything after them. It also takes away files the model read only a
+few turns earlier, which it then reads again. On a 400-turn session, measured, clearing
+fired every 4 or 5 turns and freed about one turn's growth each time. Summarizing
+earlier keeps the context short, where a local model is fastest.
+
 Unknown fields are rejected rather than ignored, so a typo fails loudly at startup
 instead of silently doing nothing.
 

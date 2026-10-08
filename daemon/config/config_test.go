@@ -554,3 +554,47 @@ func TestProviderRepeatLimitIsConfigurable(t *testing.T) {
 		}
 	}
 }
+
+// The context-size settings load, and ones that cannot mean what they say are
+// refused with the provider and key named
+// (docs/specs/2026-10-08-context-size-design.md).
+func TestProviderCompactionSettings(t *testing.T) {
+	load := func(t *testing.T, provider string) (*Config, error) {
+		t.Helper()
+		root := t.TempDir()
+		body := `{"providers":{"local":` + provider + `}}`
+		if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return Load(root)
+	}
+
+	cfg, err := load(t, `{"context_window":128000,"normal_window":64000,"clear_at":-1,"summarize_at":0.8}`)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	p := cfg.Providers["local"]
+	if p.NormalWindow != 64000 || p.ClearAt != -1 || p.SummarizeAt != 0.8 {
+		t.Errorf("loaded %+v", p)
+	}
+
+	for _, tc := range []struct {
+		name, provider, key string
+	}{
+		{"a negative normal window", `{"normal_window":-1}`, "normal_window"},
+		{"summarize_at over 1", `{"summarize_at":1.5}`, "summarize_at"},
+		{"summarize_at below 0", `{"summarize_at":-0.5}`, "summarize_at"},
+		{"clear_at at summarize_at", `{"clear_at":0.6,"summarize_at":0.6}`, "clear_at"},
+		{"clear_at over the default summarize_at", `{"clear_at":0.9}`, "clear_at"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := load(t, tc.provider)
+			if err == nil {
+				t.Fatal("Load succeeded, want it refused")
+			}
+			if !strings.Contains(err.Error(), `"local"`) || !strings.Contains(err.Error(), tc.key) {
+				t.Errorf("error %q should name the provider and %s", err, tc.key)
+			}
+		})
+	}
+}
