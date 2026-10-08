@@ -1,11 +1,13 @@
 package claude
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/corporealshift/nabu/daemon/module"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -240,3 +242,137 @@ func cutFront(s string, n int) string {
 }
 
 func runeStart(b byte) bool { return b&0xC0 != 0x80 }
+
+// The defaults: a hundred turns without a word from anyone, then two hundred,
+// then quiet.
+const (
+	defaultAutoAfter = 100
+	defaultAutoMax   = 2
+)
+
+// autoAsk is one automatic ask, from start to recording.
+type autoAsk struct {
+	prompt string
+	// spoken is how many user messages the log held when the ask began. More
+	// by the time the answer lands means someone spoke, and the answer is
+	// for a stretch that has ended.
+	spoken int
+	done   bool
+	answer string
+	err    error
+}
+
+// automatic says whether this module may ask on a session's behalf at all.
+// A session in ask mode has a person approving its calls: they are there to
+// be asked, and a call needing their approval would wait on them.
+func (m *Module) automatic(s module.Session) bool {
+	if !m.enabled || m.exe == "" || m.autoAfter == 0 || m.autoMax == 0 || s == nil {
+		return false
+	}
+	mode := s.State().Options.PermissionMode
+	return mode != "" && mode != protocol.PermissionAsk
+}
+
+// TurnEnd starts an automatic ask when the stretch reaches its next mark.
+// The CLI takes minutes and a hook gets seconds, so it runs in the
+// background, and the model keeps working meanwhile.
+func (m *Module) TurnEnd(_ context.Context, s module.Session) {
+	if !m.automatic(s) {
+		return
+	}
+	log, err := s.Events(nil)
+	if err != nil {
+		return
+	}
+	_, since := stretchOf(log)
+	done := asked(since)
+	if done >= m.autoMax || turns(since) < m.autoAfter*(done+1) {
+		return
+	}
+
+	m.mu.Lock()
+	if m.waiting[s.ID()] != nil {
+		m.mu.Unlock()
+		return
+	}
+	a := &autoAsk{prompt: question(log), spoken: spoken(log)}
+	m.waiting[s.ID()] = a
+	m.mu.Unlock()
+
+	dir := s.Workspace().Path
+	go func() {
+		// Not the hook's context: that ends with the hook.
+		answer, err := m.ask(context.Background(), dir, a.prompt, m.timeout)
+		m.mu.Lock()
+		a.answer, a.err, a.done = answer, err, true
+		m.mu.Unlock()
+	}()
+}
+
+// BeforeRequest records an answered automatic ask, at the one point where
+// every other call has its result: it calls claude.ask with the same prompt,
+// and runAsk hands back the answer at once. The host logs the call and its
+// result together, so the model sees an ordinary claude.ask in its
+// conversation, and so does everyone reading the session later.
+func (m *Module) BeforeRequest(ctx context.Context, s module.Session) ([]module.ContextBlock, error) {
+	if s == nil {
+		return nil, nil
+	}
+	m.mu.Lock()
+	a := m.waiting[s.ID()]
+	ready := a != nil && a.done
+	m.mu.Unlock()
+	if !ready {
+		return nil, nil
+	}
+
+	log, err := s.Events(nil)
+	if err == nil && spoken(log) == a.spoken && m.host != nil {
+		args, _ := json.Marshal(map[string]string{"prompt": a.prompt})
+		if _, err := m.host.Tools().Call(ctx, s, "claude.ask", args); err != nil && m.host.Log() != nil {
+			m.host.Log().Info("automatic claude ask recorded as failed", "session", s.ID(), "err", err)
+		}
+	}
+	// Recorded, refused by a gate, or overtaken by a person: either way this
+	// ask is finished. Asking again is the next mark's business.
+	m.drop(s.ID())
+	return nil, nil
+}
+
+// SessionEnd drops an ask the session will not be there to hear.
+func (m *Module) SessionEnd(_ context.Context, s module.Session) {
+	if s != nil {
+		m.drop(s.ID())
+	}
+}
+
+// answered hands over a session's finished automatic ask for this prompt,
+// once.
+func (m *Module) answered(session, prompt string) (string, error, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a := m.waiting[session]
+	if a == nil || !a.done || a.prompt != prompt {
+		return "", nil, false
+	}
+	delete(m.waiting, session)
+	return a.answer, a.err, true
+}
+
+func (m *Module) drop(session string) {
+	m.mu.Lock()
+	delete(m.waiting, session)
+	m.mu.Unlock()
+}
+
+// spoken counts the user messages in a log.
+func spoken(log []protocol.Event) int {
+	n := 0
+	for _, e := range log {
+		var d protocol.MessageData
+		if e.Type == protocol.EventMessage && json.Unmarshal(e.Data, &d) == nil && d.Role == "user" {
+			n++
+		}
+	}
+	return n
+}

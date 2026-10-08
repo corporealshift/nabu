@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/corporealshift/nabu/daemon/module"
@@ -56,7 +57,8 @@ const (
 // it needs the failure text and the code that produced it.
 var defaultAllowedTools = []string{"Read", "Grep", "Glob"}
 
-// Module offers the claude.ask tool.
+// Module offers the claude.ask tool, and asks on the model's behalf when a
+// session has gone on too long (stuck.go).
 type Module struct {
 	enabled   bool
 	exe       string
@@ -64,6 +66,20 @@ type Module struct {
 	timeout   time.Duration
 	maxOutput int
 	allowed   []string
+
+	host module.Host
+	// autoAfter is how many turns since a person spoke earn an automatic
+	// ask, and again at each multiple; 0 is never. autoMax caps the asks
+	// in one stretch.
+	autoAfter, autoMax int
+	// ask runs the CLI. A field so tests can stand in for it without a
+	// subprocess.
+	ask func(ctx context.Context, dir, prompt string, timeout time.Duration) (string, error)
+
+	mu sync.Mutex
+	// waiting holds each session's automatic ask, from when it starts until
+	// its answer is recorded or dropped.
+	waiting map[string]*autoAsk
 }
 
 func (m *Module) Name() string { return "claude" }
@@ -71,8 +87,13 @@ func (m *Module) Name() string { return "claude" }
 // Init finds the CLI. Not having it installed is a fact about the machine
 // rather than a misconfiguration, so Init does not fail over it; the tool is
 // simply not offered.
-func (m *Module) Init(_ module.Host, cfg module.Config) error {
+func (m *Module) Init(h module.Host, cfg module.Config) error {
 	m.enabled = cfg.Enabled()
+	m.host = h
+	m.ask = m.runCLI
+	m.waiting = map[string]*autoAsk{}
+	m.autoAfter = max(cfg.Int("auto_ask_after", defaultAutoAfter), 0)
+	m.autoMax = max(cfg.Int("auto_ask_max", defaultAutoMax), 0)
 
 	m.exe = strings.TrimSpace(cfg.String("path", ""))
 	if m.exe == "" {
@@ -128,6 +149,16 @@ func (m *Module) runAsk(ctx context.Context, s module.Session, raw json.RawMessa
 	if strings.TrimSpace(a.Prompt) == "" {
 		return "", module.Fail(protocol.ToolErrorInvalidArgs, "prompt is required")
 	}
+	// An automatic ask already answered in the background is recorded by
+	// calling this tool with its prompt; it returns at once (stuck.go).
+	if s != nil {
+		if answer, err, ok := m.answered(s.ID(), a.Prompt); ok {
+			if err != nil {
+				return "", err
+			}
+			return m.truncate(answer), nil
+		}
+	}
 	if len(a.Prompt) > maxPrompt {
 		return "", module.Fail(protocol.ToolErrorInvalidArgs,
 			"the prompt is %d bytes, over the %d limit; point at the files instead of pasting them",
@@ -143,13 +174,25 @@ func (m *Module) runAsk(ctx context.Context, s module.Session, raw json.RawMessa
 			"timeout_seconds %d is above the maximum of %d", a.TimeoutSeconds, int(maxTimeout.Seconds()))
 	}
 
+	dir := ""
+	if s != nil {
+		dir = s.Workspace().Path
+	}
+	answer, err := m.ask(ctx, dir, a.Prompt, timeout)
+	if err != nil {
+		return "", err
+	}
+	return m.truncate(answer), nil
+}
+
+// runCLI asks the CLI in dir and returns its answer, or an error that says
+// how it failed.
+func (m *Module) runCLI(ctx context.Context, dir, prompt string, timeout time.Duration) (string, error) {
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(cctx, m.exe, m.argv(a.Prompt)...)
-	if s != nil {
-		cmd.Dir = s.Workspace().Path
-	}
+	cmd := exec.CommandContext(cctx, m.exe, m.argv(prompt)...)
+	cmd.Dir = dir
 	// Separate pipes: stdout is the answer, stderr explains a failure. Merged,
 	// a warning would land in the middle of a review.
 	var stdout, stderr bytes.Buffer
@@ -178,7 +221,7 @@ func (m *Module) runAsk(ctx context.Context, s module.Session, raw json.RawMessa
 	if answer == "" {
 		return "", module.Fail(protocol.ToolErrorIO, "claude exited cleanly but said nothing")
 	}
-	return m.truncate(answer), nil
+	return answer, nil
 }
 
 // argv builds the command line.
