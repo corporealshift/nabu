@@ -361,6 +361,11 @@ func (m model) submit() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		act.labels = goalLabels(m.labels)
+	case actContext:
+		if act.text == "" {
+			m.note(contextWords(m.contextSize))
+			return m, nil
+		}
 	case actCompact:
 		// It is a model call and the transcript does not move while it runs,
 		// so without this the client looks like it dropped the command. On a

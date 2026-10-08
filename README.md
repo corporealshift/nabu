@@ -380,8 +380,10 @@ into the answer, so `q` does not quit while one is on screen.
 In the composer, a line starting with `/` is a command rather than a prompt: `/run
 [text]` hands the session to the runner, `/goal [text]` hands it a broad goal that the
 runner breaks into runs and checks until it is met, `/compact` summarises the history now instead
-of waiting for the automatic pass, `/stop` ends the session, `/sessions` switches,
-`/help` lists them.
+of waiting for the automatic pass, `/context large` lets the session fill the model's whole
+window before it is summarised (and `/context normal` puts it back), `/stop` ends the
+session, `/sessions` switches, `/help` lists them. A run or goal started from a large
+session makes all of its sessions large.
 
 `/compact` is refused while a turn is running — compaction rewrites what the next
 request is built from, so interrupt with `ctrl+x` first.
