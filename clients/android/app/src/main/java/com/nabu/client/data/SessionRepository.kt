@@ -386,6 +386,19 @@ class SessionRepository(
      * first. That rule is not repeated here: two copies of it would drift, and
      * only the daemon's copy is the one that decides.
      */
+    /**
+     * Sets a session's context size, "normal" or "large": how much of the
+     * model's window it fills before it is summarized
+     * (docs/specs/2026-10-08-context-size-design.md).
+     */
+    suspend fun setContext(client: DaemonClient, sessionId: String, size: String) {
+        client.callOrThrow("nabu.session.set_option", buildJsonObject {
+            put("session_id", sessionId)
+            put("key", "context")
+            put("value", size)
+        })
+    }
+
     suspend fun compactSession(client: DaemonClient, sessionId: String): String {
         val result = client.callOrThrow("nabu.session.compact", buildJsonObject {
             put("session_id", sessionId)

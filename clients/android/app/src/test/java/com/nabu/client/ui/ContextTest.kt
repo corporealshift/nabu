@@ -64,4 +64,14 @@ class ContextTest {
         )
         assertEquals(0.25f, contextUsed(rows)!!, 0.001f)
     }
+
+    // The badge is where the size is chosen, so it shows before the first
+    // turn too, and marks a large session.
+    @Test
+    fun `the badge says how full and whether large`() {
+        assertEquals("context", contextBadgeText(null, ""))
+        assertEquals("context · large", contextBadgeText(null, "large"))
+        assertEquals("context 42%", contextBadgeText(0.42f, "normal"))
+        assertEquals("context 42% · large", contextBadgeText(0.42f, "large"))
+    }
 }
