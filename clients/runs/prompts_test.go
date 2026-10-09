@@ -89,6 +89,12 @@ func TestClaudePrompts(t *testing.T) {
 	if f := FinalReviewPrompt(r, nil); strings.Contains(f, "pins each decision") {
 		t.Error("the final review still says the check pins each decision")
 	}
+	// Seen live: a blocker said "Name it in verify.sh", and the work session
+	// it became may not touch verify.sh on pain of being thrown away.
+	if f := FinalReviewPrompt(r, nil); strings.Contains(f, "does not actually prove") ||
+		!strings.Contains(f, "Never ask for a change to "+r.File(VerifyFile)) {
+		t.Error("the final review may still ask for a change to verify.sh")
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if !strings.HasPrefix(tt.prompt, reviewer) {
