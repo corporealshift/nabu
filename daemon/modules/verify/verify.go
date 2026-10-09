@@ -165,6 +165,11 @@ func (m *Module) GateTool(ctx context.Context, s module.Session, call protocol.T
 	}
 	state := s.State()
 	existing := byID(state.Tasks)
+	// The ids the tasks will be stored under, not the ones the model sent,
+	// which may be none: a check under no id is one nothing can clear.
+	if named, err := module.TaskIDs(state.Tasks, incoming); err == nil {
+		incoming = named
+	}
 
 	if m.requireDoneWhen(state) {
 		for _, t := range incoming {
@@ -274,7 +279,7 @@ func (m *Module) BeforeStop(ctx context.Context, s module.Session, info module.S
 	if reason := openTaskVeto(info.Tasks); reason != "" {
 		return module.StopVerdict{Reason: reason}
 	}
-	if reason := failedCheckVeto(s); reason != "" {
+	if reason := failedCheckVeto(s, info.Tasks); reason != "" {
 		return module.StopVerdict{Reason: reason}
 	}
 	if reason := m.gateVeto(ctx, s); reason != "" {
@@ -336,17 +341,23 @@ func openTaskVeto(tasks []protocol.Task) string {
 }
 
 // failedCheckVeto refuses a stop while a mechanical check last failed.
-func failedCheckVeto(s module.Session) string {
-	failed := failedChecks(s)
+func failedCheckVeto(s module.Session, tasks []protocol.Task) string {
+	failed := failedChecks(s, tasks)
 	if len(failed) == 0 {
 		return ""
 	}
-	return "these checks are failing:\n  - " + strings.Join(failed, "\n  - ")
+	return "these checks are failing:\n  - " + strings.Join(failed, "\n  - ") +
+		"\nA task's check clears when the task is marked done and its check passes, or when the task is cancelled."
 }
 
 // failedChecks names each check whose latest result is a failure, with its
 // summary, in the order the checks first appeared.
-func failedChecks(s module.Session) []string {
+//
+// A task's check counts only while its task is on the list and not
+// cancelled. Seen live: a check failed, the model cancelled the task, and
+// the failure vetoed every stop for the rest of the session, since only
+// another run of the same check could clear it.
+func failedChecks(s module.Session, tasks []protocol.Task) []string {
 	events, err := s.Events(nil)
 	if err != nil {
 		return nil
@@ -368,13 +379,35 @@ func failedChecks(s module.Session) []string {
 		status[d.Name] = d
 	}
 
+	live := byID(tasks)
 	var failed []string
 	for _, name := range order {
-		if d := status[name]; d.Status == "fail" {
-			failed = append(failed, name+": "+d.Summary)
+		d := status[name]
+		if d.Status != "fail" {
+			continue
 		}
+		id, isTask := taskOf(d)
+		if !isTask {
+			failed = append(failed, name+": "+d.Summary)
+			continue
+		}
+		t, on := live[id]
+		if !on || id == "" || t.Status == protocol.TaskCancelled {
+			continue
+		}
+		failed = append(failed, fmt.Sprintf("%s (%s): %s", name, t.Title, d.Summary))
 	}
 	return failed
+}
+
+// taskOf is the task a check belongs to. Checks logged before they carried
+// the task's id are known by their name.
+func taskOf(d protocol.CheckData) (string, bool) {
+	if d.TaskID != "" {
+		return d.TaskID, true
+	}
+	id, ok := strings.CutPrefix(d.Name, "task:")
+	return id, ok
 }
 
 // readCommands reads the per-workspace gates: an object of workspace path to

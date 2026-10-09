@@ -101,7 +101,7 @@ func (m *Module) turnFacts(ctx context.Context, s module.Session, info module.St
 		gateFailed = true
 		facts = append(facts, reason)
 	}
-	for _, f := range failedChecks(s) {
+	for _, f := range failedChecks(s, info.Tasks) {
 		if gateFailed && strings.HasPrefix(f, "verify.command:") {
 			continue // the gate's own failure is already said, with its output
 		}
