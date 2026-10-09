@@ -521,12 +521,42 @@ func (rn *Runner) observe(ctx context.Context, d Daemon, r *Run) (Outcome, bool,
 		if !r.Stopped {
 			return rn.discard(ctx, r, "the session was stopped before it finished")
 		}
+	case protocol.StateBlocked:
+		if !judgedByCheck(r.Step) {
+			return rn.discard(ctx, r, "the session ended blocked")
+		}
+		// A fix is judged by the check that follows it, not by its own stop
+		// gate. Seen live: a fix session committed a revision request, its
+		// gate then refused every stop over a check it could not clear, and
+		// both commits were thrown away. What it left uncommitted goes: the
+		// check would otherwise judge files the pull request never gets.
+		if !r.Stopped {
+			head, err := rn.Git.Head(ctx, r.Worktree)
+			if err != nil {
+				return Outcome{}, false, err
+			}
+			if err := rn.resetHard(ctx, r.Worktree, head); err != nil {
+				return Outcome{}, false, err
+			}
+			r.Stopped = true
+			if err := rn.save(r); err != nil {
+				return Outcome{}, false, err
+			}
+			rn.logf("run %s: %s session %s ended blocked; judging what it committed", r.Home, r.Step, r.Session)
+		}
+		if err := d.Stop(ctx, r.Session); err != nil {
+			rn.logf("run %s: stopping session %s: %v", r.Home, r.Session, err)
+		}
 	default:
 		return rn.discard(ctx, r, "the session ended "+string(st.State))
 	}
 	o, err := rn.produced(ctx, d, r, st.Goal != nil && st.Goal.State == "met")
 	return o, true, err
 }
+
+// judgedByCheck says a step's session is followed by the check, which runs
+// verify.sh on what it committed, whatever the session itself concluded.
+func judgedByCheck(s Step) bool { return s == StepFix || s == StepCIFix }
 
 // discard throws away a failed session's commits, so its retry starts clean.
 func (rn *Runner) discard(ctx context.Context, r *Run, why string) (Outcome, bool, error) {
