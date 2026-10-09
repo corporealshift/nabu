@@ -52,9 +52,10 @@ const (
 // A reviewer that can quietly edit the repository removes the one thing that
 // makes a review worth having: that a second party looked and did not touch it.
 //
-// The cost is that Claude cannot run the tests. nabu can: it runs them and puts
-// the output in the prompt. Claude does not need a shell to know a test failed,
-// it needs the failure text and the code that produced it.
+// The cost was that Claude could not run the tests, which turned out higher
+// than it looked: every diagnosis was a reading of whatever results were on
+// disk. The owner can name commands it may run (commands.go); it still cannot
+// change a file.
 var defaultAllowedTools = []string{"Read", "Grep", "Glob"}
 
 // Module offers the claude.ask tool, asks on the model's behalf when a
@@ -67,6 +68,8 @@ type Module struct {
 	timeout   time.Duration
 	maxOutput int
 	allowed   []string
+	// commands are the command prefixes Claude may run, besides reading.
+	commands []string
 
 	host module.Host
 	// autoAfter is how many turns since a person spoke earn an automatic
@@ -113,6 +116,13 @@ func (m *Module) Init(h module.Host, cfg module.Config) error {
 		m.maxOutput = defaultMaxOutput
 	}
 	m.allowed = cfg.Strings("allowed_tools", defaultAllowedTools)
+	for _, c := range cfg.Strings("commands", nil) {
+		if c, ok := runnable(c); ok {
+			m.commands = append(m.commands, c)
+		} else if h != nil && h.Log() != nil && strings.TrimSpace(c) != "" {
+			h.Log().Warn("claude: a command that would let Claude run anything is not allowed", "command", c)
+		}
+	}
 	return nil
 }
 
@@ -121,12 +131,16 @@ func (m *Module) Tools() []module.Tool {
 	if !m.enabled || m.exe == "" {
 		return nil
 	}
+	can := "It cannot run commands: if a test matters, run it yourself and put the output in the prompt. "
+	if len(m.commands) > 0 {
+		can = "It can also run " + commandList(m.commands) + " to see for itself what fails. " +
+			"It cannot change files. "
+	}
 	return []module.Tool{{
 		Name: "claude.ask",
 		Description: "Ask Claude — a larger model, with its own tools — to review your work or " +
 			"answer something you are stuck on. It can read this repository, so point it at " +
-			"files and say what to look for. It cannot run commands: if a test matters, run it " +
-			"yourself and put the output in the prompt. Use it for a review before you finish " +
+			"files and say what to look for. " + can + "Use it for a review before you finish " +
 			"something substantial, or for a question you have already tried and failed to " +
 			"answer. Each call is slow and costs the owner real money, so ask once, with " +
 			"everything needed to answer, rather than several times.",
@@ -235,6 +249,12 @@ func (m *Module) argv(prompt string) []string {
 		if t = strings.TrimSpace(t); t != "" {
 			args = append(args, "--allowedTools", t)
 		}
+	}
+	// Both shells: on Windows the CLI runs a command through its PowerShell
+	// tool as readily as through Bash, and a Bash rule alone left go test
+	// blocked when checked against the real CLI.
+	for _, c := range m.commands {
+		args = append(args, "--allowedTools", "Bash("+c+" *)", "--allowedTools", "PowerShell("+c+" *)")
 	}
 	if m.model != "" {
 		args = append(args, "--model", m.model)

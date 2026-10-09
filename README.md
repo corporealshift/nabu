@@ -170,8 +170,18 @@ reviewer that can quietly edit the repository removes the one thing a review is 
 somebody else looked and did not touch it. Verified rather than assumed: asked to create a
 file under these flags, Claude reports the write blocked and no file appears.
 
-The cost is that Claude cannot run your tests. nabu can: it runs them and puts the output
-in the prompt. Claude does not need a shell to know a test failed.
+By default Claude cannot run your tests either. To let it, name the commands it may run:
+
+```json
+{ "modules": { "claude": { "commands": ["bash gradlew.sh", "go test", "go vet"] } } }
+```
+
+Each becomes a `Bash(<command> *)` and a `PowerShell(<command> *)` rule for the CLI, since
+on Windows Claude may run it through either. Claude can run those, and nothing else, and
+still cannot change a file. A command that would allow anything, such as a bare
+`bash` or `pwsh -Command`, is refused and logged. When nabu asks on its own (below), the
+model keeps working in the same checkout, so Claude's build and the model's can overlap;
+one usually waits on the other's lock.
 
 It uses whatever `claude` login is on the machine, so it spends your Claude Code
 allowance. Each call is slow and real money, from a process you are not watching — the

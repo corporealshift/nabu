@@ -81,7 +81,7 @@ func TestTheQuestionSaysWhatClaudeNeeds(t *testing.T) {
 		result("r1", "read", "error", "no such file"),
 	)
 
-	q := question(log)
+	q := question(log, nil)
 	for _, want := range []string{
 		"spent 12 turns",
 		"Build Mission Control.\nIt edits every setting.",
@@ -116,7 +116,7 @@ func TestAHugeLogStillGivesAShortQuestion(t *testing.T) {
 		log = append(log, said(huge), call(id, "bash", "model", map[string]string{"command": huge}),
 			result(id, "bash", "error", strings.Repeat(huge+"\n", 50)))
 	}
-	q := question(log)
+	q := question(log, nil)
 	if len(q) > questionMax {
 		t.Errorf("the question is %d bytes, over %d", len(q), questionMax)
 	}

@@ -78,7 +78,7 @@ func asked(since []protocol.Event) int {
 
 // question is what Claude is asked: who is asking, the task, what the model
 // has been saying, what keeps failing, and where it keeps working.
-func question(log []protocol.Event) string {
+func question(log []protocol.Event, commands []string) string {
 	task, since := stretchOf(log)
 	var b strings.Builder
 	fmt.Fprintf(&b, "nabu is asking on behalf of a smaller local model that has spent %d turns "+
@@ -109,7 +109,15 @@ func question(log []protocol.Event) string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString("## What to do\n\nRead the repository. Say what is going wrong and what to do next, " +
+	b.WriteString("## What to do\n\nRead the repository. ")
+	if len(commands) > 0 {
+		// The model keeps working while Claude looks (TurnEnd), so a build
+		// may wait on the model's, and results on disk may move.
+		b.WriteString("You may run " + commandList(commands) + " to see the failure for yourself. " +
+			"The model keeps working in this checkout while you look, so a build may wait on a lock, " +
+			"and result files may change under you. ")
+	}
+	b.WriteString("Say what is going wrong and what to do next, " +
 		"as specific steps: files, functions, commands. If the approach is wrong, say so.\n")
 	return cut(b.String(), questionMax)
 }
@@ -295,7 +303,7 @@ func (m *Module) TurnEnd(_ context.Context, s module.Session) {
 		m.mu.Unlock()
 		return
 	}
-	a := &autoAsk{prompt: question(log), spoken: spoken(log)}
+	a := &autoAsk{prompt: question(log, m.commands), spoken: spoken(log)}
 	m.waiting[s.ID()] = a
 	m.mu.Unlock()
 
