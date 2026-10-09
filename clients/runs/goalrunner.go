@@ -278,7 +278,7 @@ func (rn *Runner) sync(ctx context.Context, g *Goal) error {
 	if err := rn.Git.Fetch(ctx, g.Worktree); err != nil {
 		return err
 	}
-	return rn.Git.ResetHard(ctx, g.Worktree, "origin/"+g.Branch)
+	return rn.resetHard(ctx, g.Worktree, "origin/"+g.Branch)
 }
 
 // publish puts one of the goal's files on its branch: up to date with origin

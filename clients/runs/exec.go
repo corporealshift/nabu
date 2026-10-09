@@ -84,8 +84,10 @@ func (g GitCLI) ResetHard(ctx context.Context, dir, sha string) error {
 	}
 	// Untracked files a thrown-away session left, but not ignored build
 	// output, which is expensive to make again and was never the session's.
-	_, err := g.git(ctx, "-C", dir, "clean", "-fd")
-	return err
+	if _, err := g.git(ctx, "-C", dir, "clean", "-fd"); err != nil {
+		return &UncleanError{Err: err}
+	}
+	return nil
 }
 
 func (g GitCLI) Commit(ctx context.Context, dir, msg string, paths ...string) error {

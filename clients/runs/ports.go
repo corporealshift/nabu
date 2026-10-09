@@ -64,6 +64,8 @@ type Git interface {
 	// Dirty is every file with changes not committed.
 	Dirty(ctx context.Context, dir string) ([]string, error)
 	// ResetHard puts a worktree back at a commit, untracked files and all.
+	// When the reset worked but an untracked file could not be removed, the
+	// error is an *UncleanError.
 	ResetHard(ctx context.Context, dir, sha string) error
 	Commit(ctx context.Context, dir, msg string, paths ...string) error
 	// Remove deletes a file in a commit of its own.
@@ -107,3 +109,11 @@ type Shell interface {
 	// script that could not be run at all.
 	Verify(ctx context.Context, dir, script string, timeout time.Duration) (passed bool, output string, err error)
 }
+
+// UncleanError is a reset that put the tracked files back but left an
+// untracked file it could not remove: on Windows, one named for a device,
+// such as nul, which a model's shell redirect can create.
+type UncleanError struct{ Err error }
+
+func (e *UncleanError) Error() string { return "reset, but not cleaned: " + e.Err.Error() }
+func (e *UncleanError) Unwrap() error { return e.Err }

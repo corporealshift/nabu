@@ -170,7 +170,8 @@ func TestClassifyToolTiers(t *testing.T) {
 		{"grep is low", call("grep", map[string]any{"path": inside}), TierLow},
 		{"write is medium", call("write", map[string]any{"path": inside}), TierMedium},
 		{"edit is medium", call("edit", map[string]any{"path": inside}), TierMedium},
-		{"a sweeping edit is high", call("edit", map[string]any{"path": inside, "replace_all": true}), TierHigh},
+		{"an edit with replace_all is medium, as any edit", call("edit", map[string]any{"path": inside, "replace_all": true}), TierMedium},
+		{"an edit with replace_all outside the workspace is high", call("edit", map[string]any{"path": "/etc/hosts", "replace_all": true}), TierHigh},
 		{"an unknown tool is low", call("teleport", map[string]any{}), TierLow},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

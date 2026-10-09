@@ -208,10 +208,9 @@ func (r Rule) denyReason(info callInfo) string {
 
 // callInfo is everything a rule can match on, extracted once per call.
 type callInfo struct {
-	tool       string
-	command    string
-	path       string
-	replaceAll bool
+	tool    string
+	command string
+	path    string
 	// op is the verb of a tool that takes one, empty for tools that do not.
 	op   string
 	tier Tier
@@ -245,9 +244,8 @@ func truncate(s string, n int) string {
 // toolArgs is the union of the built-in tools' argument shapes. Fields absent
 // from a given tool simply stay empty.
 type toolArgs struct {
-	Command    string `json:"command"`
-	Path       string `json:"path"`
-	ReplaceAll bool   `json:"replace_all"`
+	Command string `json:"command"`
+	Path    string `json:"path"`
 	// Op is the verb of a tool that takes one, such as git and gh. A tool
 	// whose risk depends on which verb was asked for cannot be rated by its
 	// name alone.
@@ -273,7 +271,6 @@ func inspect(s module.Session, call protocol.ToolCallData) callInfo {
 	}
 	info.command = args.Command
 	info.path = args.Path
-	info.replaceAll = args.ReplaceAll
 	info.op = args.Op
 
 	if info.path != "" && s != nil {
@@ -370,7 +367,12 @@ var toolTiers = map[string]Tier{
 	"git": TierLow, "gh": TierLow,
 	// Asking changes nothing, and gating it would prompt twice for one
 	// question.
-	"ask":   TierLow,
+	"ask": TierLow,
+	// An edit with replace_all is rated as any edit: it changes one file in
+	// the workspace, as a write of the whole file does, and git undoes it the
+	// same way. Rated high, it waited for an approval that never comes in an
+	// unattended session; a run's step session tried one four times and
+	// never made the change.
 	"write": TierMedium, "edit": TierMedium,
 	// Fetching is medium because the page decides what comes back: a
 	// result the model was told to read is somebody else's writing.
@@ -395,10 +397,6 @@ func classify(info callInfo) Tier {
 	}
 	if info.tool == "bash" {
 		return classifyCommand(info.command, info.workspace)
-	}
-	// A sweeping edit is riskier than a targeted one.
-	if info.tool == "edit" && info.replaceAll {
-		return TierHigh
 	}
 	// git and gh read by default and write only for named ops, so the verb
 	// decides: "git status" is not "git commit".
