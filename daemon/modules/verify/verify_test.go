@@ -252,6 +252,46 @@ func TestMechanicalCheckSkipsATaskAlreadyDone(t *testing.T) {
 	}
 }
 
+// Seen live: the model sent its tasks without ids, as task.update allows.
+// The gate ran each check before the ids were assigned, so every check was
+// recorded as "task:" and a task already done had its check run again.
+func TestATaskSentWithoutAnIDIsCheckedUnderTheIDItGets(t *testing.T) {
+	m := newVerify(t, module.Config{})
+	s := &fakeSession{workspace: t.TempDir(), state: protocol.State{Tasks: []protocol.Task{
+		{ID: "t1", Title: "Add the row", Status: protocol.TaskInProgress, DoneWhen: "w", Check: "exit 0"},
+		{ID: "t2", Title: "Run the tests", Status: protocol.TaskPending, DoneWhen: "w"},
+	}}}
+	call := taskCall(
+		protocol.Task{Title: "Add the row", Status: protocol.TaskDone, Check: "exit 0"},
+		protocol.Task{Title: "Run the tests", Status: protocol.TaskPending},
+		protocol.Task{Title: "Tidy up", Status: protocol.TaskDone, DoneWhen: "w", Check: "exit 0"},
+	)
+	if v := m.GateTool(context.Background(), s, call); v.Decision != module.Allow {
+		t.Fatalf("got %v (%s)", v.Decision, v.Reason)
+	}
+	var got []string
+	for _, c := range s.checkEvents() {
+		got = append(got, c.Name+"="+c.TaskID)
+	}
+	if want := []string{"task:t1=t1", "task:t3=t3"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("checks = %q, want %q", got, want)
+	}
+}
+
+func TestATaskAlreadyDoneIsNotRecheckedWhenSentWithoutItsID(t *testing.T) {
+	m := newVerify(t, module.Config{})
+	s := &fakeSession{workspace: t.TempDir(), state: protocol.State{Tasks: []protocol.Task{
+		{ID: "t1", Title: "Add the row", Status: protocol.TaskDone, DoneWhen: "w", Check: "exit 7"},
+	}}}
+	call := taskCall(protocol.Task{Title: "Add the row", Status: protocol.TaskDone, Check: "exit 7"})
+	if v := m.GateTool(context.Background(), s, call); v.Decision != module.Allow {
+		t.Errorf("a task already done should not re-run its check, got %v (%s)", v.Decision, v.Reason)
+	}
+	if n := len(s.checkEvents()); n != 0 {
+		t.Errorf("%d check events, want none", n)
+	}
+}
+
 func TestCommandTimeoutIsAFailure(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		if _, err := exec.LookPath("bash"); err != nil {
@@ -326,14 +366,60 @@ func TestFailedCheckVetoes(t *testing.T) {
 	m := newVerify(t, module.Config{})
 	s := strict(&fakeSession{workspace: t.TempDir()})
 	_, _ = s.Append(protocol.EventCheck, protocol.CheckData{
-		Name: "task:t1", Kind: "command", Status: "fail", Summary: "exit 1"})
+		Name: "task:t1", Kind: "command", TaskID: "t1", Status: "fail", Summary: "exit 1"})
+	info := module.StopInfo{Tasks: []protocol.Task{
+		{ID: "t1", Title: "Screen tests pass", Status: protocol.TaskFailed, Check: "go test ./..."},
+	}}
 
-	v := m.BeforeStop(context.Background(), s, module.StopInfo{})
+	v := m.BeforeStop(context.Background(), s, info)
 	if v.Allow {
 		t.Fatal("a failing check must veto")
 	}
-	if !strings.Contains(v.Reason, "task:t1") {
-		t.Errorf("the veto should name the check, got %q", v.Reason)
+	// The model searched the repository for "task::" for ninety turns: the
+	// veto has to say which task, and how to clear it.
+	for _, want := range []string{"task:t1", "Screen tests pass", "cancel"} {
+		if !strings.Contains(v.Reason, want) {
+			t.Errorf("the veto should say %q, got %q", want, v.Reason)
+		}
+	}
+}
+
+func TestAFailedCheckWithNoTaskStillVetoes(t *testing.T) {
+	m := newVerify(t, module.Config{})
+	s := strict(&fakeSession{workspace: t.TempDir()})
+	_, _ = s.Append(protocol.EventCheck, protocol.CheckData{
+		Name: "verify.command", Kind: "module", Status: "fail", Summary: "exit 1"})
+	if v := m.BeforeStop(context.Background(), s, module.StopInfo{}); v.Allow {
+		t.Error("the gate's own failure must still veto")
+	}
+}
+
+// Seen live: a task's check failed, the model cancelled the task, and the
+// failure vetoed every stop for the rest of the session, since only another
+// run of the same check could clear it.
+func TestATaskCheckStopsCountingWhenItsTaskIsDropped(t *testing.T) {
+	cases := []struct {
+		name  string
+		check protocol.CheckData
+		tasks []protocol.Task
+	}{
+		{"cancelled", protocol.CheckData{Name: "task:t1", TaskID: "t1", Status: "fail", Summary: "exit status 1"},
+			[]protocol.Task{{ID: "t1", Title: "x", Status: protocol.TaskCancelled}}},
+		{"no longer on the list", protocol.CheckData{Name: "task:t1", TaskID: "t1", Status: "fail", Summary: "exit status 1"},
+			[]protocol.Task{{ID: "t2", Title: "y", Status: protocol.TaskDone}}},
+		// What sessions logged before checks carried the task's id.
+		{"recorded with no id", protocol.CheckData{Name: "task:", Kind: "command", Status: "fail", Summary: "exit status 1"},
+			[]protocol.Task{{ID: "t1", Title: "x", Status: protocol.TaskDone}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newVerify(t, module.Config{})
+			s := strict(&fakeSession{workspace: t.TempDir()})
+			_, _ = s.Append(protocol.EventCheck, tc.check)
+			if v := m.BeforeStop(context.Background(), s, module.StopInfo{Tasks: tc.tasks}); !v.Allow {
+				t.Errorf("got veto %q", v.Reason)
+			}
+		})
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 
 	"github.com/corporealshift/nabu/daemon/module"
@@ -29,26 +28,13 @@ func Merge(prev protocol.TasksData, incoming []protocol.Task, log []protocol.Eve
 		return protocol.TasksData{}, fmt.Errorf("tasks must not be empty; mark tasks done or cancelled instead of removing them")
 	}
 	prevByID := map[string]protocol.Task{}
-	next := 0
 	for _, t := range prev.Tasks {
 		prevByID[t.ID] = t
-		next = maxSeq(next, t.ID)
 	}
-	seen := map[string]bool{}
-	for _, t := range incoming {
-		if t.ID != "" {
-			if seen[t.ID] {
-				return protocol.TasksData{}, fmt.Errorf("duplicate task id %q", t.ID)
-			}
-			seen[t.ID] = true
-			next = maxSeq(next, t.ID)
-		}
-	}
-	byTitle := map[string]string{}
-	for _, t := range prev.Tasks {
-		if k := strings.TrimSpace(t.Title); !seen[t.ID] && byTitle[k] == "" {
-			byTitle[k] = t.ID
-		}
+	// Ids first, as the verify gate did when it ran the checks.
+	incoming, err := module.TaskIDs(prev.Tasks, incoming)
+	if err != nil {
+		return protocol.TasksData{}, err
 	}
 	out := protocol.TasksData{Revision: prev.Revision + 1, Source: source}
 	for _, t := range incoming {
@@ -61,15 +47,6 @@ func Merge(prev protocol.TasksData, incoming []protocol.Task, log []protocol.Eve
 		default:
 			return protocol.TasksData{}, fmt.Errorf(
 				"task %q: status %q invalid (pending|in_progress|blocked|done|failed|cancelled)", t.Title, t.Status)
-		}
-		if t.ID == "" {
-			if id := byTitle[strings.TrimSpace(t.Title)]; id != "" {
-				t.ID = id
-				delete(byTitle, strings.TrimSpace(t.Title))
-			} else {
-				next++
-				t.ID = "t" + strconv.Itoa(next)
-			}
 		}
 		if t.BlockedBy == nil {
 			t.BlockedBy = []string{}
@@ -97,16 +74,6 @@ func Merge(prev protocol.TasksData, incoming []protocol.Task, log []protocol.Eve
 		out.Tasks = append(out.Tasks, t)
 	}
 	return out, nil
-}
-
-// maxSeq returns the larger of cur and the numeric suffix of an id like "t12".
-func maxSeq(cur int, id string) int {
-	if strings.HasPrefix(id, "t") {
-		if n, err := strconv.Atoi(id[1:]); err == nil && n > cur {
-			return n
-		}
-	}
-	return cur
 }
 
 // latestTasks returns the session's current task snapshot, or none.
