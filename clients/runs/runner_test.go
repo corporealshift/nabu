@@ -795,6 +795,79 @@ func TestAFailedSessionIsRetriedClean(t *testing.T) {
 	}
 }
 
+// Seen live: a fix session committed a revision request, then its stop gate
+// refused every stop over a check it could not clear, and it ended blocked.
+// The runner threw both commits away and started the fix over.
+func TestABlockedFixIsJudgedOnWhatItCommitted(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false, false}
+	g.claude.answers["revise"] = []string{"The test name is wrong.\n" + Begin(VerifyFile) + "\ngo test -run TestMedianOf ./...\n" + End(VerifyFile)}
+	r := g.planned("H1")
+	g.finish(map[string]string{"stats.go": "x"})
+	g.tick()
+	g.finish(map[string]string{"stats_test.go": "x"})
+	g.tick() // check fails; fix
+	if r.Step != StepFix {
+		t.Fatalf("run = %+v", r)
+	}
+	start := r.Start
+	g.finish(map[string]string{r.File(RevisionFile): "The check runs TestMedian; the test is TestMedianOf."})
+	_, s := g.d.last()
+	s.state = protocol.StateBlocked
+	g.tick() // revise, then check passes, final, pr
+
+	if slices.Contains(g.git.resets, start) {
+		t.Errorf("the fix session's commits were thrown away: resets %q", g.git.resets)
+	}
+	if r.Step != StepDone || r.Revisions != 1 {
+		t.Errorf("run = %+v\nlog:\n%s", r, g.log.String())
+	}
+	if s.state != protocol.StateCompleted {
+		t.Errorf("the blocked session was left %s", s.state)
+	}
+}
+
+// What it left uncommitted is not part of the fix: the check runs on the
+// worktree, and would judge files the pull request never gets.
+func TestABlockedFixLosesOnlyWhatItLeftUncommitted(t *testing.T) {
+	g := newRig(t)
+	g.shell.results = []bool{false, false}
+	r := g.planned("H1")
+	g.finish(map[string]string{"stats.go": "x"})
+	g.tick()
+	g.finish(map[string]string{"stats_test.go": "x"})
+	g.tick() // check fails; fix
+	start := r.Start
+	g.finish(map[string]string{"stats.go": "fixed"})
+	head, _ := g.git.Head(context.Background(), r.Worktree)
+	g.git.dirty = map[string]bool{"scratch.txt": true}
+	_, s := g.d.last()
+	s.state = protocol.StateBlocked
+	g.tick() // check passes, final, pr
+
+	if slices.Contains(g.git.resets, start) || !slices.Contains(g.git.resets, head) {
+		t.Errorf("resets = %q, want only back to the session's last commit %s", g.git.resets, head)
+	}
+	if r.Step != StepDone || r.Fixes != 1 {
+		t.Errorf("run = %+v\nlog:\n%s", r, g.log.String())
+	}
+}
+
+// Any other step still starts over: a blocked plan or work session has not
+// done its job, and nothing after it would catch that.
+func TestABlockedWorkSessionIsStillThrownAway(t *testing.T) {
+	g := newRig(t)
+	r := g.planned("H1")
+	start := r.Start
+	g.finish(map[string]string{"stats.go": "x"})
+	_, s := g.d.last()
+	s.state = protocol.StateBlocked
+	g.tick()
+	if !slices.Equal(g.git.resets, []string{start}) || r.Step != StepWork || r.Attempt != 1 {
+		t.Errorf("run = %+v, resets %q", r, g.git.resets)
+	}
+}
+
 // Seen live: a file named nul, which git cannot delete on Windows, made every
 // reset fail, so the run never recorded the failed session and reset again
 // at every poll.
