@@ -262,10 +262,11 @@ func FinalReviewPrompt(r Run, changed []string) string {
 
 Report only blockers. A blocker is one of:
 - the work does not do what the brief asks;
-- it has a bug;
-- %[1]s does not actually prove the brief is done.
+- it has a bug.
 
 Style, naming, refactoring, suggestions, anything starting "consider", and anything the brief did not ask for are NOT blockers. Leave them out, or put them in notes, which go in the pull request description and change nothing. Every blocker becomes a task the run must do, so do not report one you would not insist on.
+
+That task's session may not change %[1]s. Never ask for a change to %[1]s: say what the code must do, and where a test would show it, in the project's own tests. If %[1]s misses a bug, the bug is the blocker.
 
 %[6]s The plan's "%[7]s" section records what the run chose for each behavior the brief left open. If you think one goes against what users would expect, say so in notes, not as a blocker: the decision is the owner's, made from the pull request.
 
