@@ -37,9 +37,11 @@ The `claude` module gets a setting, `commands`: command prefixes Claude may run,
 { "modules": { "claude": { "commands": ["bash gradlew.sh", "./gradlew", "go test", "go vet", "go build"] } } }
 ```
 
-- Each prefix becomes one more `--allowedTools "Bash(<prefix> *)"` for the CLI, beside
-  `Read`, `Grep` and `Glob`. Claude still cannot write or edit files, and it cannot run
-  any other command.
+- Each prefix becomes two more rules for the CLI, `Bash(<prefix> *)` and
+  `PowerShell(<prefix> *)`, beside `Read`, `Grep` and `Glob`. Both are needed: checked
+  against the real CLI on this machine, Claude ran `go test` through its PowerShell tool,
+  and a `Bash` rule alone left it blocked. Claude still cannot write or edit files, and
+  it cannot run any other command.
 - **Both kinds of ask get them**: the model's own `claude.ask` calls and the automatic
   asks at 100 and 200 turns. The automatic asks are where every one of the caveats came
   from.
@@ -87,12 +89,17 @@ for the other. At worst a build fails on a lock timeout and is run again. A mode
 ## What proves it works
 
 - `daemon/modules/claude`, table-driven:
-  - no `commands`: the argv is unchanged (`Read`, `Grep`, `Glob`, no `Bash`), and the
+  - no `commands`: the argv is unchanged (`Read`, `Grep`, `Glob`, no shell rule), and the
     description still says Claude cannot run commands;
-  - `commands` set: one `Bash(<prefix> *)` per prefix; the description names them; the
-    automatic question names them and warns about the checkout it shares;
-  - `bash`, `pwsh -Command`, `bash -c` and blank entries are dropped, and the others kept.
+  - `commands` set: a `Bash` and a `PowerShell` rule per prefix; the description names
+    them; the automatic question names them and warns about the checkout it shares;
+  - `bash`, `pwsh -Command`, `bash -c`, a bare shell path with spaces in it, `env …`,
+    and blank entries are dropped, and the others kept.
 - The full gate.
-- Verified against the real CLI: with `Bash(go test *)` allowed, Claude runs `go test`
-  in a scratch module, and its attempts to write a file or run another command are
-  blocked.
+- Verified against the real CLI (Claude Code 2.1.295, in a scratch Go module):
+  - with `Bash(go test *)` and `PowerShell(go test *)`, Claude ran `go test -v` and
+    quoted its output;
+  - creating a file, through either shell, was blocked, and no file appeared;
+  - `go env GOPATH` was blocked;
+  - with the `Bash` rule alone, `go test` was blocked too, because Claude used
+    PowerShell.
