@@ -76,13 +76,15 @@ func Transition(r Run, o Outcome) Run {
 		return enter(r, StepPlan, true)
 	case StepPlan:
 		return enter(r, StepPlanReview, true)
+	// The check comes before the tasks, so every test it names can be given
+	// to a task (docs/specs/2026-10-09-verify-before-tasks-design.md).
 	case StepPlanReview:
-		return enter(r, StepTasks, true)
-	case StepTasks:
 		return enter(r, StepVerify, true)
 	case StepVerify:
 		return enter(r, StepVerifyReview, true)
-	case StepVerifyReview, StepWork:
+	case StepVerifyReview:
+		return enter(r, StepTasks, true)
+	case StepTasks, StepWork:
 		if o.TasksLeft > 0 {
 			// Each task is a fresh start, with its own retry.
 			return enter(r, StepWork, true)

@@ -20,11 +20,14 @@ func TestSessionPrompts(t *testing.T) {
 		{"brief", BriefPrompt(r, "user: add a median"), []string{r.File(BriefFile), "user: add a median", `"run: brief"`}, true},
 		{"plan", PlanPrompt(r), []string{r.File(BriefFile), r.File(PlanFile), `"run: plan"`, expectation,
 			`headed exactly "## Decisions"`, "the question, what the plan chooses, the alternative"}, true},
-		{"tasks", TasksPrompt(r), []string{r.File(PlanFile), r.File(TasksFile), "3 to 8", "- [ ]", `"run: tasks"`}, true},
+		{"tasks", TasksPrompt(r), []string{r.File(PlanFile), r.File(TasksFile), "3 to 8", "- [ ]", `"run: tasks"`,
+			"Read the check, " + verify, "exactly one task", "under the exact name " + verify + " uses"}, true},
 		{"verify", VerifyPrompt(r), []string{verify, "exits 0 only when the brief is done", "must fail now", `"run: verify"`,
 			"the way CI is written", "did not run at all", "never the text of the code", expectation,
-			`each entry in the plan's "## Decisions" section a named test`}, false},
-		{"work", work, []string{"task 2 of 4", "Add Median", "In stats.go, with tests.", "only this task", "done when " + verify + " passes"}, true},
+			"not one for each detail of how it is built", "rules out or says is not needed", "the cheapest test",
+			`"## Decisions"`, "Do not add a test only to pin a decision"}, false},
+		{"work", work, []string{"task 2 of 4", "Add Median", "In stats.go, with tests.", "only this task", "done when " + verify + " passes",
+			"write each under exactly that name"}, true},
 		{"fix", fix, []string{"FAIL TestMedian", r.File(RevisionFile), "must not sort its input in place"}, true},
 	}
 	for _, tt := range tests {
@@ -43,6 +46,12 @@ func TestSessionPrompts(t *testing.T) {
 				t.Errorf("forbids touching verify.sh: %v, want %v", got, tt.forbids)
 			}
 		})
+	}
+	// The check is written before the tasks, from the brief and the plan.
+	// One named test per decision made the check ask for tests nobody planned
+	// (docs/specs/2026-10-09-verify-before-tasks-design.md).
+	if v := VerifyPrompt(r); strings.Contains(v, r.File(TasksFile)) || strings.Contains(v, "a named test of its own") {
+		t.Error("the verify prompt still reads the tasks, or still asks for a test per decision")
 	}
 	if !strings.Contains(workGoal, `"Add Median"`) || !strings.Contains(workGoal, verify+" is untouched") {
 		t.Errorf("work goal = %q", workGoal)
@@ -66,12 +75,19 @@ func TestClaudePrompts(t *testing.T) {
 			"keep every entry", "Changed by review: the plan chose X", `"Added by review"`}},
 		{"verify-review, failing before", VerifyReviewPrompt(r, false, "exit 1"), []string{"it fails", Begin(VerifyFile), "APPROVED", "Git Bash",
 			"the way CI would", "checks behavior only", "Take out any such check", expectation,
-			`every entry in the plan's "## Decisions" section has a named test`}},
+			"rules out or says is not needed", "Take out any named test that goes beyond the brief", "needs no test of its own"}},
 		{"verify-review, passing before", VerifyReviewPrompt(r, true, "ok"), []string{"PASSES, which proves nothing", "not by checking the source"}},
-		{"revise", RevisePrompt(r, "FAIL"), []string{r.File(RevisionFile), "REFUSED", "Do not weaken it", "checks on the text of the source", expectation}},
+		{"revise", RevisePrompt(r, "FAIL"), []string{r.File(RevisionFile), "REFUSED", "Do not weaken it", "checks on the text of the source", expectation,
+			"and no stricter"}},
 		{"final-review", FinalReviewPrompt(r, []string{"stats.go", "stats_test.go"}), []string{
 			"- stats.go\n- stats_test.go", "Report only blockers", "are NOT blockers", `"blockers"`, "no blockers", expectation,
 			"say so in notes, not as a blocker"}},
+	}
+	if v := VerifyReviewPrompt(r, false, ""); strings.Contains(v, r.File(TasksFile)) || strings.Contains(v, "has a named test") {
+		t.Error("the verify review still reads the tasks, or still requires a test per decision")
+	}
+	if f := FinalReviewPrompt(r, nil); strings.Contains(f, "pins each decision") {
+		t.Error("the final review still says the check pins each decision")
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

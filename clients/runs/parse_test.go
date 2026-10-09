@@ -180,11 +180,11 @@ func TestKeepDecisions(t *testing.T) {
 
 func TestDecisionsForPR(t *testing.T) {
 	got := decisionsForPR("## Decisions\n\n- Touching ranges merge.\n", "p/plan.md", "p/verify.sh")
-	if !strings.Contains(got, "## Decisions this run made\n\n- Touching ranges merge.\n\nEach is pinned by a test in `p/verify.sh`. To change one, say so in a comment on this PR.") {
+	if !strings.Contains(got, "## Decisions this run made\n\n- Touching ranges merge.\n\nWhere `p/verify.sh` tests one, the test's comment names it. To change one, say so in a comment on this PR.") {
 		t.Errorf("with decisions: %q", got)
 	}
 	for _, plan := range []string{"# Plan\n", "## Decisions\n\n## Next\n"} {
-		if got := decisionsForPR(plan, "p/plan.md", "p/verify.sh"); !strings.Contains(got, "The plan recorded no open decisions.") || strings.Contains(got, "pinned") {
+		if got := decisionsForPR(plan, "p/plan.md", "p/verify.sh"); !strings.Contains(got, "The plan recorded no open decisions.") || strings.Contains(got, "tests one") {
 			t.Errorf("%q: %q", plan, got)
 		}
 	}
