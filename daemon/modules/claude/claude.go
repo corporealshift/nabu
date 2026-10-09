@@ -57,8 +57,9 @@ const (
 // it needs the failure text and the code that produced it.
 var defaultAllowedTools = []string{"Read", "Grep", "Glob"}
 
-// Module offers the claude.ask tool, and asks on the model's behalf when a
-// session has gone on too long (stuck.go).
+// Module offers the claude.ask tool, asks on the model's behalf when a
+// session has gone on too long (stuck.go), and keeps Claude's answers through
+// a summary (kept.go).
 type Module struct {
 	enabled   bool
 	exe       string
