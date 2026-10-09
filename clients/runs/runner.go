@@ -682,6 +682,7 @@ func (rn *Runner) produced(ctx context.Context, d Daemon, r *Run, goalMet bool) 
 			o, _, err := rn.discard(ctx, r, "tasks.md has no checkbox tasks")
 			return o, err
 		}
+		return Outcome{OK: true, TasksLeft: rn.tasksLeft(r)}, nil
 	case StepWork:
 		head, err := rn.Git.Head(ctx, r.Worktree)
 		if err != nil {
@@ -743,7 +744,7 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 				return Outcome{}, err
 			}
 		}
-		return Outcome{OK: true, TasksLeft: rn.tasksLeft(r)}, nil
+		return Outcome{OK: true}, nil
 	case StepCheck:
 		passed, output, err := rn.Shell.Verify(ctx, r.Worktree, r.File(VerifyFile), time.Duration(rn.Cfg.VerifyTimeout))
 		if err != nil {

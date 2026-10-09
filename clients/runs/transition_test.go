@@ -23,11 +23,13 @@ func TestTransition(t *testing.T) {
 		{name: "setup without one goes to brief", from: at(StepSetup), o: ok, want: StepBrief},
 		{name: "brief", from: at(StepBrief), o: ok, want: StepPlan},
 		{name: "plan", from: at(StepPlan), o: ok, want: StepPlanReview},
-		{name: "plan-review", from: at(StepPlanReview), o: ok, want: StepTasks},
-		{name: "tasks", from: at(StepTasks), o: ok, want: StepVerify},
+		// The check comes before the tasks, so the tasks can carry every test it
+		// names (docs/specs/2026-10-09-verify-before-tasks-design.md).
+		{name: "plan-review", from: at(StepPlanReview), o: ok, want: StepVerify},
 		{name: "verify", from: at(StepVerify), o: ok, want: StepVerifyReview},
-		{name: "verify-review with tasks", from: at(StepVerifyReview), o: Outcome{OK: true, TasksLeft: 3}, want: StepWork},
-		{name: "verify-review with none left", from: at(StepVerifyReview), o: ok, want: StepCheck},
+		{name: "verify-review", from: at(StepVerifyReview), o: ok, want: StepTasks},
+		{name: "tasks", from: at(StepTasks), o: Outcome{OK: true, TasksLeft: 3}, want: StepWork},
+		{name: "tasks with none left", from: at(StepTasks), o: ok, want: StepCheck},
 		{name: "work, more tasks", from: Run{Step: StepWork, Attempt: 1}, o: Outcome{OK: true, TasksLeft: 2}, want: StepWork,
 			check: func(t *testing.T, r Run) {
 				if r.Attempt != 0 || !r.Waiting {

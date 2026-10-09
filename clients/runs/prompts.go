@@ -75,32 +75,40 @@ Plan exactly what the brief asks for, and nothing more. Commit it with the messa
 %s%s`, r.File(BriefFile), r.File(PlanFile), DecisionsHeading, expectation, rules(r), planningOnly(r, PlanFile))
 }
 
-// TasksPrompt asks for tasks.md.
+// TasksPrompt asks for tasks.md. The check is written first, so the tasks can
+// carry every test it names: a test no task was given was left to the fix
+// session, which in one run spent six hours writing six of them from nothing
+// (docs/specs/2026-10-09-verify-before-tasks-design.md).
 func TasksPrompt(r Run) string {
-	return fmt.Sprintf(`Read the brief in %s and the plan in %s, then break the plan into tasks.
+	return fmt.Sprintf(`Read the brief in %[1]s and the plan in %[2]s, then break the plan into tasks.
 
-Write %s as a checklist of 3 to 8 tasks that together carry out the plan. Each task is a coherent chunk of work that ends in a commit: bigger than a single edit, much smaller than the whole plan. A separate session does each task, reading only the brief, the plan and its own entry, so each must stand on its own.
+Write %[3]s as a checklist of 3 to 8 tasks that together carry out the plan. Each task is a coherent chunk of work that ends in a commit: bigger than a single edit, much smaller than the whole plan. A separate session does each task, reading only the brief, the plan and its own entry, so each must stand on its own.
+
+Read the check, %[4]s, too. It is what defines done for the run, and the tests it names are fixed. Every test it names that does not exist yet must be written by exactly one task, and that task's entry names it, under the exact name %[4]s uses, so the session doing the task writes it. A test no task names is left to nobody. Tests that already exist need no task.
 
 Write each task as a checkbox line, with indented lines under it saying what it covers and how you will know it is done:
 
 - [ ] Add the cache type
-  A read-through cache in reader/cache.go with get and put, and unit tests for both.
+  A read-through cache in reader/cache.go with get and put. Tests: CacheTest.getReturnsWhatPutStored, CacheTest.getMissesAnUnknownKey.
 
 Commit it with the message "run: tasks".
-%s%s`, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), rules(r), planningOnly(r, TasksFile))
+%[5]s%[6]s`, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile), rules(r), planningOnly(r, TasksFile))
 }
 
 // VerifyPrompt asks for verify.sh. It is the one session allowed to write it.
+// It comes before the tasks, which are then written to carry its tests.
 func VerifyPrompt(r Run) string {
-	return fmt.Sprintf(`Read the brief in %[1]s, the plan in %[2]s and the tasks in %[3]s, then write the check that proves the brief is done.
+	return fmt.Sprintf(`Read the brief in %[1]s and the plan in %[2]s, then write the check that proves the brief is done.
 
-Write %[4]s: a bash script that exits 0 only when the brief is done, and non-zero otherwise. It runs from the repository root with bash, on Windows under Git Bash. Write it the way CI is written:
+Write %[3]s: a bash script that exits 0 only when the brief is done, and non-zero otherwise. It runs from the repository root with bash, on Windows under Git Bash. Write it the way CI is written:
 - build, and run what the repository's CI runs: read its CI configuration, such as .github/workflows, if it has one;
-- run, by name, the tests that prove the new behavior: the ones the tasks will add. Fail if any of them fails or did not run at all. Most test runners pass when a name matches no test, so check their output for each named test passing. Above each one, say in a comment what that test must show, so the session that writes it knows what it is for;
-- give each entry in the plan's "%[5]s" section a named test of its own, with the decision named in the comment above it, so a decision is in force like the rest of the brief;
+- run, by name, the tests that prove what the brief asks for: roughly one for each thing it asks for, not one for each detail of how it is built. Fail if any of them fails or did not run at all. Most test runners pass when a name matches no test, so check their output for each named test passing. Above each one, say in a comment what that test must show: the tasks are written from this script, and the session that writes the test reads that comment;
+- never require a kind of test the brief or the plan rules out or says is not needed: if the brief says UI tests are not required, name none;
+- name the cheapest test that shows the behavior: a test of the logic over a test driven through the UI, unless the brief asks for the UI test;
+- where a named test also shows a decision from the plan's "%[4]s" section, name the decision in the comment above it. Do not add a test only to pin a decision: the owner reviews the decisions in the pull request;
 - check anything else the brief requires by running it, as a user or a test would.
 
-%[6]s
+%[5]s
 
 Check behavior, never the text of the code. Do not grep source files for function names, strings or patterns, count tests, or check that files exist: those checks dictate how the work is written, and fail correct work that is written differently. A test of the new behavior is what proves it.
 
@@ -111,11 +119,11 @@ This script is the definition of done for the whole run. Once it is committed, o
 ## Rules for this session
 
 - This session does one step of an automated run. Write the script and nothing else.
-- Write only %[4]s. Change no other file: do not write the feature or its tests, which belong to later steps, and the runner throws away a session that changes anything else.
+- Write only %[3]s. Change no other file: do not write the feature or its tests, which belong to later steps, and the runner throws away a session that changes anything else.
 - Do not push, and do not open a pull request.
 - Nobody is watching, so there is no one to ask. If you are stuck on something, look it up first: web.search finds documentation and answers, and web.fetch reads a page. If you have tried that and still cannot settle it, ask Claude with claude.ask, saying what you tried and what you are choosing between.
 - Commit your work before you finish.
-`, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile), DecisionsHeading, expectation)
+`, r.File(BriefFile), r.File(PlanFile), r.File(VerifyFile), DecisionsHeading, expectation)
 }
 
 // WorkPrompt asks for one task, and gives the goal it is judged against.
@@ -128,7 +136,7 @@ func WorkPrompt(r Run, i, n int, t Task) (prompt, goal string) {
 
 **%s**%s
 
-For context, the brief is %s, the plan is %s and the whole task list is %s. Do this task and only this task: later tasks belong to later sessions. The run is done when %s passes, so read it: where it names a test this task should write, write that test, under that name. Build and test what you change. Commit with a message that says what the task did. Do not edit %s; the runner ticks the box when you finish.
+For context, the brief is %s, the plan is %s and the whole task list is %s. Do this task and only this task: later tasks belong to later sessions. The run is done when %s passes, so read it. This task's entry names the tests it writes: write each under exactly that name, and make it show what the comment above it in the check says. Build and test what you change. Commit with a message that says what the task did. Do not edit %s; the runner ticks the box when you finish.
 %s`, i+1, n, t.Title, detail, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile), r.File(TasksFile), rules(r))
 	goal = fmt.Sprintf("Task %d of %s (%q) is done and committed, and %s is untouched.", i+1, r.File(TasksFile), t.Title, r.File(VerifyFile))
 	return prompt, goal
@@ -198,30 +206,31 @@ func VerifyReviewPrompt(r Run, passedBefore bool, output string) string {
 	if passedBefore {
 		before = "PASSES, which proves nothing unless the brief is already met. If the brief is not met, make the script fail by running tests of the new behavior by name, not by checking the source"
 	}
-	return reviewer + fmt.Sprintf(`The brief is %[1]s, the plan %[2]s and the tasks %[3]s. The check, written by a smaller model, is %[4]s.
+	return reviewer + fmt.Sprintf(`The brief is %[1]s and the plan %[2]s. The check, written by a smaller model, is %[3]s.
 
-That script defines done for the whole run. The model doing the work may not change it, and the run is finished when it exits 0. Run now, before any work, it %[5]s. The end of its output:
+That script defines done for the whole run. The model doing the work may not change it, and the run is finished when it exits 0. The tasks are written after this review, from the script, and each test it names is given to one of them. Run now, before any work, it %[4]s. The end of its output:
 
 ~~~
-%[6]s
+%[5]s
 ~~~
 
-Check that it proves the brief is done, the way CI would:
+Check that it proves the brief is done, the way CI would, and asks for no more than the brief does:
 - it builds, and runs what the repository's CI runs;
-- it runs, by name, tests of the new behavior, and fails if any of them fails or did not run;
-- every entry in the plan's "%[9]s" section has a named test, with the decision named in the comment above it;
+- it runs, by name, tests of the new behavior, roughly one for each thing the brief asks for, and fails if any of them fails or did not run;
+- it requires no kind of test the brief or the plan rules out or says is not needed, and names a test of the logic rather than one driven through the UI unless the brief asks for the UI test. Take out any named test that goes beyond the brief;
+- a decision in the plan's "%[8]s" section needs no test of its own: the owner reviews the decisions in the pull request. Where a named test shows one, the comment above it names the decision;
 - it checks behavior only. It does not grep source files for names, strings or patterns, count tests, or check that files exist: those dictate how the work is written and fail correct work written differently. Take out any such check, and do not add one;
 - it cannot pass on the code as it is now;
 - it runs from the repository root under bash, on Windows with Git Bash.
 
 If it falls short, reply with a complete replacement between these two lines:
 
+%[6]s
 %[7]s
-%[8]s
 
-%[10]s
+%[9]s
 
-If it is right, reply with exactly: APPROVED`, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile), before,
+If it is right, reply with exactly: APPROVED`, r.File(BriefFile), r.File(PlanFile), r.File(VerifyFile), before,
 		strings.TrimSpace(tail(output)), Begin(VerifyFile), End(VerifyFile), DecisionsHeading, expectation)
 }
 
@@ -239,7 +248,7 @@ Decide who is right. If the check is wrong, reply with the corrected, complete s
 %[5]s
 %[6]s
 
-Keep it as strict as the brief requires. Do not weaken it to let broken work pass. Keep it a check of behavior, as CI is: run tests and commands, and do not add checks on the text of the source. %[7]s
+Keep it as strict as the brief requires, and no stricter: a test of a kind the brief rules out, or one for something it never asked, is the check's fault, not the work's. Do not weaken it to let broken work pass. Keep it a check of behavior, as CI is: run tests and commands, and do not add checks on the text of the source. %[7]s
 
 If the check is right and the work is wrong, reply with REFUSED, followed by one paragraph telling the next fix session what is actually wrong.`,
 		r.File(VerifyFile), r.File(RevisionFile), r.File(BriefFile), strings.TrimSpace(tail(output)), Begin(VerifyFile), End(VerifyFile), expectation)
@@ -258,7 +267,7 @@ Report only blockers. A blocker is one of:
 
 Style, naming, refactoring, suggestions, anything starting "consider", and anything the brief did not ask for are NOT blockers. Leave them out, or put them in notes, which go in the pull request description and change nothing. Every blocker becomes a task the run must do, so do not report one you would not insist on.
 
-%[6]s The plan's "%[7]s" section records what the run chose for each behavior the brief left open. If you think one goes against what users would expect, say so in notes, not as a blocker: %[1]s pins each decision, and the owner decides from the pull request.
+%[6]s The plan's "%[7]s" section records what the run chose for each behavior the brief left open. If you think one goes against what users would expect, say so in notes, not as a blocker: the decision is the owner's, made from the pull request.
 
 Reply with one fenced json block:
 

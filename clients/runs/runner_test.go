@@ -523,9 +523,9 @@ func (g *rig) plannedWith(id, plan string) *Run {
 	r := g.run(id)
 	g.finish(map[string]string{r.File(PlanFile): plan})
 	g.tick()
-	g.finish(map[string]string{r.File(TasksFile): twoTasks})
-	g.tick()
 	g.finish(map[string]string{r.File(VerifyFile): "go test ./...\n"})
+	g.tick()
+	g.finish(map[string]string{r.File(TasksFile): twoTasks})
 	g.tick()
 	if r.Step != StepWork {
 		g.t.Fatalf("after planning the run is at %q", r.Step)
@@ -549,7 +549,7 @@ func TestAWholeRun(t *testing.T) {
 		t.Fatalf("run ended at %q (%s)\nlog:\n%s", r.Step, r.Why, g.log.String())
 	}
 	want := []string{
-		"run: brief", "session: " + r.File(PlanFile), "session: " + r.File(TasksFile), "session: " + r.File(VerifyFile),
+		"run: brief", "session: " + r.File(PlanFile), "session: " + r.File(VerifyFile), "session: " + r.File(TasksFile),
 		"session: stats.go", "run: task 1 done", "session: stats_test.go", "run: task 2 done",
 	}
 	if got := g.git.messages(); !slices.Equal(got, want) {
@@ -560,7 +560,7 @@ func TestAWholeRun(t *testing.T) {
 			t.Errorf("session %s: parent %q, workspace %q", id, s.parent, s.workspace)
 		}
 	}
-	// plan, tasks, verify, then two work sessions with goals.
+	// plan, verify, tasks, then two work sessions with goals.
 	if len(g.d.order) != 5 {
 		t.Fatalf("sessions = %d", len(g.d.order))
 	}
@@ -855,16 +855,14 @@ func TestClaudeFailuresAreRetriedAtTheNextPoll(t *testing.T) {
 	run := g.run("H1")
 	g.finish(map[string]string{run.File(PlanFile): "p"})
 	g.tick()
-	g.finish(map[string]string{run.File(TasksFile): twoTasks})
-	g.tick()
 	g.finish(map[string]string{run.File(VerifyFile): "v"})
 	g.tick() // error: stays at verify-review
 	if run.Step != StepVerifyReview || run.Attempt != 1 {
 		t.Fatalf("run = %+v", run)
 	}
 	g.tick() // an unreadable answer: still there
-	g.tick() // approved (queue empty)
-	if run.Step != StepWork {
+	g.tick() // approved (queue empty), and on to the tasks
+	if run.Step != StepTasks {
 		t.Errorf("run = %+v\nlog:\n%s", run, g.log.String())
 	}
 }
@@ -878,7 +876,9 @@ func TestASessionThatStopsShortIsToldOnce(t *testing.T) {
 	g.tick()
 	r := g.run("H1")
 	g.finish(map[string]string{r.File(PlanFile): "p"})
-	g.tick() // plan-review, then the tasks session
+	g.tick() // plan-review, then the verify session
+	g.finish(map[string]string{r.File(VerifyFile): "v"})
+	g.tick() // verify-review, then the tasks session
 	g.finish(nil)
 	g.tick()
 	id, s := g.d.last()
@@ -894,7 +894,8 @@ func TestASessionThatStopsShortIsToldOnce(t *testing.T) {
 	}
 	g.finish(map[string]string{r.File(TasksFile): twoTasks})
 	g.tick()
-	if r.Step != StepVerify || len(g.d.order) != 3 {
+	// plan, verify and tasks, then the first task's session.
+	if r.Step != StepWork || len(g.d.order) != 4 {
 		t.Errorf("run = %+v, sessions %d", r, len(g.d.order))
 	}
 }
@@ -1131,9 +1132,9 @@ func TestAnIssueRun(t *testing.T) {
 	}
 	g.finish(map[string]string{r.File(PlanFile): "p"})
 	g.tick()
-	g.finish(map[string]string{r.File(TasksFile): twoTasks})
-	g.tick()
 	g.finish(map[string]string{r.File(VerifyFile): "v"})
+	g.tick()
+	g.finish(map[string]string{r.File(TasksFile): twoTasks})
 	g.tick()
 	g.finish(map[string]string{"stats.go": "x"})
 	g.tick()
@@ -1244,9 +1245,9 @@ func TestAGoalsRunIsMergedIntoTheGoalBranch(t *testing.T) {
 	g.tick()
 	g.finish(map[string]string{r.File(PlanFile): "# Plan\n"})
 	g.tick()
-	g.finish(map[string]string{r.File(TasksFile): twoTasks})
-	g.tick()
 	g.finish(map[string]string{r.File(VerifyFile): "go test ./...\n"})
+	g.tick()
+	g.finish(map[string]string{r.File(TasksFile): twoTasks})
 	g.tick()
 	g.finish(map[string]string{"stats.go": "x"})
 	g.tick()

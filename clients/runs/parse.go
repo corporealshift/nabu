@@ -240,6 +240,6 @@ func decisionsForPR(plan, planPath, verifyPath string) string {
 		}
 		section = strings.ToValidUTF8(cut, "") + fmt.Sprintf("\n\n_Cut here; the rest is in `%s`._", planPath)
 	}
-	fmt.Fprintf(&b, "%s\n\nEach is pinned by a test in `%s`. To change one, say so in a comment on this PR.\n", section, verifyPath)
+	fmt.Fprintf(&b, "%s\n\nWhere `%s` tests one, the test's comment names it. To change one, say so in a comment on this PR.\n", section, verifyPath)
 	return b.String()
 }
