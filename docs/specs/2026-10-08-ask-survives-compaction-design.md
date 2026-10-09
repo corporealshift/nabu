@@ -19,13 +19,17 @@ one node per chip, a masked token field, and the label "Daemon host".
 The model followed part of it over the next 40 minutes. Then a summarize compaction ran.
 Compaction always summarises up to the newest event, so after it the answer existed
 only as the summariser's paraphrase, written by the same small model. That paraphrase
-kept "don't touch the setup" but dropped every per-test cause. In their place it kept a
-cause the model had made up ("`clickable` lacks semantics"), which had it changing
-production code. After that the model chased an ordering assertion it had invented,
-searching the web for Compose position APIs that do not exist. Claude's fix for that
-test had been a file name.
+kept "don't touch the setup" and the production change Claude had asked for, but
+dropped the per-test causes and the exact calls. Claude's step 8 had said to check the
+section heads' order with `onNodeWithText(head).getUnclippedBoundsInRoot().top`. With
+only the summary to go on, the model went looking for `boundsInRoot`. It spent the next
+half hour searching the web and unzipping Gradle caches for a Compose position API
+that does not exist under that name. In the end it dropped the ordering check, and the
+check passed without it.
 
-Asking Claude worked. The answer did not survive the session's own housekeeping.
+Asking Claude worked. The answer did not survive the session's own housekeeping: the
+facts most worth keeping word for word, a method name and a list of per-test causes,
+are exactly what a paraphrase loses.
 
 ## Decision
 
