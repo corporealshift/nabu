@@ -117,6 +117,14 @@ func NewRunStatus(r Run, brief string, tasks []string, goalTitle string) RunStat
 	if r.Step == StepWork {
 		s.Task = r.Task + 1
 	}
+	// A run saved before Since was kept began its step when the last one
+	// ended.
+	if s.Since.IsZero() && !r.Step.Over() {
+		s.Since = r.Started
+		if n := len(r.History); n > 0 {
+			s.Since = r.History[n-1].At
+		}
+	}
 	for _, rec := range r.History {
 		row := StatusRow{Step: rec.Step, Session: rec.Session, OK: rec.OK,
 			Result: cutText(rec.Result, statusText), Why: cutText(rec.Why, statusText), At: rec.At}

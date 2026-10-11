@@ -85,6 +85,21 @@ func TestNewRunStatus(t *testing.T) {
 	}
 }
 
+// A run saved before Since was kept began its current step when the last one
+// ended.
+func TestSinceFromTheHistoryWhenUnknown(t *testing.T) {
+	r := recordedRun()
+	r.Since = time.Time{}
+	s := NewRunStatus(r, recordedBrief, nil, "")
+	if want := r.History[len(r.History)-1].At; !s.Since.Equal(want) {
+		t.Errorf("since %s, want %s", s.Since, want)
+	}
+	r.History = nil
+	if s := NewRunStatus(r, recordedBrief, nil, ""); !s.Since.Equal(r.Started) {
+		t.Errorf("with no history, since %s, want the start %s", s.Since, r.Started)
+	}
+}
+
 func TestNewGoalStatus(t *testing.T) {
 	s := NewGoalStatus(recordedGoal(), 10)
 	if s.Round != 2 || s.Rounds != 10 || len(s.Briefs) != 3 || len(s.Verdicts) != 1 || s.Step != GoalRuns {
