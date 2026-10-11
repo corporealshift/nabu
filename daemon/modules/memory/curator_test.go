@@ -363,9 +363,8 @@ func TestPassSkippedWhenNothingHappened(t *testing.T) {
 	}
 }
 
-// Seen live: at 1200 tokens the local Qwen spent the whole reply thinking, and
-// in weeks of liftoff runs the curator saved nothing. Thinking counts against
-// the cap, so a pass needs room for it and for the memories after it.
+// Thinking counts against the cap, so a pass needs room for it and for the
+// memories after it.
 func TestPassesLeaveRoomToThink(t *testing.T) {
 	if DefaultCuratorMaxTokens < 8192 {
 		t.Errorf("DefaultCuratorMaxTokens = %d: a reasoning model thinks before it answers", DefaultCuratorMaxTokens)
@@ -402,8 +401,9 @@ type recordedLog struct{ warns []string }
 func (l *recordedLog) Warn(msg string, args ...any) { l.warns = append(l.warns, fmt.Sprint(msg, args)) }
 func (l *recordedLog) Info(string, ...any)          {}
 
-// A reply that is all thinking reaches the curator as nothing. That has to
-// say so: silence looked exactly like a pass with nothing to save.
+// A reply that is all thinking reaches the curator as nothing. That is
+// logged, so it cannot pass for a pass with nothing to save, which logs
+// nothing.
 func TestAnEmptyReplyIsLogged(t *testing.T) {
 	for _, reply := range []string{"", "[]"} {
 		m, _ := curatorModule(t, reply, nil)

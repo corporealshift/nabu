@@ -166,7 +166,7 @@ func (c ClaudeCLI) exe() string {
 func (c ClaudeCLI) Available() bool { return c.exe() != "" }
 
 // Args is the command line for one question. The prompt goes on stdin, not
-// here: a goal check's prompt outgrew Windows' 32K command line.
+// here: a long prompt would pass Windows' 32K command-line limit.
 func (c ClaudeCLI) Args() []string {
 	args := []string{"-p"}
 	for _, t := range readOnly {

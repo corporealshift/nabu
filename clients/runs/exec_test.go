@@ -130,8 +130,8 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// Seen live: a goal check's prompt passed Windows' 32K command line limit,
-// and every check failed with "The filename or extension is too long".
+// A prompt past Windows' 32K command-line limit still reaches claude, on
+// stdin.
 func TestClaudeAskTakesALongPrompt(t *testing.T) {
 	t.Setenv("NABU_FAKE_CLAUDE", "1")
 	prompt := strings.Repeat("x", 100000)
