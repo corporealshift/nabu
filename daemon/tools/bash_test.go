@@ -1,7 +1,9 @@
 package tools
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -93,5 +95,42 @@ func TestShellCommandFlagMatchesInterpreter(t *testing.T) {
 				t.Fatalf("flag: got %q want %q", flag, tc.flag)
 			}
 		})
+	}
+}
+
+// A revision and path joined by a colon reach git as written. Git Bash on
+// Windows otherwise reads "nabu/notes:.nabu/plan.md" as a list of POSIX paths
+// and hands git "nabu\notes;.nabu\plan.md".
+func TestBashPassesRevisionPathToNativePrograms(t *testing.T) {
+	requireShell(t)
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	dir := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main"},
+		{"checkout", "-q", "-b", "nabu/notes"},
+	} {
+		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".nabu"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".nabu", "plan.md"), []byte("the plan\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"add", ".nabu/plan.md"},
+		{"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "plan"},
+	} {
+		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	out, err := run(t, &Builtins{}, fakeSession{dir}, "bash", `{"command":"git show nabu/notes:.nabu/plan.md"}`)
+	if err != nil || out != "the plan\n" {
+		t.Fatalf("err=%v out=%q", err, out)
 	}
 }
