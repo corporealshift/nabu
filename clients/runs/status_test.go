@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/corporealshift/nabu/clients/goclient"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -267,6 +269,22 @@ func TestAStatusThatCannotBeSetLeavesTheRunMoving(t *testing.T) {
 	}
 	if !strings.Contains(g.log.String(), "setting its status: daemon says no") {
 		t.Errorf("log:\n%s", g.log.String())
+	}
+}
+
+// A home that is gone, archived once its run was done, is asked once and then
+// left alone, not asked again at every poll.
+func TestAGoneHomeIsNotAskedAgain(t *testing.T) {
+	g := newRig(t)
+	// As the daemon's answer reaches the runner, through the client.
+	g.d.statusErr = fmt.Errorf("set status: %w", &goclient.RPCError{Code: protocol.CodeSessionNotFound, Message: "01M3ZTN8"})
+	g.d.homes["H1"] = &fakeHome{workspace: t.TempDir()}
+	g.rn.runs = map[string]*Run{"H1": {Home: "H1", Step: StepDone, Started: g.now}}
+	g.rn.goals = map[string]*Goal{}
+	g.tick()
+	g.tick()
+	if g.d.statusCalls != 1 || strings.Contains(g.log.String(), "setting its status") {
+		t.Fatalf("asked %d times; log:\n%s", g.d.statusCalls, g.log.String())
 	}
 }
 

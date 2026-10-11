@@ -5,11 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/corporealshift/nabu/clients/goclient"
 	"github.com/corporealshift/nabu/protocol"
 )
 
@@ -199,6 +201,14 @@ func cutText(s string, n int) string {
 	return s[:end] + "…"
 }
 
+// homeGone reports an error that says the home is not there to set a status
+// on: archived, most likely, once its run was done. The snapshot is then
+// taken as set, since asking again at every poll would only fail again.
+func homeGone(err error) bool {
+	var rpc *goclient.RPCError
+	return errors.As(err, &rpc) && rpc.Code == protocol.CodeSessionNotFound
+}
+
 // fingerprint names a snapshot, so the same one is not set twice.
 func fingerprint(b []byte) string {
 	sum := sha256.Sum256(b)
@@ -228,7 +238,7 @@ func (rn *Runner) show(ctx context.Context, d Daemon, r *Run) {
 		return
 	}
 	if fp := fingerprint(b); fp != r.Statused {
-		if err := d.SetStatus(ctx, r.Home, protocol.StatusRun, b); err != nil {
+		if err := d.SetStatus(ctx, r.Home, protocol.StatusRun, b); err != nil && !homeGone(err) {
 			rn.logf("run %s: setting its status: %v", r.Home, err)
 			return
 		}
@@ -249,7 +259,7 @@ func (rn *Runner) showGoalStatus(ctx context.Context, d Daemon, g *Goal) {
 		return
 	}
 	if fp := fingerprint(b); fp != g.Statused {
-		if err := d.SetStatus(ctx, g.Home, protocol.StatusGoal, b); err != nil {
+		if err := d.SetStatus(ctx, g.Home, protocol.StatusGoal, b); err != nil && !homeGone(err) {
 			rn.logf("goal %s: setting its status: %v", g.Home, err)
 			return
 		}

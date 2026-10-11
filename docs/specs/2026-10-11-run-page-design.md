@@ -187,8 +187,11 @@ verdict reasons, until it fits. The run's history is already bounded at 200 reco
 ### Not now
 
 - **The TUI.** It comes in a later plan and uses the same data.
-- **Status for runs and goals that finished before this ships.** No backfill: their
-  homes look as they do today.
+- **Backfill beyond what the runner holds.** Finished runs and goals still in the
+  runner's state get a status the first time it polls, from what that state holds:
+  runs from before run reflection have no history, so their timelines are empty. A home
+  that is gone (archived) answers `nabu_session_not_found`, and the runner takes that
+  snapshot as set rather than asking at every poll.
 
 ## Rejected
 

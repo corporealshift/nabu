@@ -53,8 +53,10 @@ type fakeDaemon struct {
 	homes    map[string]*fakeHome
 	sessions map[string]*fakeSession
 	order    []string
-	// statusErr, when set, is what SetStatus fails with.
-	statusErr error
+	// statusErr, when set, is what SetStatus fails with. statusCalls counts
+	// every call, failed or not.
+	statusErr   error
+	statusCalls int
 }
 
 func newFakeDaemon() *fakeDaemon {
@@ -119,6 +121,7 @@ func (d *fakeDaemon) CreateHome(_ context.Context, ws, parent, description, size
 
 // SetStatus checks what the daemon would refuse, and records the rest.
 func (d *fakeDaemon) SetStatus(_ context.Context, id, kind string, data json.RawMessage) error {
+	d.statusCalls++
 	if d.statusErr != nil {
 		return d.statusErr
 	}
