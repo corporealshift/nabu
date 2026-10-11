@@ -414,10 +414,13 @@ func (h *Handler) handleSessionState(_ context.Context, _ *connState, params jso
 	return s.State(), nil
 }
 
-// handleSessionStats implements nabu.session.stats (spec 7.21).
+// handleSessionStats implements nabu.session.stats (spec 7.21). With tree,
+// it measures the session and every session under it, archived ones
+// included: a step archived since still did its work.
 func (h *Handler) handleSessionStats(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
+		Tree      bool   `json:"tree"`
 	}
 	if rpcErr := decodeParams(params, &p); rpcErr != nil {
 		return nil, rpcErr
@@ -426,7 +429,14 @@ func (h *Handler) handleSessionStats(_ context.Context, _ *connState, params jso
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	return stats.Of(s.ID(), s.Events()), nil
+	if !p.Tree {
+		return stats.Of(s.ID(), s.Events()), nil
+	}
+	logs, skipped := h.allLogs()
+	return struct {
+		stats.TreeStats
+		Skipped int `json:"skipped"`
+	}{stats.Tree(s.ID(), logs, time.Local), skipped}, nil
 }
 
 // Usage history is a chart of days: the default fills a phone's width, and the

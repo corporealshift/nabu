@@ -69,8 +69,7 @@ type WindowTool struct {
 // the period is not counted at all. A session already running when the period
 // began counts its working time from its first state change inside it.
 func Totals(logs []Log, from, to time.Time, loc *time.Location, kind Kind) Window {
-	w := Window{Tools: []WindowTool{}}
-	tools := map[string]*WindowTool{}
+	var t tally
 	var cuts [][]protocol.Event
 	for _, l := range logs {
 		if !isKind(l.Events, kind) {
@@ -81,31 +80,53 @@ func Totals(logs []Log, from, to time.Time, loc *time.Location, kind Kind) Windo
 			continue
 		}
 		cuts = append(cuts, events)
-		s := Of(l.ID, events)
-		w.Sessions++
-		w.Turns += s.Turns
-		w.Prompts += s.Prompts
-		w.Tokens.Input += s.Tokens.Input
-		w.Tokens.Output += s.Tokens.Output
-		w.Tokens.Cached += s.Tokens.Cached
-		w.Compactions.Summarize += s.Compactions.Summarize
-		w.Compactions.ClearResults += s.Compactions.ClearResults
-		w.Vetoes += s.Vetoes
-		w.Interruptions += s.Interruptions
-		w.WorkingSeconds += s.WorkingSeconds
-		for _, t := range s.Tools {
-			wt := tools[t.Name]
-			if wt == nil {
-				wt = &WindowTool{Name: t.Name}
-				tools[t.Name] = wt
-			}
-			wt.Calls += t.Calls
-			wt.Errors += t.Errors
-			wt.Sessions++
-		}
+		t.add(Of(l.ID, events))
 	}
-	for _, t := range tools {
-		w.Tools = append(w.Tools, *t)
+	w := t.window()
+	w.PerDay = Usage(cuts, from, to.Add(-time.Nanosecond), loc)
+	return w
+}
+
+// tally adds sessions' numbers up into a Window.
+type tally struct {
+	w     Window
+	tools map[string]*WindowTool
+}
+
+func (t *tally) add(s Session) {
+	if t.tools == nil {
+		t.tools = map[string]*WindowTool{}
+	}
+	w := &t.w
+	w.Sessions++
+	w.Turns += s.Turns
+	w.Prompts += s.Prompts
+	w.Tokens.Input += s.Tokens.Input
+	w.Tokens.Output += s.Tokens.Output
+	w.Tokens.Cached += s.Tokens.Cached
+	w.Compactions.Summarize += s.Compactions.Summarize
+	w.Compactions.ClearResults += s.Compactions.ClearResults
+	w.Vetoes += s.Vetoes
+	w.Interruptions += s.Interruptions
+	w.WorkingSeconds += s.WorkingSeconds
+	for _, tl := range s.Tools {
+		wt := t.tools[tl.Name]
+		if wt == nil {
+			wt = &WindowTool{Name: tl.Name}
+			t.tools[tl.Name] = wt
+		}
+		wt.Calls += tl.Calls
+		wt.Errors += tl.Errors
+		wt.Sessions++
+	}
+}
+
+// window is the sum so far, its tools most called first.
+func (t *tally) window() Window {
+	w := t.w
+	w.Tools = []WindowTool{}
+	for _, tl := range t.tools {
+		w.Tools = append(w.Tools, *tl)
 	}
 	sort.Slice(w.Tools, func(i, j int) bool {
 		if w.Tools[i].Calls != w.Tools[j].Calls {
@@ -113,7 +134,6 @@ func Totals(logs []Log, from, to time.Time, loc *time.Location, kind Kind) Windo
 		}
 		return w.Tools[i].Name < w.Tools[j].Name
 	})
-	w.PerDay = Usage(cuts, from, to.Add(-time.Nanosecond), loc)
 	return w
 }
 

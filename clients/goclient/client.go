@@ -502,6 +502,14 @@ func (c *Client) Stats(ctx context.Context, sessionID string) (stats.Session, er
 	return out, err
 }
 
+// StatsTree fetches the work of a session and every session under it: a
+// goal's home, its runs and their steps (spec 7.21).
+func (c *Client) StatsTree(ctx context.Context, sessionID string) (stats.TreeStats, error) {
+	var out stats.TreeStats
+	err := c.CallInto(ctx, "nabu.session.stats", map[string]any{"session_id": sessionID, "tree": true}, &out)
+	return out, err
+}
+
 // Usage fetches turns and tokens per day across sessions (spec 7.22).
 func (c *Client) Usage(ctx context.Context, days int) ([]stats.Day, error) {
 	var out struct {

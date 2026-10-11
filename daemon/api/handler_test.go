@@ -605,6 +605,70 @@ func TestCompactIsRefusedWhileTheSessionIsRunning(t *testing.T) {
 	hn.m.WaitIdle(id)
 }
 
+// Spec 7.21 with tree: a home, a step under it, a step under that one since
+// archived, and a session beside them that belongs to none of it.
+func TestStatsTreeOverRPC(t *testing.T) {
+	hn := newHarness(t)
+	hn.fake.Script = []provider.Response{
+		{Content: "a", Usage: protocol.Usage{InputTokens: 100, OutputTokens: 1}},
+		{Content: "b", Usage: protocol.Usage{InputTokens: 200, OutputTokens: 2}},
+		{Content: "c", Usage: protocol.Usage{InputTokens: 400, OutputTokens: 4}},
+	}
+	create := func(parent string) string {
+		var out struct {
+			SessionID string `json:"session_id"`
+		}
+		params := map[string]any{"workspace": hn.dir}
+		if parent != "" {
+			params["options"] = map[string]any{"parent": parent}
+		}
+		result(t, hn.call(t, 1, "nabu.session.create", params), &out)
+		return out.SessionID
+	}
+	prompt := func(id string) {
+		if _, err := hn.m.Prompt(context.Background(), id, "go"); err != nil {
+			t.Fatal(err)
+		}
+		hn.m.WaitIdle(id)
+	}
+	home := create("")
+	step := create(home)
+	deeper := create(step)
+	beside := create("")
+	prompt(step)
+	prompt(deeper)
+	prompt(beside)
+	result(t, hn.call(t, 2, "nabu.session.archive", map[string]any{"session_id": deeper}), &struct{}{})
+
+	var tree struct {
+		Sessions int `json:"sessions"`
+		Turns    int `json:"turns"`
+		Tokens   struct {
+			Input int `json:"input"`
+		} `json:"tokens"`
+		Members []struct {
+			SessionID string `json:"session_id"`
+			Parent    string `json:"parent"`
+			Turns     int    `json:"turns"`
+			Archived  bool   `json:"archived"`
+		} `json:"members"`
+		Skipped int `json:"skipped"`
+	}
+	result(t, hn.call(t, 3, "nabu.session.stats", map[string]any{"session_id": home, "tree": true}), &tree)
+	if tree.Sessions != 3 || tree.Turns != 2 || tree.Tokens.Input != 300 || len(tree.Members) != 3 || tree.Skipped != 0 {
+		t.Fatalf("tree = %+v", tree)
+	}
+	if m := tree.Members[2]; m.SessionID != deeper || m.Parent != step || !m.Archived || m.Turns != 1 {
+		t.Errorf("the archived step: %+v", m)
+	}
+
+	var plain map[string]any
+	result(t, hn.call(t, 4, "nabu.session.stats", map[string]any{"session_id": home}), &plain)
+	if _, ok := plain["members"]; ok || plain["turns"] != float64(0) || plain["per_turn"] == nil {
+		t.Errorf("without tree, the session's own stats: %v", plain)
+	}
+}
+
 // Spec 7.19-7.20. Archived sessions leave the list and come back on request.
 func TestArchiveAndRestoreOverRPC(t *testing.T) {
 	hn := newHarness(t)

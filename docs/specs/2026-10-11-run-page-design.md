@@ -98,9 +98,10 @@ the step sessions get what they need from their prompts.
 - With `tree: true`, the result is the session and every session under it, by `parent`,
   at any depth: a goal home, its run homes and their step sessions.
 - The totals are summed the way `nabu.stats` sums sessions.
-- `sessions` lists each session's own `{session_id, labels, turns, working_seconds,
-  tokens: {input, output}, started_at, last_event_at}`, so the phone can put numbers
-  on timeline rows by session id.
+- `members` lists each session's own `{session_id, parent, labels, turns,
+  working_seconds, tokens: {input, output}, started_at, last_event_at, archived}`, so
+  the phone can put numbers on timeline rows by session id. (Changed while building:
+  this said `sessions`, which the summed totals already use for the count.)
 - Archived sessions count, as in `nabu.stats`, because their work happened.
 - Without `tree`, the result is unchanged.
 

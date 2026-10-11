@@ -664,7 +664,7 @@ idle clock. Every session archived with it, whose last event is the notice
 stays archived. An unknown id is `nabu_session_not_found`; restoring a session that is
 not archived does nothing.
 
-### 7.21 `nabu.session.stats {session_id}` → `SessionStats`
+### 7.21 `nabu.session.stats {session_id, tree?}` → `SessionStats`
 
 How much work a session was, derived from its log alone:
 
@@ -687,6 +687,28 @@ that reported usage, in order. `tools` is ordered by calls. `working_seconds` is
 `running`, counting no more than 15 minutes for any silence (a daemon stopped
 with the session still marked running is not work). `rereads` lists files read three times or more, most first; it is a signal worth
 a look, not a verdict. Arrays are always present, possibly empty.
+
+With `tree: true`, the result is the session and every session under it by `parent`, at
+any depth (a goal's home, its runs' homes and their steps), archived ones included:
+
+```jsonc
+{"session_id": "…", "sessions": 9, "turns": 412, "prompts": 9,
+ "tokens": {"input": 9100000, "output": 88000, "cached": 0},
+ "tools": [{"tool": "read", "calls": 300, "errors": 4, "sessions": 8}],
+ "compactions": {"summarize": 6, "clear_results": 0},
+ "vetoes": 2, "interruptions": 0, "working_seconds": 31000,
+ "per_day": [{"date": "2026-10-11", "turns": 412, "input": 9100000, "output": 88000}],
+ "started_at": "…", "last_event_at": "…",
+ "members": [{"session_id": "…", "parent": "…", "labels": ["unattended"], "turns": 130,
+              "working_seconds": 9000, "tokens": {"input": 3000000, "output": 30000},
+              "started_at": "…", "last_event_at": "…", "archived": false}],
+ "skipped": 0}
+```
+
+The totals are summed as `nabu.stats` sums sessions (§7.25), over each member's whole
+log. `per_day` covers the days from the earliest `started_at` to the latest
+`last_event_at`. `members` is each session's own numbers, the root first and the rest in
+the order they were made. `skipped` counts logs that could not be read.
 
 Not normative in the way §5 is: clients ask for it rather than computing it.
 
