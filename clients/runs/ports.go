@@ -2,6 +2,7 @@ package runs
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/corporealshift/nabu/protocol"
@@ -44,6 +45,8 @@ type Daemon interface {
 	// UpdateTasks replaces a session's task list, which is how a goal's
 	// home shows its roadmap.
 	UpdateTasks(ctx context.Context, id string, tasks []protocol.Task) error
+	// SetStatus sets a home's status: the run's or goal's snapshot, encoded.
+	SetStatus(ctx context.Context, id, kind string, data json.RawMessage) error
 	SendPrompt(ctx context.Context, id, text string) error
 	State(ctx context.Context, id string) (protocol.State, error)
 	Events(ctx context.Context, id string) ([]protocol.Event, error)

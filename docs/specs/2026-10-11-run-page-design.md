@@ -139,6 +139,8 @@ parser's test, so the two cannot drift.
 ```
 
 - `title` is the brief's first heading, or its first line.
+- `task`, here and in `history`, counts from 1, and is left out when there is no task.
+  The runner's own index counts from 0.
 - `tasks` holds the titles from `tasks.md`, once there is one.
 - `since` is when the current step began. `Run` gains a `Since` field for it, set
   whenever the step or the task changes.

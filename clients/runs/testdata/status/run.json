@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "title": "In-Flight notes: data, state and actions (no UI)",
+  "step": "work",
+  "task": 2,
+  "tasks": [
+    "Notes in Room",
+    "Notes in state",
+    "Actions"
+  ],
+  "attempt": 1,
+  "since": "2026-10-11T18:03:44Z",
+  "session": "01M4PFQCAXFW19C4PHD50DSQSM",
+  "waiting": false,
+  "goal": "01M498J1N9D785RFV6AZBRZN7G",
+  "goal_title": "build the app based on the designs in the design directory",
+  "pr": {
+    "number": 41,
+    "url": "https://github.com/o/r/pull/41"
+  },
+  "fixes": 1,
+  "ci_fixes": 0,
+  "revisions": 1,
+  "history": [
+    {
+      "step": "setup",
+      "ok": true,
+      "at": "2026-10-11T15:53:45Z"
+    },
+    {
+      "step": "plan",
+      "session": "01M4P8ENR4XCTQT7HMWDVSCWG8",
+      "ok": true,
+      "at": "2026-10-11T17:26:44Z"
+    },
+    {
+      "step": "plan-review",
+      "ok": true,
+      "at": "2026-10-11T17:27:44Z"
+    },
+    {
+      "step": "verify",
+      "session": "01M4PDT3JY7SDRXF9N2DP7923Y",
+      "ok": true,
+      "at": "2026-10-11T17:58:44Z"
+    },
+    {
+      "step": "verify-review",
+      "ok": true,
+      "result": "asked for a revision of verify.sh",
+      "at": "2026-10-11T17:59:44Z"
+    },
+    {
+      "step": "work",
+      "task": 1,
+      "session": "01M4PFKEYY6GEREN9YBJ11GC6D",
+      "ok": false,
+      "why": "the session ended paused and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more and more an…",
+      "at": "2026-10-11T18:01:44Z"
+    },
+    {
+      "step": "work",
+      "task": 1,
+      "session": "01M4PFQCAXFW19C4PHD50DSQSM",
+      "ok": true,
+      "at": "2026-10-11T18:02:44Z"
+    },
+    {
+      "step": "check",
+      "ok": true,
+      "result": "failed",
+      "at": "2026-10-11T18:03:44Z"
+    }
+  ],
+  "brief": "# In-Flight notes: data, state and actions (no UI)\n\nAdd the data side.\n",
+  "started": "2026-10-11T15:53:44Z",
+  "updated": "2026-10-11T18:03:44Z"
+}

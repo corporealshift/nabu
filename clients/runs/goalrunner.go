@@ -83,6 +83,9 @@ func (rn *Runner) pickUpGoals(ctx context.Context, d Daemon) error {
 
 func (rn *Runner) saveGoal(g *Goal) error {
 	g.Updated = rn.Now()
+	if key := fmt.Sprintf("%s %d", g.Step, g.Round); key != g.SinceKey {
+		g.Since, g.SinceKey = g.Updated, key
+	}
 	return g.Save(rn.Root)
 }
 
@@ -104,6 +107,7 @@ func (rn *Runner) advanceGoals(ctx context.Context, d Daemon) error {
 }
 
 func (rn *Runner) advanceGoal(ctx context.Context, d Daemon, g *Goal) error {
+	defer rn.showGoalStatus(ctx, d, g)
 	for range maxSteps {
 		if g.Step.Over() {
 			return rn.showGoal(ctx, d, g)
@@ -112,8 +116,11 @@ func (rn *Runner) advanceGoal(ctx context.Context, d Daemon, g *Goal) error {
 		if err != nil || o.Wait {
 			return errors.Join(err, rn.showGoal(ctx, d, g))
 		}
-		from := g.Step
+		from, verdicts := g.Step, len(g.Verdicts)
 		*g = GoalTransition(*g, o, rn.Cfg.GoalRounds)
+		for i := verdicts; i < len(g.Verdicts); i++ {
+			g.Verdicts[i].At = rn.Now()
+		}
 		switch {
 		case !o.OK:
 			rn.logf("goal %s: %s did not work: %s", g.Home, from, o.Why)
