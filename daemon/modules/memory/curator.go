@@ -291,13 +291,18 @@ func (m *Module) curate(ctx context.Context, s module.Session) {
 		Model:     m.CuratorModel,
 		System:    curatorSystem,
 		Messages:  []module.Message{{Role: "user", Content: curatorPrompt(existing, w)}},
-		MaxTokens: 1200,
+		MaxTokens: m.CuratorMaxTokens,
 	})
 	// The cursor advances either way. A pass that failed still saw these
 	// events, and retrying them doubles the cost of a question already asked.
 	m.setCursor(s.ID(), w.last)
 	if err != nil {
 		m.log.Warn("memory: the curator pass failed", "error", err)
+		return
+	}
+	if strings.TrimSpace(resp.Content) == "" {
+		// A reasoning model that thinks past the cap answers nothing at all.
+		m.log.Warn(fmt.Sprintf("memory: the curator gave no answer; it may have run out of its %d tokens (memory.curator_max_tokens)", m.CuratorMaxTokens))
 		return
 	}
 

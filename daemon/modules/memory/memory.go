@@ -24,6 +24,11 @@ const SaveInstructions = "Save a memory when the user corrects you, confirms an 
 // pass, so a pass that judges badly does so in a small way.
 const DefaultCuratorMaxPerPass = 3
 
+// DefaultCuratorMaxTokens caps a curator or consolidation reply. A reasoning
+// model's thinking counts against the cap, so it leaves room for the thinking
+// and for the memories that follow it.
+const DefaultCuratorMaxTokens = 8192
+
 // NoCuratorLabel marks a session the curator leaves alone: no pass, and no
 // in-progress memory. The runner puts it on its step sessions, each one try
 // of one task, and has the run reflect as a whole instead
@@ -49,6 +54,8 @@ type Module struct {
 	CuratorModel string
 	// CuratorMaxPerPass caps how many memories one pass may write.
 	CuratorMaxPerPass int
+	// CuratorMaxTokens caps a pass's reply, thinking included.
+	CuratorMaxTokens int
 
 	enabled bool
 	host    module.Host
@@ -95,6 +102,9 @@ func (m *Module) Init(h module.Host, cfg module.Config) error {
 	m.CuratorModel = cfg.String("curator_model", "")
 	if m.CuratorMaxPerPass = cfg.Int("curator_max_per_pass", 0); m.CuratorMaxPerPass <= 0 {
 		m.CuratorMaxPerPass = DefaultCuratorMaxPerPass
+	}
+	if m.CuratorMaxTokens = cfg.Int("curator_max_tokens", 0); m.CuratorMaxTokens <= 0 {
+		m.CuratorMaxTokens = DefaultCuratorMaxTokens
 	}
 
 	if m.Root == "" {
