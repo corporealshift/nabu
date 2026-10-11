@@ -333,6 +333,15 @@ class SessionRepository(
         return NabuJson.decodeFromJsonElement(com.nabu.client.protocol.SessionStats.serializer(), result)
     }
 
+    /** A session and every session under it: a goal, its runs and their steps (spec 7.21 with tree). */
+    suspend fun statsTree(client: DaemonClient, sessionId: String): com.nabu.client.protocol.TreeStats {
+        val result = client.callOrThrow("nabu.session.stats", buildJsonObject {
+            put("session_id", sessionId)
+            put("tree", true)
+        })
+        return NabuJson.decodeFromJsonElement(com.nabu.client.protocol.TreeStats.serializer(), result)
+    }
+
     /** Tokens and turns per day across sessions (spec 7.22). */
     suspend fun usage(client: DaemonClient, days: Int): List<com.nabu.client.protocol.UsageDay> {
         val result = client.callOrThrow("nabu.usage", buildJsonObject { put("days", days) })
