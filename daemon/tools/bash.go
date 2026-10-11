@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -39,6 +41,20 @@ func (b *Builtins) shellCommand() (string, string, error) {
 		}
 	}
 	return "", "", errors.New(`no shell found: install bash or sh, or set the "shell" config key`)
+}
+
+// shellEnv is the environment commands run with. On Windows it turns off the
+// MSYS argument conversion in Git Bash and MSYS2, which rewrites any argument
+// it takes for a list of POSIX paths before a Windows program sees it: git show
+// nabu/notes:.nabu/plan.md reaches git as nabu\notes;.nabu\plan.md. A POSIX
+// path handed to a Windows program, as in git -C /c/src, is then passed as
+// written too, so C:/src is the form that works there. Shell builtins and the
+// MSYS programs themselves (cd, ls, cat) take either.
+func shellEnv(env []string) []string {
+	if runtime.GOOS != "windows" {
+		return env
+	}
+	return append(env, "MSYS_NO_PATHCONV=1", "MSYS2_ARG_CONV_EXCL=*")
 }
 
 func (b *Builtins) bashTool() module.Tool {
@@ -90,6 +106,7 @@ func (b *Builtins) runShell(ctx context.Context, s module.Session, command strin
 	}
 	cmd := exec.CommandContext(cctx, sh, flag, command)
 	cmd.Dir = s.Workspace().Path
+	cmd.Env = shellEnv(os.Environ())
 	// On a timeout the shell is killed, but a grandchild it spawned
 	// (sleep, a server) inherits the output pipes and can hold them
 	// open. WaitDelay bounds how long Wait blocks on that, so a
