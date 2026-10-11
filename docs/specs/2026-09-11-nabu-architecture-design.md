@@ -631,6 +631,11 @@ wrote to it. Rollback, diff, and "which session taught it this" come free.
   where the last one stopped.
 - **Consolidation:** near the index cap, the curator merges duplicates, drops old and
   contradicted entries, and rewrites the index.
+- `memory.curator_max_tokens` (default 8192) caps a curator or consolidation reply.
+  As with the judge, a reasoning model's thinking counts against the cap. At the
+  original 1200, the local Qwen thought through the whole cap and answered nothing, and
+  through weeks of liftoff runs the curator saved no memories. An empty reply is now
+  logged as a warning (2026-10-11).
 
 ### 11.5 What memory is not
 
