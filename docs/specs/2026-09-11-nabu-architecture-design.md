@@ -233,7 +233,8 @@ Two stages, both events:
   summarized by a model call. Modules subscribed to `before_compaction` may return
   strings the summary prompt must preserve. The summary is followed in the request by
   a deterministic **Current state** block (goal, task list, budget) rendered from the
-  log, so task and goal state never depend on the summary's fidelity.
+  log as of the summary, so task and goal state never depend on the summary's
+  fidelity, and the prefix stays fixed until the next summary.
 
 ### Request assembly order (normative)
 

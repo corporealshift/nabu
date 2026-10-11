@@ -163,7 +163,8 @@
         "id": "01JEVENT000000000000000009"
       },
       {
-        "kind": "state"
+        "kind": "state",
+        "text": "## Current state\nGoal: tests pass (set)\nTasks (0/1 done):\n- [>] t1 Fix\nBudget: turn 2 (unlimited)"
       },
       {
         "kind": "message",

@@ -363,7 +363,11 @@ Order:
    `summarize` compaction (or since the start if none). A `summarize` compaction ends
    the life of earlier prefix blocks; modules re-inject what should persist.
 3. If a `summarize` compaction exists: its `summary`, followed by the **Current state
-   block** (§6.3).
+   block** (§6.3) rendered from the log up to and including that compaction. Events
+   after it do not change the block: they reach the model as messages and tool
+   results, and the block is rendered again at the next `summarize`. So everything
+   before the conversation stays the same between compactions, and a provider's
+   prompt cache can resume each request where the last one ended.
 4. `message`, `tool_call`, and `tool_result` events after the last `summarize`
    compaction, in log order, with §6.2 applied.
 5. `context` blocks with `slot: suffix` appended after the last assistant `message`.
@@ -795,7 +799,7 @@ Operations and their `expect` shapes:
 | `project` | — | a JSON object; every field present MUST equal the projection's field (fields absent from `expect` are not checked) |
 | `render_state` | — | `{"text": "..."}` — exact match of §6.3 |
 | `render_vetoes` | — | `{"text": "..."}` — exact match of §6.4, or `{"text": ""}` when none outstanding |
-| `assemble` | — | `{"segments": [{"kind": "prefix_context" \| "summary" \| "state" \| "message" \| "tool_call" \| "tool_result" \| "tool_result_cleared" \| "suffix_context" \| "vetoes", "id"?: "<event id>"}]}` |
+| `assemble` | — | `{"segments": [{"kind": "prefix_context" \| "summary" \| "state" \| "message" \| "tool_call" \| "tool_result" \| "tool_result_cleared" \| "suffix_context" \| "vetoes", "id"?: "<event id>", "text"?: "<§6.3 text, on state only>"}]}` |
 
 An implementation MUST run every vector file and fail on any mismatch. Vector data
 contains no language-specific constructs.
