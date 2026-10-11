@@ -438,6 +438,8 @@ type rig struct {
 	gh     *fakeGH
 	log    bytes.Buffer
 	now    time.Time
+	// holdReflect leaves a run's reflection running, for the test to finish.
+	holdReflect bool
 }
 
 func newRig(t *testing.T) *rig {
@@ -467,17 +469,40 @@ func (g *rig) ask(id, brief string) {
 	h.labels = withRun(h.labels, LabelRequested)
 }
 
-// tick is one poll with one slot: advance, then start what fits.
+// tick is one poll with one slot: advance, then start what fits. A run's
+// reflection is finished at once, saving nothing, so a test about something
+// else sees the run end; holdReflect leaves it for the test.
 func (g *rig) tick() {
 	g.t.Helper()
-	if err := g.rn.Advance(context.Background(), g.d); err != nil {
-		g.t.Fatalf("advance: %v\nlog:\n%s", err, g.log.String())
+	for {
+		if err := g.rn.Advance(context.Background(), g.d); err != nil {
+			g.t.Fatalf("advance: %v\nlog:\n%s", err, g.log.String())
+		}
+		if free := g.rn.Cfg.MaxJobs - g.rn.Busy(); free > 0 {
+			if _, err := g.rn.Start(context.Background(), g.d, free); err != nil {
+				g.t.Fatalf("start: %v", err)
+			}
+		}
+		if g.holdReflect || !g.reflecting() {
+			return
+		}
+		g.finish(nil)
 	}
-	if free := g.rn.Cfg.MaxJobs - g.rn.Busy(); free > 0 {
-		if _, err := g.rn.Start(context.Background(), g.d, free); err != nil {
-			g.t.Fatalf("start: %v", err)
+}
+
+// reflecting reports whether the newest session is a run's reflection, still
+// working.
+func (g *rig) reflecting() bool {
+	if len(g.d.order) == 0 {
+		return false
+	}
+	id, s := g.d.last()
+	for _, r := range g.rn.runs {
+		if r.Step == StepReflect && r.Session == id && s.state == protocol.StateRunning {
+			return true
 		}
 	}
+	return false
 }
 
 func (g *rig) run(id string) *Run { return g.rn.runs[id] }
@@ -560,9 +585,13 @@ func TestAWholeRun(t *testing.T) {
 			t.Errorf("session %s: parent %q, workspace %q", id, s.parent, s.workspace)
 		}
 	}
-	// plan, verify, tasks, then two work sessions with goals.
-	if len(g.d.order) != 5 {
+	// plan, verify, tasks, then two work sessions with goals, then the
+	// reflection.
+	if len(g.d.order) != 6 {
 		t.Fatalf("sessions = %d", len(g.d.order))
+	}
+	if s := g.d.sessions["S6"]; s.turns != DefaultReflectTurns || !strings.Contains(s.prompts[0], "How the run went") {
+		t.Errorf("reflection session: %+v", s)
 	}
 	if s := g.d.sessions["S1"]; s.turns != 0 || len(s.goals) != 0 || !strings.Contains(s.prompts[0], r.File(PlanFile)) {
 		t.Errorf("plan session: %+v", s)
@@ -595,7 +624,7 @@ func TestAWholeRun(t *testing.T) {
 	for _, ls := range h.labelHistory {
 		steps = append(steps, strings.Join(ls, ","))
 	}
-	for _, s := range []string{"run:setup", "run:plan", "run:tasks", "run:verify", "run:work", "run:done"} {
+	for _, s := range []string{"run:setup", "run:plan", "run:tasks", "run:verify", "run:work", "run:reflect", "run:done"} {
 		if !slices.Contains(steps, s) {
 			t.Errorf("the home was never labeled %s: %q", s, steps)
 		}

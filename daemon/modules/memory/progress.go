@@ -21,7 +21,7 @@ const progressSuffix = "-in-progress"
 // the next session to resume work that is already finished, which is worse
 // than it knowing nothing.
 func (m *Module) recordProgress(ctx context.Context, s module.Session) {
-	if !m.enabled || !m.Curator || s == nil || m.host == nil || m.host.Tools() == nil {
+	if !m.enabled || !m.Curator || s == nil || m.host == nil || m.host.Tools() == nil || !curated(s) {
 		return
 	}
 	name := progressName(s)

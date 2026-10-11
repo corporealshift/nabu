@@ -47,14 +47,17 @@ const (
 	StepCIFix        Step = "ci-fix"
 	StepPush         Step = "push"
 	StepMerge        Step = "merge"
-	StepDone         Step = "done"
-	StepFailed       Step = "failed"
+	// StepReflect is the run looking back before it ends, done or failed
+	// (docs/specs/2026-10-11-run-reflection-design.md).
+	StepReflect Step = "reflect"
+	StepDone    Step = "done"
+	StepFailed  Step = "failed"
 )
 
 // Session reports whether a step is done by a model session.
 func (s Step) Session() bool {
 	switch s {
-	case StepBrief, StepPlan, StepTasks, StepVerify, StepWork, StepFix, StepCIFix:
+	case StepBrief, StepPlan, StepTasks, StepVerify, StepWork, StepFix, StepCIFix, StepReflect:
 		return true
 	}
 	return false
@@ -140,8 +143,45 @@ type Run struct {
 	PRURL string   `json:"pr_url,omitempty"`
 	Notes []string `json:"notes,omitempty"`
 
+	// History is every step the run has finished, in order, for its
+	// reflection (docs/specs/2026-10-11-run-reflection-design.md).
+	History []Record `json:"history,omitempty"`
+
 	Started time.Time `json:"started"`
 	Updated time.Time `json:"updated"`
+}
+
+// Record is one finished step: which, the session that did it, if any, and
+// what came of it.
+type Record struct {
+	Step Step `json:"step"`
+	// Task is the task a work step did, by its index in tasks.md.
+	Task    int    `json:"task,omitempty"`
+	Session string `json:"session,omitempty"`
+	OK      bool   `json:"ok"`
+	Why     string `json:"why,omitempty"`
+	// Result is what a step that judges found: the check passed or failed,
+	// how many blockers the final review found, what CI said.
+	Result string `json:"result,omitempty"`
+	// Note is what the step found worth passing on: a failing check's
+	// output, the final review's blockers, Claude's refusal, a CI failure.
+	Note string    `json:"note,omitempty"`
+	At   time.Time `json:"at"`
+}
+
+// The bounds on a run's history: a fix loop of failing checks would
+// otherwise carry every output in full.
+const (
+	maxNote    = 2000
+	maxHistory = 200
+)
+
+// cut bounds the note, keeping its end, where a failure explains itself.
+func (rec Record) cut() Record {
+	if len(rec.Note) > maxNote {
+		rec.Note = "(earlier output cut)\n" + rec.Note[len(rec.Note)-maxNote:]
+	}
+	return rec
 }
 
 // Dir is where the run files are committed on the branch, relative to the
