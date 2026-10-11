@@ -20,6 +20,10 @@ const LabelRequested = "run:requested"
 // push, or a post to GitHub.
 const NoPushLabel = "guard:no-push"
 
+// NoCuratorLabel keeps the memory module's curator off a session: the run
+// reflects as a whole instead (docs/specs/2026-10-11-run-reflection-design.md).
+const NoCuratorLabel = "memory:no-curator"
+
 // Client is the Daemon over a goclient connection.
 type Client struct{ C *goclient.Client }
 
@@ -98,21 +102,28 @@ func (c Client) Create(ctx context.Context, workspace, parent string, maxTurns i
 	var out struct {
 		SessionID string `json:"session_id"`
 	}
+	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
+		"workspace": workspace,
+		"options":   stepOptions(parent, size),
+		"budget":    map[string]any{"max_turns": maxTurns, "source": "client"},
+	}, &out)
+	return out.SessionID, err
+}
+
+// stepOptions are a step session's options.
+func stepOptions(parent, size string) map[string]any {
 	// guard:no-push: a step session commits, and the runner pushes and posts
 	// once the work is checked.
 	// unattended: nobody watches a step, so it is offered no tool that needs
 	// a person.
+	// memory:no-curator: a step is one try of one task, and may be thrown
+	// away; the run reflects as a whole when it ends.
 	opts := map[string]any{"permission_mode": string(protocol.PermissionAuto), "parent": parent,
-		"labels": []string{NoPushLabel, protocol.LabelUnattended}}
+		"labels": []string{NoPushLabel, protocol.LabelUnattended, NoCuratorLabel}}
 	if size != "" {
 		opts["context"] = size
 	}
-	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
-		"workspace": workspace,
-		"options":   opts,
-		"budget":    map[string]any{"max_turns": maxTurns, "source": "client"},
-	}, &out)
-	return out.SessionID, err
+	return opts
 }
 
 func (c Client) CreateHome(ctx context.Context, workspace, parent, description, size string) (string, error) {
