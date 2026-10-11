@@ -465,3 +465,41 @@ func TestSessionEndCuratesBeforeCommitting(t *testing.T) {
 		t.Errorf("the curator's write is not in the commit:\n%s", files)
 	}
 }
+
+// A run's step session is one try of one task, and may be thrown away. The
+// runner labels it, and the run's reflection learns from the whole run
+// instead (docs/specs/2026-10-11-run-reflection-design.md).
+func TestALabeledSessionIsNotCurated(t *testing.T) {
+	needGit(t)
+	reply := `[{"scope":"global","name":"learned","type":"user","description":"d","body":"a fact"}]`
+	m := &Module{Root: t.TempDir()}
+	h := &recordingHost{model: &scriptedModel{content: reply}}
+	h.tools = &recordingTools{mod: m}
+	if err := m.Init(h, module.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	s := withTasks(newSession(t, "repo-abc123"),
+		protocol.Task{ID: "t1", Title: "outstanding", Status: protocol.TaskPending})
+	s.state.Options.Labels = []string{"unattended", NoCuratorLabel}
+	s.events = []protocol.Event{userMsg("01A", "remember this")}
+
+	// What the session saves itself is still kept, and committed.
+	args := `{"scope":"workspace","name":"what-worked","type":"project","description":"d","body":"b"}`
+	if _, err := h.tools.Call(context.Background(), s, "memory.save", json.RawMessage(args)); err != nil {
+		t.Fatal(err)
+	}
+	m.BeforeCompaction(context.Background(), s, module.Range{})
+	m.SessionEnd(context.Background(), s)
+
+	if h.model.calls != 0 {
+		t.Errorf("made %d curator calls for a labeled session", h.model.calls)
+	}
+	mems := m.mustLoad(t, s)
+	if len(mems) != 1 || mems[0].Name != "what-worked" {
+		t.Errorf("workspace memories = %+v, want only the session's own save and no in-progress memory", mems)
+	}
+	files := gitOut(t, m.Root, "show", "--name-only", "--format=", "HEAD")
+	if !strings.Contains(files, "what-worked.md") {
+		t.Errorf("the session's own save is not committed:\n%s", files)
+	}
+}

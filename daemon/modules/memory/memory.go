@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -22,6 +23,17 @@ const SaveInstructions = "Save a memory when the user corrects you, confirms an 
 // DefaultCuratorMaxPerPass is spec 11.4's cap: at most three memories per
 // pass, so a pass that judges badly does so in a small way.
 const DefaultCuratorMaxPerPass = 3
+
+// NoCuratorLabel marks a session the curator leaves alone: no pass, and no
+// in-progress memory. The runner puts it on its step sessions, each one try
+// of one task, and has the run reflect as a whole instead
+// (docs/specs/2026-10-11-run-reflection-design.md).
+const NoCuratorLabel = "memory:no-curator"
+
+// curated reports whether the curator may look at a session at all.
+func curated(s module.Session) bool {
+	return !slices.Contains(s.State().Options.Labels, NoCuratorLabel)
+}
 
 // Module is the memory module.
 type Module struct {

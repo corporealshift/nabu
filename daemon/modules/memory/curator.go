@@ -269,7 +269,7 @@ func jsonArray(s string) string {
 // top of a session, not a step in it, so every failure is logged and the pass
 // simply ends.
 func (m *Module) curate(ctx context.Context, s module.Session) {
-	if !m.enabled || !m.Curator || s == nil || m.host == nil {
+	if !m.enabled || !m.Curator || s == nil || m.host == nil || !curated(s) {
 		return
 	}
 	if m.host.Model() == nil || m.host.Tools() == nil {
