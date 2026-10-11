@@ -635,6 +635,11 @@ wrote to it. Rollback, diff, and "which session taught it this" come free.
   Its own `memory.save` calls are kept and committed as usual. The runner labels its
   step sessions this way, and each run reflects once, as a whole, when it ends
   (2026-10-11, `docs/specs/2026-10-11-run-reflection-design.md`).
+- `memory.curator_max_tokens` (default 8192) caps a curator or consolidation reply.
+  As with the judge, a reasoning model's thinking counts against the cap. At the
+  original 1200, the local Qwen thought through the whole cap and answered nothing, and
+  through weeks of liftoff runs the curator saved no memories. An empty reply is now
+  logged as a warning (2026-10-11).
 
 ### 11.5 What memory is not
 

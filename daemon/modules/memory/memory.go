@@ -35,6 +35,10 @@ func curated(s module.Session) bool {
 	return !slices.Contains(s.State().Options.Labels, NoCuratorLabel)
 }
 
+// DefaultCuratorMaxTokens caps a curator or consolidation reply, thinking
+// included.
+const DefaultCuratorMaxTokens = 8192
+
 // Module is the memory module.
 type Module struct {
 	// Root is the memory directory. Empty means the host's data directory.
@@ -49,6 +53,8 @@ type Module struct {
 	CuratorModel string
 	// CuratorMaxPerPass caps how many memories one pass may write.
 	CuratorMaxPerPass int
+	// CuratorMaxTokens caps a pass's reply, thinking included.
+	CuratorMaxTokens int
 
 	enabled bool
 	host    module.Host
@@ -95,6 +101,9 @@ func (m *Module) Init(h module.Host, cfg module.Config) error {
 	m.CuratorModel = cfg.String("curator_model", "")
 	if m.CuratorMaxPerPass = cfg.Int("curator_max_per_pass", 0); m.CuratorMaxPerPass <= 0 {
 		m.CuratorMaxPerPass = DefaultCuratorMaxPerPass
+	}
+	if m.CuratorMaxTokens = cfg.Int("curator_max_tokens", 0); m.CuratorMaxTokens <= 0 {
+		m.CuratorMaxTokens = DefaultCuratorMaxTokens
 	}
 
 	if m.Root == "" {

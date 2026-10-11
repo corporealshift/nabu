@@ -363,6 +363,62 @@ func TestPassSkippedWhenNothingHappened(t *testing.T) {
 	}
 }
 
+// Seen live: at 1200 tokens the local Qwen spent the whole reply thinking, and
+// in weeks of liftoff runs the curator saved nothing. Thinking counts against
+// the cap, so a pass needs room for it and for the memories after it.
+func TestPassesLeaveRoomToThink(t *testing.T) {
+	if DefaultCuratorMaxTokens < 8192 {
+		t.Errorf("DefaultCuratorMaxTokens = %d: a reasoning model thinks before it answers", DefaultCuratorMaxTokens)
+	}
+	tests := []struct {
+		name string
+		cfg  module.Config
+		want int
+	}{
+		{"default", nil, DefaultCuratorMaxTokens},
+		{"configured", module.Config{"curator_max_tokens": 20000}, 20000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, h := curatorModule(t, `[]`, tt.cfg)
+			s := newSession(t, "repo-abc123")
+			s.events = []protocol.Event{userMsg("01A", "something worth remembering")}
+			m.curate(context.Background(), s)
+			if h.model.lastReq.MaxTokens != tt.want {
+				t.Errorf("curator MaxTokens = %d, want %d", h.model.lastReq.MaxTokens, tt.want)
+			}
+
+			fillIndex(t, m, maxIndexLines+2)
+			m.consolidate(context.Background(), s)
+			if h.model.lastReq.MaxTokens != tt.want {
+				t.Errorf("consolidation MaxTokens = %d, want %d", h.model.lastReq.MaxTokens, tt.want)
+			}
+		})
+	}
+}
+
+type recordedLog struct{ warns []string }
+
+func (l *recordedLog) Warn(msg string, args ...any) { l.warns = append(l.warns, fmt.Sprint(msg, args)) }
+func (l *recordedLog) Info(string, ...any)          {}
+
+// A reply that is all thinking reaches the curator as nothing. That has to
+// say so: silence looked exactly like a pass with nothing to save.
+func TestAnEmptyReplyIsLogged(t *testing.T) {
+	for _, reply := range []string{"", "[]"} {
+		m, _ := curatorModule(t, reply, nil)
+		log := &recordedLog{}
+		m.log = log
+		s := newSession(t, "repo-abc123")
+		s.events = []protocol.Event{userMsg("01A", "something worth remembering")}
+		m.curate(context.Background(), s)
+		warned := len(log.warns) == 1 && strings.Contains(log.warns[0], "curator_max_tokens")
+		if want := reply == ""; warned != want {
+			t.Errorf("reply %q: warnings %q, want a warning naming curator_max_tokens: %v", reply, log.warns, want)
+		}
+	}
+}
+
 func TestPassIsSkippedWhenDisabled(t *testing.T) {
 	reply := `[{"scope":"global","name":"x","type":"user","description":"d","body":"b"}]`
 	m, h := curatorModule(t, reply, module.Config{"curator": false})
