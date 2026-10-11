@@ -42,6 +42,9 @@ func TestARunKeepsItsHistory(t *testing.T) {
 	if !strings.Contains(h[11].Note, "Median of an even count") {
 		t.Errorf("final review note: %q", h[11].Note)
 	}
+	if h[8].Result != "failed" || h[10].Result != "passed" || h[11].Result != "1 blockers" || h[15].Result != CIPass {
+		t.Errorf("results: check %q, check %q, final review %q, ci %q", h[8].Result, h[10].Result, h[11].Result, h[15].Result)
+	}
 }
 
 func TestAFailedTryIsInTheHistory(t *testing.T) {

@@ -157,6 +157,9 @@ type Record struct {
 	Session string `json:"session,omitempty"`
 	OK      bool   `json:"ok"`
 	Why     string `json:"why,omitempty"`
+	// Result is what a step that judges found: the check passed or failed,
+	// how many blockers the final review found, what CI said.
+	Result string `json:"result,omitempty"`
 	// Note is what the step found worth passing on: a failing check's
 	// output, the final review's blockers, Claude's refusal, a CI failure.
 	Note string    `json:"note,omitempty"`

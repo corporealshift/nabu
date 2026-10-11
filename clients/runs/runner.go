@@ -299,8 +299,18 @@ func (rn *Runner) advance(ctx context.Context, d Daemon, r *Run) error {
 // moves on and forgets its session.
 func (rn *Runner) record(r *Run, o Outcome) {
 	rec := Record{Step: r.Step, Session: r.Session, OK: o.OK, Why: o.Why, Note: o.Note, At: rn.Now()}
-	if r.Step == StepWork {
+	switch {
+	case r.Step == StepWork:
 		rec.Task = r.Task
+	case !o.OK:
+	case r.Step == StepCheck:
+		rec.Result = map[bool]string{true: "passed", false: "failed"}[o.CheckPassed]
+	case r.Step == StepFinalReview:
+		rec.Result = fmt.Sprintf("%d blockers", o.Blockers)
+	case r.Step == StepCI:
+		rec.Result = o.CI
+	case o.Revision:
+		rec.Result = "asked for a revision of verify.sh"
 	}
 	r.History = append(r.History, rec.cut())
 	if len(r.History) > maxHistory {
