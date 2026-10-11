@@ -83,10 +83,13 @@ func Assemble(log []Event) []Segment {
 		}
 	}
 
-	// 3. summary + current state.
+	// 3. summary + current state. The state is the log's as of the summary,
+	// so the system message stays the same, byte for byte, until the next
+	// summarize: a provider's prompt cache can only resume a prompt whose
+	// start has not changed. What happened since is in the messages.
 	if summarizeAt >= 0 {
 		out = append(out, Segment{Kind: SegSummary, ID: log[summarizeAt].ID, Text: MustData[CompactionData](log[summarizeAt]).Summary})
-		out = append(out, Segment{Kind: SegState, Text: RenderCurrentState(Project(log))})
+		out = append(out, Segment{Kind: SegState, Text: RenderCurrentState(Project(log[:summarizeAt+1]))})
 	}
 
 	// 4. conversation after the last summarize, with clearing applied.

@@ -113,6 +113,9 @@ func executeVector(v Vector) (any, error) {
 			if s.ID != "" {
 				m["id"] = s.ID
 			}
+			if s.Kind == SegState {
+				m["text"] = s.Text
+			}
 			list = append(list, m)
 		}
 		return map[string]any{"segments": list}, nil
