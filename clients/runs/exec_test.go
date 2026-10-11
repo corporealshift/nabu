@@ -2,8 +2,10 @@ package runs
 
 import (
 	"context"
+	"fmt"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -117,9 +119,31 @@ func TestCreatePR(t *testing.T) {
 	}
 }
 
+// TestMain lets the test binary stand in for the claude CLI: with
+// NABU_FAKE_CLAUDE set it answers with how much prompt it read on stdin.
+func TestMain(m *testing.M) {
+	if os.Getenv("NABU_FAKE_CLAUDE") != "" {
+		in, _ := io.ReadAll(os.Stdin)
+		fmt.Printf("read %d bytes, %d args", len(in), len(os.Args)-1)
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+// Seen live: a goal check's prompt passed Windows' 32K command line limit,
+// and every check failed with "The filename or extension is too long".
+func TestClaudeAskTakesALongPrompt(t *testing.T) {
+	t.Setenv("NABU_FAKE_CLAUDE", "1")
+	prompt := strings.Repeat("x", 100000)
+	got, err := ClaudeCLI{Path: os.Args[0]}.Ask(context.Background(), t.TempDir(), prompt)
+	if err != nil || !strings.HasPrefix(got, "read 100000 bytes") {
+		t.Errorf("Ask = %q, %v", got, err)
+	}
+}
+
 func TestClaudeArgsAreReadOnly(t *testing.T) {
-	args := ClaudeCLI{Model: "opus"}.Args("review this")
-	want := []string{"-p", "review this", "--allowedTools", "Read", "--allowedTools", "Grep", "--allowedTools", "Glob", "--model", "opus"}
+	args := ClaudeCLI{Model: "opus"}.Args()
+	want := []string{"-p", "--allowedTools", "Read", "--allowedTools", "Grep", "--allowedTools", "Glob", "--model", "opus"}
 	if !reflect.DeepEqual(args, want) {
 		t.Errorf("args = %q", args)
 	}
