@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/nabu/daemon/modules/prompt"
 	"github.com/corporealshift/nabu/daemon/provider"
 	"github.com/corporealshift/nabu/daemon/session"
 	"github.com/corporealshift/nabu/protocol"
@@ -118,6 +119,32 @@ func TestSummarizeFiresAtTheUpperThreshold(t *testing.T) {
 	}
 	if msgs < 3 {
 		t.Fatalf("compaction must not delete events, found %d messages", msgs)
+	}
+}
+
+// With the real prompt module, the request after a summary carries the prompt
+// as it was written, ahead of the summary that paraphrases it.
+func TestThePromptOutlivesTheSummary(t *testing.T) {
+	const ask = "Write the plan to plan.md. Do only this planning step."
+	h := newHarness(t, []module.Module{&prompt.Module{}}, []provider.Response{
+		{ToolCalls: globCall("c1"), Usage: bigUsage(0.90)},
+		{Content: "THE SUMMARY. Unresolved: implement the plan."},
+		{Content: "done", Usage: bigUsage(0.10)},
+	})
+	s := h.create(t)
+	h.m.Prompt(context.Background(), s.ID(), ask)
+	h.m.WaitIdle(s.ID())
+
+	last := h.fake.Calls[len(h.fake.Calls)-1]
+	sys := last.Messages[0].Content
+	at, summary := strings.Index(sys, ask), strings.Index(sys, "THE SUMMARY")
+	if at < 0 || summary < 0 || at > summary {
+		t.Fatalf("want the prompt ahead of the summary in the system message: %q", sys)
+	}
+	for _, msg := range last.Messages[1:] {
+		if strings.Contains(msg.Content, ask) {
+			t.Fatalf("the prompt is also still in the conversation: %+v", last.Messages)
+		}
 	}
 }
 

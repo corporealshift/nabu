@@ -20,7 +20,7 @@ Keep, in this order:
 1. What the user asked for, in their terms, including constraints they stated.
 2. Decisions made and why, including approaches that were tried and rejected.
 3. What has actually been done: files changed, commands run and their results.
-4. What is unresolved: open questions, failing checks, known bugs.
+4. What is unresolved within what the user asked for: open questions, failing checks, known bugs. Work the user did not ask for is not unresolved; do not list it.
 5. Anything the next turn must not do.
 
 Drop pleasantries, repeated tool output, and narration. Be specific: name files, commands and errors. Do not invent anything that is not in the conversation.

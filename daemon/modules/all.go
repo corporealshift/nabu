@@ -11,6 +11,7 @@ import (
 	"github.com/corporealshift/nabu/daemon/modules/loop"
 	"github.com/corporealshift/nabu/daemon/modules/memory"
 	"github.com/corporealshift/nabu/daemon/modules/notes"
+	"github.com/corporealshift/nabu/daemon/modules/prompt"
 	"github.com/corporealshift/nabu/daemon/modules/report"
 	"github.com/corporealshift/nabu/daemon/modules/skills"
 	"github.com/corporealshift/nabu/daemon/modules/vcs"
@@ -27,6 +28,7 @@ import (
 var All = []module.Module{
 	&skills.Module{},
 	&clock.Module{},
+	&prompt.Module{},
 	&ask.Module{},
 	&claude.Module{},
 	&memory.Module{},
