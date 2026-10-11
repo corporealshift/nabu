@@ -42,6 +42,8 @@ type Outcome struct {
 	// Wait is a step with nothing to do yet, such as checks still running.
 	// It changes nothing and costs no attempt.
 	Wait bool
+	// Note is what the step found worth keeping in the run's history.
+	Note string
 }
 
 // Transition is the whole workflow: given where a run is and what came of

@@ -265,6 +265,7 @@ func (rn *Runner) advance(ctx context.Context, d Daemon, r *Run) error {
 			return errors.Join(err, rn.label(ctx, d, r, nil))
 		}
 		from := r.Step
+		rn.record(r, o)
 		*r = Transition(*r, o)
 		if !o.OK {
 			rn.logf("run %s: %s did not work: %s", r.Home, from, o.Why)
@@ -292,6 +293,19 @@ func (rn *Runner) advance(ctx context.Context, d Daemon, r *Run) error {
 		}
 	}
 	return nil
+}
+
+// record adds the step just finished to the run's history, before Transition
+// moves on and forgets its session.
+func (rn *Runner) record(r *Run, o Outcome) {
+	rec := Record{Step: r.Step, Session: r.Session, OK: o.OK, Why: o.Why, Note: o.Note, At: rn.Now()}
+	if r.Step == StepWork {
+		rec.Task = r.Task
+	}
+	r.History = append(r.History, rec.cut())
+	if len(r.History) > maxHistory {
+		r.History = r.History[len(r.History)-maxHistory:]
+	}
 }
 
 // Start begins up to n waiting sessions, oldest run first, and says how many
@@ -782,7 +796,11 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		}
 		r.Output = output
 		rn.logf("run %s: check %s", r.Home, map[bool]string{true: "passed", false: "failed"}[passed])
-		return Outcome{OK: true, CheckPassed: passed}, nil
+		o := Outcome{OK: true, CheckPassed: passed}
+		if !passed {
+			o.Note = output
+		}
+		return o, nil
 	case StepRevise:
 		answer, err := rn.Claude.Ask(ctx, r.Worktree, RevisePrompt(*r, r.Output))
 		if err != nil {
@@ -792,17 +810,19 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		if !ok {
 			return Outcome{Why: "claude's answer to the revision neither replaced verify.sh nor refused"}, nil
 		}
+		note := "Claude revised verify.sh."
 		if changed {
 			if err := rn.write(ctx, r, VerifyFile, text, "run: verify.sh revised by claude"); err != nil {
 				return Outcome{}, err
 			}
 		} else {
 			r.Advice = Refusal(answer)
+			note = "Claude kept verify.sh: " + r.Advice
 		}
 		if err := rn.Git.Remove(ctx, r.Worktree, "run: revision request answered", r.File(RevisionFile)); err != nil {
 			return Outcome{}, err
 		}
-		return Outcome{OK: true}, nil
+		return Outcome{OK: true, Note: note}, nil
 	case StepFinalReview:
 		changed, err := rn.Git.Diffed(ctx, r.Worktree, r.Base)
 		if err != nil {
@@ -817,14 +837,18 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 			return Outcome{Why: "claude's final review was not in the form asked for"}, nil
 		}
 		r.Notes = notes
+		var note []string
 		if len(blockers) > 0 {
 			md, _ := rn.read(r, TasksFile)
 			if err := rn.write(ctx, r, TasksFile, AppendTasks(md, blockers), "run: blockers from the final review"); err != nil {
 				return Outcome{}, err
 			}
 			rn.logf("run %s: the final review found %d blockers", r.Home, len(blockers))
+			for _, b := range blockers {
+				note = append(note, "- "+b.Title+": "+b.Detail)
+			}
 		}
-		return Outcome{OK: true, Blockers: len(blockers)}, nil
+		return Outcome{OK: true, Blockers: len(blockers), Note: strings.Join(note, "\n")}, nil
 	case StepPR:
 		if err := rn.Git.Push(ctx, r.Worktree, r.Branch); err != nil {
 			return Outcome{Why: err.Error()}, nil
@@ -906,6 +930,7 @@ func (rn *Runner) ci(ctx context.Context, r *Run) Outcome {
 	case result == CIFail:
 		r.Output = rn.failures(ctx, r.Worktree, failed)
 		rn.logf("run %s: CI failed", r.Home)
+		return Outcome{OK: true, CI: result, Note: r.Output}
 	case result == CIPass:
 		rn.logf("run %s: CI passed", r.Home)
 	}
