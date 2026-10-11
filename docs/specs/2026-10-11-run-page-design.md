@@ -23,9 +23,11 @@ overview at the goal level. Cost is not one of them. The phone comes first.
 
 A home with a status (see Protocol) opens on its status page.
 
-- A home the runner or a goal created opens there.
-- A home where Kyle typed `/run` gets a **Run | Chat** toggle at the top. Chat is
-  today's screen, unchanged.
+- Every home with a status opens there, whoever made it, and its top bar has **Chat**,
+  which shows today's screen, unchanged. Chat's top bar then has **Status** to come
+  back. (Changed while building: this said only created homes open on status and
+  prompted ones get a Run | Chat toggle. One rule is simpler, and "Run" already names
+  the button that starts a run.)
 - A home with no status, including every home from before this change, shows exactly
   what it shows today.
 
@@ -176,9 +178,9 @@ verdict reasons, until it fits. The run's history is already bounded at 200 reco
 
 - A status parser for both shapes, tested against the shared fixture.
 - The Run page and Goal page as described, built from the projection's `status` and
-  one `nabu.session.stats {tree: true}` call. The call is repeated when the status
-  changes, and no more often than once a minute while the page is open.
-- The Run | Chat toggle on prompted homes, and opening on status for created ones.
+  one `nabu.session.stats {tree: true}` call, repeated once a minute while the page is
+  open.
+- Opening on status, with Chat and Status to move between the two.
 - An unknown `version`: the page says the status is from a newer runner, and offers
   Chat.
 

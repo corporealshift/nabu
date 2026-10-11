@@ -387,6 +387,8 @@ fun TranscriptScreen(
     /** What to call this session's run home, when it is a step of one. */
     parentTitle: String? = null,
     onOpenParent: () -> Unit = {},
+    /** Back to the run's or goal's status page, when the session has one. */
+    onStatus: (() -> Unit)? = null,
 ) {
     var choosingContext by remember { mutableStateOf(false) }
     if (choosingContext) {
@@ -428,6 +430,11 @@ fun TranscriptScreen(
                 ),
                 title = { Text(title, style = MaterialTheme.typography.titleSmall) },
                 actions = {
+                    onStatus?.let {
+                        TextButton(onClick = it) {
+                            Text("Status", style = MaterialTheme.typography.labelMedium, color = NabuTheme.colors.accent)
+                        }
+                    }
                     ContextBadge(view.contextUsed, view.options.context) { choosingContext = true }
                     // A step of a run is the runner's, not a thing to hand over.
                     if (view.options.parent.isBlank()) {

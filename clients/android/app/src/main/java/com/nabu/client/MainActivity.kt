@@ -61,6 +61,15 @@ import com.nabu.client.ui.recentWorkspaces
 import com.nabu.client.ui.SessionListScreen
 import com.nabu.client.ui.SettingsScreen
 import com.nabu.client.ui.TranscriptScreen
+import com.nabu.client.ui.GoalPage
+import com.nabu.client.ui.LiveStep
+import com.nabu.client.ui.RunPage
+import com.nabu.client.ui.TreeLoad
+import com.nabu.client.ui.UnsupportedStatus
+import com.nabu.client.protocol.ParsedStatus
+import com.nabu.client.protocol.parseStatus
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
@@ -289,65 +298,146 @@ private fun Screens(vm: NabuViewModel, systemDark: Boolean, opening: String?, on
 
         is Screen.Artifact -> ArtifactScreen(s.line, onBack = { screen = Screen.Transcript(s.sessionId) })
 
-        is Screen.Transcript -> CompositionLocalProvider(
-            LocalOpenArtifact provides { line -> screen = Screen.Artifact(s.id, line) },
-        ) {
-            // Remembered per session: a flow asked for afresh on every
-            // recomposition restarts its query, and any event anywhere
-            // recomposes this screen.
-            val rowFlow = remember(s.id) { vm.watchSession(s.id) }
-            val pendingFlow = remember(s.id) { vm.watchPending(s.id) }
-            val blockedFlow = remember { vm.watchBlocked() }
-            val row by rowFlow.collectAsState(initial = null)
-            val view by vm.transcript(s.id).collectAsState()
-            val pending by pendingFlow.collectAsState(initial = emptyList<OutboxRow>())
-            val blocked by blockedFlow.collectAsState(initial = emptyList<OutboxRow>())
-            val tapped by vm.tapped.collectAsState()
-            val tasks = remember(view.tasks, tapped) {
-                overlay(view.tasks, tapped[s.id].orEmpty())
-            }
-            // Catch this one up first, rather than wherever it falls in the
-            // connection's pass over every session.
-            LaunchedEffect(s.id, connection) {
-                if (connection == Connection.Connected) vm.syncNow(s.id)
-            }
-            TranscriptScreen(
-                title = row?.workspace?.let { projectName(it) }?.ifBlank { s.id } ?: s.id,
-                view = view,
-                synced = row?.synced ?: false,
-                state = row?.state ?: "idle",
-                pending = pending,
-                blocked = blocked,
-                tasks = tasks,
-                compacting = compacting,
-                error = error,
-                // /run is a command, as in the terminal client, not a prompt.
-                onSend = { text ->
-                    val brief = parseRun(text)
-                    val goal = parseGoal(text)
-                    when {
-                        brief != null -> vm.startRun(s.id, brief, view.options.labels)
-                        goal != null -> vm.startGoal(s.id, goal, view.options.labels)
-                        else -> vm.sendPrompt(s.id, text)
-                    }
-                },
-                onTaskDone = { vm.completeTask(s.id, tasks, it) },
-                onResume = { vm.resumeSession(s.id) },
-                onInterrupt = { vm.interruptSession(s.id) },
-                onCompact = { vm.compactSession(s.id) },
-                onContext = { vm.setContext(s.id, it) },
-                onStats = { vm.loadStats(s.id); screen = Screen.Stats(s.id) },
-                onRetryBlocked = { vm.retryBlocked(it) },
-                onDiscardBlocked = { vm.discardBlocked(it) },
-                onBack = { screen = Screen.Sessions },
-                onRun = { vm.startRun(s.id, it, view.options.labels) },
-                onGoal = { vm.startGoal(s.id, it, view.options.labels) },
-                parentTitle = view.options.parent.takeIf { it.isNotBlank() }?.let { parent ->
-                    val home = sessions.firstOrNull { it.row.id == parent }
-                    home?.title?.ifBlank { null } ?: home?.row?.workspace?.let { projectName(it) } ?: parent.takeLast(6)
-                },
-                onOpenParent = { if (view.options.parent.isNotBlank()) screen = Screen.Transcript(view.options.parent) },
-            )
+        is Screen.Transcript -> {
+            val homeView by vm.transcript(s.id).collectAsState()
+            val parsed = remember(homeView.status) { parseStatus(homeView.status) }
+            // A run's or goal's home opens on its status; Chat is a tap away.
+            var chat by remember(s.id) { mutableStateOf(false) }
+            val title = sessions.firstOrNull { it.row.id == s.id }?.row?.workspace?.let { projectName(it) }?.ifBlank { null } ?: s.id
+            if (parsed != null && !chat) {
+                StatusPage(
+                    vm = vm,
+                    home = s.id,
+                    title = title,
+                    parsed = parsed,
+                    connected = connection == Connection.Connected,
+                    sessions = sessions,
+                    onBack = { screen = Screen.Sessions },
+                    onChat = { chat = true },
+                    onOpen = { screen = Screen.Transcript(it) },
+                )
+            } else TranscriptBody(s, vm, sessions, connection, error, compacting,
+                onScreen = { screen = it }, onStatus = parsed?.let { { chat = false } })
         }
+    }
+}
+
+/** A run's or goal's status page, with the numbers it fetches for itself. */
+@Composable
+private fun StatusPage(
+    vm: NabuViewModel,
+    home: String,
+    title: String,
+    parsed: ParsedStatus,
+    connected: Boolean,
+    sessions: List<com.nabu.client.ui.SessionCard>,
+    onBack: () -> Unit,
+    onChat: () -> Unit,
+    onOpen: (String) -> Unit,
+) {
+    // The tree is asked for once a minute while the page is open: often
+    // enough for a run whose steps take minutes, and no more.
+    LaunchedEffect(home, connected) {
+        if (!connected) return@LaunchedEffect
+        while (true) {
+            vm.loadTree(home)
+            delay(60_000)
+        }
+    }
+    val trees by vm.trees.collectAsState()
+    val tree = trees[home] ?: TreeLoad()
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(30_000)
+            value = System.currentTimeMillis()
+        }
+    }
+    when (parsed) {
+        is ParsedStatus.Run -> {
+            val step = parsed.status.session
+            val stepFlow = remember(step) { vm.transcript(step.ifBlank { home }) }
+            val stepView by stepFlow.collectAsState()
+            val row = sessions.firstOrNull { it.row.id == step }?.row
+            val live = if (step.isNotBlank() && row != null) {
+                LiveStep(row.state, stepView.turns, stepView.maxTurns, stepView.contextUsed, row.updatedAt)
+            } else null
+            RunPage(title, parsed.status, tree, live, now, onBack, onChat, onOpen, onOpenGoal = onOpen)
+        }
+        is ParsedStatus.Goal -> GoalPage(title, parsed.status, tree, onBack, onChat, onOpenRun = onOpen)
+        is ParsedStatus.Unsupported -> UnsupportedStatus(title, parsed, onBack, onChat)
+    }
+}
+
+@Composable
+private fun TranscriptBody(
+    s: Screen.Transcript,
+    vm: NabuViewModel,
+    sessions: List<com.nabu.client.ui.SessionCard>,
+    connection: Connection,
+    error: String?,
+    compacting: Boolean,
+    onScreen: (Screen) -> Unit,
+    onStatus: (() -> Unit)?,
+) {
+    CompositionLocalProvider(
+        LocalOpenArtifact provides { line -> onScreen(Screen.Artifact(s.id, line)) },
+    ) {
+        // Remembered per session: a flow asked for afresh on every
+        // recomposition restarts its query, and any event anywhere
+        // recomposes this screen.
+        val rowFlow = remember(s.id) { vm.watchSession(s.id) }
+        val pendingFlow = remember(s.id) { vm.watchPending(s.id) }
+        val blockedFlow = remember { vm.watchBlocked() }
+        val row by rowFlow.collectAsState(initial = null)
+        val view by vm.transcript(s.id).collectAsState()
+        val pending by pendingFlow.collectAsState(initial = emptyList<OutboxRow>())
+        val blocked by blockedFlow.collectAsState(initial = emptyList<OutboxRow>())
+        val tapped by vm.tapped.collectAsState()
+        val tasks = remember(view.tasks, tapped) {
+            overlay(view.tasks, tapped[s.id].orEmpty())
+        }
+        // Catch this one up first, rather than wherever it falls in the
+        // connection's pass over every session.
+        LaunchedEffect(s.id, connection) {
+            if (connection == Connection.Connected) vm.syncNow(s.id)
+        }
+        TranscriptScreen(
+            title = row?.workspace?.let { projectName(it) }?.ifBlank { s.id } ?: s.id,
+            view = view,
+            synced = row?.synced ?: false,
+            state = row?.state ?: "idle",
+            pending = pending,
+            blocked = blocked,
+            tasks = tasks,
+            compacting = compacting,
+            error = error,
+            // /run is a command, as in the terminal client, not a prompt.
+            onSend = { text ->
+                val brief = parseRun(text)
+                val goal = parseGoal(text)
+                when {
+                    brief != null -> vm.startRun(s.id, brief, view.options.labels)
+                    goal != null -> vm.startGoal(s.id, goal, view.options.labels)
+                    else -> vm.sendPrompt(s.id, text)
+                }
+            },
+            onTaskDone = { vm.completeTask(s.id, tasks, it) },
+            onResume = { vm.resumeSession(s.id) },
+            onInterrupt = { vm.interruptSession(s.id) },
+            onCompact = { vm.compactSession(s.id) },
+            onContext = { vm.setContext(s.id, it) },
+            onStats = { vm.loadStats(s.id); onScreen(Screen.Stats(s.id)) },
+            onRetryBlocked = { vm.retryBlocked(it) },
+            onDiscardBlocked = { vm.discardBlocked(it) },
+            onBack = { onScreen(Screen.Sessions) },
+            onRun = { vm.startRun(s.id, it, view.options.labels) },
+            onGoal = { vm.startGoal(s.id, it, view.options.labels) },
+            parentTitle = view.options.parent.takeIf { it.isNotBlank() }?.let { parent ->
+                val home = sessions.firstOrNull { it.row.id == parent }
+                home?.title?.ifBlank { null } ?: home?.row?.workspace?.let { projectName(it) } ?: parent.takeLast(6)
+            },
+            onOpenParent = { if (view.options.parent.isNotBlank()) onScreen(Screen.Transcript(view.options.parent)) },
+            onStatus = onStatus,
+        )
     }
 }

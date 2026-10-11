@@ -675,6 +675,30 @@ class NabuViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val _trees = MutableStateFlow<Map<String, TreeLoad>>(emptyMap())
+
+    /** Each run's or goal's tree of stats, by its home, for the status pages. */
+    val trees: StateFlow<Map<String, TreeLoad>> = _trees.asStateFlow()
+
+    /**
+     * Asks for a home's tree of stats. What was shown stays up while the
+     * next answer comes; a failure is kept beside it, not in its place.
+     */
+    fun loadTree(home: String) {
+        viewModelScope.launch {
+            val c = client ?: run {
+                _trees.value = _trees.value + (home to (_trees.value[home] ?: TreeLoad()).copy(error = "not connected"))
+                return@launch
+            }
+            runCatching { repo.statsTree(c, home) }
+                .onSuccess { _trees.value = _trees.value + (home to TreeLoad(tree = it)) }
+                .onFailure {
+                    val was = _trees.value[home] ?: TreeLoad()
+                    _trees.value = _trees.value + (home to was.copy(error = it.message ?: "could not load the stats"))
+                }
+        }
+    }
+
     private val _overall = MutableStateFlow(OverallStatsState())
 
     /** The stats screen across sessions (spec 7.25). */
