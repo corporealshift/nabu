@@ -1,31 +1,53 @@
 # nabu
 
-A self-contained, custom, multiplatform coding harness built in Go.
+A coding agent built to get real work out of a local model. It ships as one Go binary
+containing a daemon, a terminal UI and a headless CLI, plus an Android client that
+connects to the daemon.
 
-Nabu was the Mesopotamian god of scribes and record-keeping. The name is the design:
-every session is an append-only log, and every request to the model is built from that
-log. Most of what follows falls out of it.
-
-I built it because I wanted a Claude Code-like experience that I own outright. There is
-no plugin system and no extension API, because there is nothing to extend around: if it
-should behave differently, I change it. The source is the customisation layer.
+Nabu was the Mesopotamian god of scribes and record-keeping. Every session is an
+append-only log, and every request to the model is built from that log.
 
 > **Status:** early, and built for one person's daily use. It drives a local model
-> through real work every day. Interfaces still move and there is no release or
-> installer: both clients are built from source.
+> through real work every day. Interfaces still change, and there is no release or
+> installer: you build both clients from source.
 
-## Requirements
+## Why nabu
 
-- Go 1.26 or newer
-- An OpenAI-compatible model endpoint. A local `llama-server` works; so does anything
-  that speaks the same API.
-- Git, optionally. Without it you lose memory versioning and some reporting, nothing
-  else.
+Most coding agents assume a frontier model that follows a long workflow and knows when
+it's done. A local model like Qwen3.6-35B-A3B does neither reliably. It drifts from the
+task, repeats itself, and says it has finished when it hasn't. nabu is built around those
+failures.
 
-Developed on Windows, with the tests run on macOS and Linux in CI too. The daemon and
-CLI are pure Go with no cgo, so they build and cross-compile anywhere Go runs.
+- **It doesn't take the model's word for it.** When the agent says it's done, stop gates
+  check for open tasks, failed checks, a failing test command, and uncommitted changes.
+  When a goal is set, a judge with a fresh context checks that too. Any objection sends
+  the agent back to work.
+- **It takes work all the way to a merged PR.** `nabu runner` puts each brief through
+  fixed steps: plan, write the check (`verify.sh`) before any code, tasks, fixes until the
+  check passes, a pull request, and fixes until CI is green. The model never has to
+  remember the workflow, because each step is its own short session. A goal is broader:
+  nabu splits it into briefs and runs them in rounds until a check finds the goal met.
+- **The local model does the bulk of the work; Claude reviews.** Claude reviews the plan,
+  the check and the finished work. It also steps in when a session stalls, and it can run
+  your tests to see the failure for itself. So your Claude allowance goes on a few
+  judgment calls, and the local model does the many turns of work.
+- **Sessions live in the daemon, not the terminal.** Close the terminal and the work goes
+  on. Reattach from the terminal UI or your phone, answer the agent's questions from
+  either, and get a notification when a run finishes or needs you.
+- **It remembers.** A curator keeps facts worth keeping in a git-backed memory, and the
+  agent keeps working notes that carry a task across sessions and then expire.
+- **You own it.** It's one binary with no runtime to install, and it builds for Windows,
+  macOS and Linux. There's no plugin system: policy is Go modules compiled in, so to
+  change how it behaves, you change the source.
 
 ## Install
+
+You need:
+- Go 1.26 or newer;
+- an OpenAI-compatible model endpoint, such as `llama-server`.
+
+Git is optional, but memory versioning and runs need it. Runs also need the `claude` CLI,
+and `gh` to open pull requests.
 
 ```bash
 git clone https://github.com/corporealshift/nabu
@@ -33,33 +55,19 @@ cd nabu
 go install ./cmd/nabu
 ```
 
-That puts `nabu` in your Go bin directory, which you may need to add to your PATH.
+That puts `nabu` in your Go bin directory. To upgrade, run `nabu daemon stop` first,
+because a running daemon holds the binary open. To build for other platforms, use
+`./scripts/build-release.sh 0.1.0`. It cross-compiles for macOS, Linux and Windows into
+`dist/`. Nothing is signed. On macOS, a binary downloaded through a browser needs
+`xattr -d com.apple.quarantine nabu` before it will run.
 
-When you upgrade later, stop the daemon first with `nabu daemon stop`. A running
-daemon holds the binary open and the install will fail.
+## Quick start
 
-### Building for another machine
-
-`scripts/build-release.sh` cross-compiles into `dist/` for macOS on Apple silicon and
-Intel, Linux on x86-64 and arm64, and Windows. Any one machine builds all of them.
-
-```bash
-./scripts/build-release.sh 0.1.0
-```
-
-Nothing is code-signed or notarised. On macOS a binary you built or copied across runs
-without complaint; one downloaded through a browser is quarantined and needs
-`xattr -d com.apple.quarantine nabu` first.
-
-## Configure
-
-nabu keeps everything under `~/.nabu`. Create `~/.nabu/config.json`:
+Create `~/.nabu/config.json`:
 
 ```json
 {
-  "daemon": {
-    "default_model": "local/my-model"
-  },
+  "daemon": { "default_model": "local/my-model" },
   "providers": {
     "local": {
       "base_url": "http://localhost:8033/v1",
@@ -70,336 +78,153 @@ nabu keeps everything under `~/.nabu`. Create `~/.nabu/config.json`:
 }
 ```
 
-That is the minimum. Two things to know:
+`default_model` is `provider/model`: `local` picks the provider block, and the rest is
+sent to the server as the model name. Always set `context_window`. Without it, nabu never
+compacts, and a long session grows until the server refuses it.
 
-- **`default_model` is `provider/model`.** The part before the slash picks the provider
-  block; the rest is sent to the endpoint as the model name.
-- **Set `context_window`.** Without it nabu cannot tell how full the context is, so it
-  never compacts, and a long session grows until your model refuses the request. It is
-  also what the clients read to show how full the window is, and they say nothing rather
-  than guess when it is unset.
-
-One more is worth knowing about. **`max_tokens`** caps a single reply, 16384 unless set,
-and never more than the context has room for. A local model that falls into a loop
-otherwise writes until the ten-minute timeout, and the turn is lost. A hosted API that
-allows less output than 16384 refuses the request outright, so set it lower there.
-**`repeat_limit`** stops a reply sooner when the model starts writing one passage over
-and over: 8 copies in a row of the same 40 bytes or more, unless set, and a negative value
-turns it off. The copies are not logged, and the session blocks for you to look. Thinking
-that repeats is only trimmed from the log; the turn goes on, and a server's reasoning
-budget or the reply cap ends it.
-
-**Compaction** runs in two stages as the context fills. At 70% of the window, old tool
-results are swapped for one-line stubs. At 85%, the conversation is summarized. Three
-settings per provider change that:
-
-- **`normal_window`**: the window a normal session compacts against, smaller than
-  `context_window`. A large session uses all of `context_window`.
-- **`clear_at`**: the fraction at which results are cleared. Below 0 means never.
-- **`summarize_at`**: the fraction at which the conversation is summarized.
-
-For a local server, this is a good start:
-
-```json
-"local": { "context_window": 128000, "normal_window": 64000, "clear_at": -1 }
-```
-
-Clearing changes messages a few turns back, so a local server's prompt cache misses and
-it reprocesses everything after them. It also takes away files the model read only a
-few turns earlier, which it then reads again. On a 400-turn session, measured, clearing
-fired every 4 or 5 turns and freed about one turn's growth each time. Summarizing
-earlier keeps the context short, where a local model is fastest.
-
-Unknown fields are rejected rather than ignored, so a typo fails loudly at startup
-instead of silently doing nothing.
-
-### Reading another repository
-
-A session is bound to one workspace, and writing never leaves it. Reading can, if you
-list the repositories it may read. Add a `modules.builtins` block:
-
-```json
-{
-  "modules": {
-    "builtins": {
-      "workspaces": {
-        "nabu": "C:/Users/you/projects/nabu",
-        "mealemon-web": "C:/Users/you/projects/mealemon-web"
-      }
-    }
-  }
-}
-```
-
-`read`, `glob` and `grep` then take an optional `workspace` naming one of these, and
-hits come back relative to that repository's root so the model can pass a path straight
-back. With nothing configured the argument does not appear in the tools' schemas at all,
-so the model is never offered an ability the daemon has not been given.
-
-**Writes never cross.** `write`, `edit` and `bash` do not take the argument and stay in
-the session's workspace. Reading another repository is a convenience with a bounded
-blast radius; writing to one is not.
-
-The list is names, not paths the model supplies: there is no spelling of a name that
-reaches a directory you did not list, and a path that climbs out of a named root with
-`../` is refused.
-
-### Asking Claude
-
-nabu can fetch a second opinion for itself, instead of you carrying the message. The
-`claude.ask` tool runs the `claude` CLI in the session's workspace, so Claude reads the
-same repository nabu is working in — the diff, the spec, the code.
-
-It appears only when `claude` is on PATH. To tune it, add a `modules.claude` block:
-
-```json
-{
-  "modules": {
-    "claude": {
-      "enabled": true,
-      "timeout_seconds": 300,
-      "model": "",
-      "allowed_tools": ["Read", "Grep", "Glob"]
-    }
-  }
-}
-```
-
-**The reviewer is read-only.** `allowed_tools` defaults to reading only, because a
-reviewer that can quietly edit the repository removes the one thing a review is for — that
-somebody else looked and did not touch it. Verified rather than assumed: asked to create a
-file under these flags, Claude reports the write blocked and no file appears.
-
-By default Claude cannot run your tests either. To let it, name the commands it may run:
-
-```json
-{ "modules": { "claude": { "commands": ["bash gradlew.sh", "go test", "go vet"] } } }
-```
-
-Each becomes a `Bash(<command> *)` and a `PowerShell(<command> *)` rule for the CLI, since
-on Windows Claude may run it through either. Claude can run those, and nothing else, and
-still cannot change a file. A command that would allow anything, such as a bare
-`bash` or `pwsh -Command`, is refused and logged. When nabu asks on its own (below), the
-model keeps working in the same checkout, so Claude's build and the model's can overlap;
-one usually waits on the other's lock.
-
-It uses whatever `claude` login is on the machine, so it spends your Claude Code
-allowance. Each call is slow and real money, from a process you are not watching — the
-timeout bounds one call, nothing bounds how many a run makes. Set `enabled: false` to turn
-it off.
-
-**nabu also asks on its own when a session has gone on too long.** After 100 turns since
-anyone last sent the session a message — you, or a runner's prompt — it asks Claude what
-is going wrong, in the background, while the model keeps working. The question carries
-the task, what the model has been saying, what keeps failing and the files it keeps
-changing. The answer lands in the conversation as an ordinary `claude.ask` call, so the
-model reads it and the transcript and Stats show it. It asks again at 200, then stops
-asking. Any message to the session starts the count again. Sessions in `ask` permission
-mode are left alone: you are there to be asked.
-
-```json
-{ "modules": { "claude": { "auto_ask_after": 100, "auto_ask_max": 2 } } }
-```
-
-`auto_ask_after: 0` turns it off. Each ask spends allowance like any other call.
-
-### Working notes
-
-The agent keeps notes on what it worked out in a repository — dead ends, why one thing
-has to happen before another, how far through a refactor it got. They outlive the
-session, so a multi-session task picks up where it left off, and they expire on their
-own so they do not become a second memory.
-
-Notes are named by the agent, many per repository, so an effort gets its own:
-
-```
-notes.write("simplefin-sync-refactor", "...")
-```
-
-While the work continues the agent rewrites that note, which resets its clock; when the
-work stops nobody touches it and it ages out. Default is 14 days. Add a `modules.notes`
-block to change it:
-
-```json
-{
-  "modules": {
-    "notes": {
-      "enabled": true,
-      "expire_days": 14,
-      "max_bytes": 4096
-    }
-  }
-}
-```
-
-**Reading them yourself.** They are plain markdown at
-`~/.nabu/notes/ws/<workspace-key>/<name>.md`, so you can open, grep or diff them like
-anything else. Or:
-
-```
-nabu notes           # this repository's notes
-nabu notes --all     # every repository's
-```
-
-A note belongs to the repository, not the directory: the workspace key is the same
-across worktrees and subdirectories of one repo, so notes follow the project rather
-than wherever you happened to start the session.
-
-Not to be confused with memory, which is for facts you told the agent that the code
-does not record and which stay true indefinitely. A note is working state, and working
-state goes stale — the age beside each one is there so you can see when it has.
-
-### Noticing changes you make yourself
-
-If you edit the workspace from another terminal while a session is running, the agent
-is told. Before each request the daemon compares the workspace against a snapshot taken
-at the previous turn boundary and, when something moved, appends a `context` event
-listing the paths.
-
-It is on by default. To tune or disable it, add a `modules.watch` block:
-
-```json
-{
-  "modules": {
-    "watch": {
-      "enabled": true,
-      "max_files": 20000,
-      "max_reported": 20
-    }
-  }
-}
-```
-
-The agent's own `write` and `edit` calls are suppressed, so it is told about your edits
-and not its own. Every dotted file and directory (`.git`, `.env`, `.gradle`, editor swap
-files) is skipped, as are `node_modules`, `build`, `target` and `vendor`, so
-a compile does not look like the repository being rewritten. A workspace holding more
-than `max_files` files is not scanned at all, and says so in the daemon log rather than
-paying for a walk on every request.
-
-It never interrupts a turn: changes that land mid-turn appear in the next request.
-
-### Pages the agent makes
-
-When showing is clearer than telling (a chart of test timings, a table to sort, a diagram)
-the agent can make a page with the `artifact` tool. The transcript says so: press `o` in the
-terminal UI to open the newest in your browser (`/open <name>` for another), or tap Open on
-the phone. A page can run its own scripts but cannot reach the network at all, so a page the
-model was steered into writing cannot call home or talk to the daemon. On by default; turn it
-off with `{ "modules": { "artifact": { "enabled": false } } }`.
-
-### Cleaning up sessions
-
-A session nothing has happened in for three days is archived: it leaves the list, the
-daemon stops loading it at start, and the phone stops mirroring it. Nothing in it is
-deleted. Archive one yourself with `nabu archive <id>`, `/archive` in the terminal UI, or a
-long press in the phone's list, and bring one back with `nabu restore <id>`, `tab` in the
-terminal UI's session picker, or Archived on the phone. A running session is never archived.
-
-To change the wait, or turn it off with 0:
-
-```json
-{ "daemon": { "archive_after_days": 7 } }
-```
-
-### How much work a session was
-
-`/stats` in the terminal UI, or Stats in a session's top bar on the phone, shows turns,
-prompts, time spent working, tokens in and out, how the context grew turn by turn and
-where compaction cut it back, which tools were used and how often they failed, the files
-read over and over (a first sign of going round in circles), and tokens per day across
-every session. `nabu stats <id>` prints the same as JSON for your own analysis, and
-`nabu stats` prints the days.
-
-### Asking a question
-
-Ask the agent something ("what's the status here?", "why did it stop?") and it answers
-rather than taking the question as a cue to carry on with the work. On a turn where your
-last message only asks, the agent may read files and run commands to find the answer, but
-an edit, a commit or another change to the workspace waits for you to approve it, with a
-prompt that says so. Any request in the message ("can you…", "please…", "fix…") makes it
-an ordinary turn. Nothing changes inside a run with a goal.
-
-On by default. To turn it off:
-
-```json
-{ "modules": { "answer": { "enabled": false } } }
-```
-
-### Searching the web
-
-Off until you give it a key. Add a `modules.web` block:
-
-```json
-{
-  "modules": {
-    "web": {
-      "provider": "brave",
-      "brave_api_key": "...",
-      "tavily_api_key": "..."
-    }
-  }
-}
-```
-
-Two services, because they answer different questions:
-
-- **Brave** returns an index's links and snippets, which the model follows with
-  `web.fetch`. The free tier needs an account but no card.
-- **Tavily** is built for agents: it returns cleaned page text and often a direct
-  answer, so a search costs fewer follow-up fetches.
-
-Configure both and **the agent chooses per search**, by what it wants back rather than
-by which company it asks: `mode: "links"` for ranked sources to follow with `web.fetch`,
-`mode: "answer"` for a read reply to a small factual question. The choice only appears
-in the tool's schema when both keys are configured, so the model is never offered a
-decision it cannot act on.
-
-`provider` is the default for a search that names no mode, not a restriction. With one
-key, that service answers everything and the mode parameter is not offered. With
-neither key the module offers no tools at all, rather than a tool that fails the first
-time the model reaches for it.
-
-`web.fetch` reads http and https only, caps a page at 200 KB, and is classed
-medium-risk: what comes back is whatever the page decided to say.
-
-## Use it
+Then, in a repository:
 
 ```bash
 nabu
 ```
 
-That's the whole thing. It creates a session in the current directory, starts a daemon
-if one isn't running, and opens the terminal UI.
+This starts a daemon if none is running, creates a session in the current directory, and
+opens the terminal UI.
+
+## Recommended setup: Qwen3.6-35B-A3B
+
+This is the setup nabu is developed and run with every day. Run llama-server like this:
+
+```bash
+llama-server -m Qwen3.6-35B-A3B-UD-Q4_K_XL-MTP.gguf \
+  --spec-type draft-mtp --spec-draft-n-max 2 \
+  --fit on --fit-ctx 128000 -np 1 \
+  -fa on -ctk q8_0 -ctv q8_0 -b 1024 -ub 1024 \
+  --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0.0 --presence-penalty 1.5 \
+  --reasoning-budget 4096 --reasoning-budget-message "... thinking budget exceeded, let's answer now." \
+  --chat-template-kwargs '{"preserve_thinking": true}' \
+  --port 8033
+```
+
+- **The sampling settings and `preserve_thinking`** follow the
+  [model card](https://huggingface.co/Qwen/Qwen3.6-35B-A3B)'s advice for thinking mode
+  and agents. The presence penalty makes the model less likely to repeat itself.
+- **`--reasoning-budget`** stops the model thinking forever.
+- **`-np 1`**: one slot, so one request at a time. nabu's `max_in_flight` defaults to 1 to
+  match.
+- **The MTP build with `draft-mtp`** speeds up generation by drafting tokens
+  speculatively. Without an MTP model file, leave both `--spec` flags out.
+
+Then set up nabu.
+
+**`~/.nabu/config.json`**:
+
+```json
+{
+  "daemon": { "default_model": "local/qwen3.6-35b-a3b" },
+  "providers": {
+    "local": {
+      "base_url": "http://localhost:8033/v1",
+      "api_key": "none",
+      "context_window": 128000,
+      "normal_window": 64000,
+      "clear_at": -1
+    }
+  },
+  "modules": {
+    "verify": { "command_timeout": 900 },
+    "claude": {
+      "commands": ["go test", "go vet", "bash gradlew.sh"],
+      "auto_ask_after": 50
+    }
+  }
+}
+```
+
+**`~/.nabu/runner/config.json`**:
+
+```json
+{ "work_turns": 130, "goal_rounds": 10 }
+```
+
+Why these values:
+
+- **Context: `normal_window: 64000` and `clear_at: -1`.** These summarize the
+  conversation at 85% of 64k, and never clear old tool results. Clearing results breaks
+  the local server's prompt cache, and the model just reads the same files again. A short
+  context is where this model is fastest.
+- **Asking Claude: `auto_ask_after: 50`.** Half of all work sessions in past runs
+  finished within 42 turns, but about one in five ran past 150. The long ones we looked
+  at closely were stuck on one thing an outside look fixed: a test asserting the wrong
+  thing, or failure output cut off by `| tail`. At 50 turns nabu asks Claude what's going
+  wrong, and asks again at 100. The model keeps working meanwhile, and nothing is stopped.
+- **`claude.commands`** lets Claude run your build and tests. Name the commands your
+  projects use.
+- **Turn cap: `work_turns: 130`.** Each work session gets two rounds of help before the
+  cap. A session that hits it is retried once from a clean start. If it fails again, the
+  goal re-plans that work, usually as smaller runs.
+- **Rounds: `goal_rounds: 10`.** When one run fails, the rest of its round is dropped and
+  the goal re-plans. With 10 rounds, a goal can recover from a few failures overnight
+  without stopping to wait for you.
+- **`command_timeout: 900`** gives an Android or Rust build time to finish.
+
+Runs and goals need the `claude` CLI on PATH, logged in to Claude Code. A run never
+skips its reviews, so without the CLI the runner won't start one. Interactive sessions
+work without it, but they get no `claude.ask` and no automatic asks.
+
+## Using it
+
+### The terminal UI
 
 | Key | What it does |
 |---|---|
 | `i` | Type a prompt |
 | `s` | Switch sessions |
 | `t` | Show or hide the model's thinking |
+| `o` | Open the newest page the agent made |
 | `y` / `n` | Answer a permission prompt |
 | `ctrl+x` | Interrupt the current turn |
 | `g` / `G` | Jump to the top or bottom of the transcript |
 | `?` | List every key |
-| `q` | Quit, leaving the run going |
+| `q` | Quit, leaving the session running |
 
-When the agent asks you something, the question takes the screen: a number picks one of
-the offered answers, or type your own and press enter. Everything else you type goes
-into the answer, so `q` does not quit while one is on screen.
+When the agent asks you something, the question takes over the screen. Type a number to
+pick one of the offered answers, or type your own and press enter.
 
-In the composer, a line starting with `/` is a command rather than a prompt: `/run
-[text]` hands the session to the runner, `/goal [text]` hands it a broad goal that the
-runner breaks into runs and checks until it is met, `/compact` summarises the history now instead
-of waiting for the automatic pass, `/context large` lets the session fill the model's whole
-window before it is summarised (and `/context normal` puts it back), `/stop` ends the
-session, `/sessions` switches, `/help` lists them. A run or goal started from a large
-session makes all of its sessions large.
+A line starting with `/` is a command:
 
-`/compact` is refused while a turn is running — compaction rewrites what the next
-request is built from, so interrupt with `ctrl+x` first.
+| Command | What it does |
+|---|---|
+| `/run [text]` | Hand the work to the runner, as one brief that becomes one PR |
+| `/goal [text]` | Hand the runner a broader goal, split into runs until it's met |
+| `/compact` | Summarize the history now (interrupt a running turn first) |
+| `/context large` | Let the session fill the whole window before summarizing; `/context normal` undoes it |
+| `/stats` | Turns, tokens, how the context grew, tool failures, files read over and over |
+| `/open <name>` | Open a page the agent made |
+| `/archive`, `/stop`, `/sessions`, `/help` | What they say |
 
-Quitting does not stop the run. Reopen with `nabu --session <id>` or press `s` and pick
-it.
+Quitting doesn't stop the session. Reopen it with `nabu --session <id>`, or press `s` and
+pick it.
+
+### Runs and goals
+
+`/run` and `/goal` only queue the work. The runner does it:
+
+```bash
+nabu runner
+```
+
+Leave it running. It does one run at a time, and polls every two minutes. Each run works
+in its own worktree on its own branch, and opens a PR labeled `nabu`. A goal's runs merge
+into the goal's branch, and the goal opens one PR at the end. The steps and settings are
+described in [docs/configuration.md](docs/configuration.md#the-runner).
+
+With `~/.nabu/github/config.json`, the runner also:
+- reviews open pull requests;
+- answers review comments on PRs labeled `nabu`;
+- starts a run for each issue labeled `nabu`.
+
+To run only those GitHub jobs, use `nabu github`.
 
 ### Headless
 
@@ -407,314 +232,45 @@ it.
 nabu run "add a health endpoint and a test for it"
 ```
 
-Runs to completion, prints a report, and exits with a status that says what happened:
-0 completed, 1 blocked, 2 paused, 3 error. Good for scripting, and for handing work to
-nabu from another agent.
+This runs to completion and prints a report. The exit status says how it ended: 0
+completed, 1 blocked, 2 paused, 3 error.
 
-### The rest
+### Other commands
 
 ```bash
-nabu status            # list sessions
-nabu status <id>       # one session's state
+nabu status [id]       # list sessions, or show one
 nabu attach <id>       # stream a session's events
 nabu stop <id>         # end a session
-nabu resume <id>       # resume a paused one
+nabu resume <id>       # resume a paused session
+nabu archive <id>      # put a session away; nabu restore <id> brings it back
+nabu notes [--all]     # the agent's working notes for this repository
+nabu stats [id]        # a session's numbers as JSON, or tokens per day
 nabu daemon            # run the daemon in the foreground
 nabu daemon stop       # stop it
 ```
 
-## Why it looks like this
-
-**Self-contained.** One binary. No Node, no Python, no runtime to install, nothing
-downloaded at startup. The daemon, the terminal UI and the headless CLI are the same
-executable, and the only hard dependency is a model endpoint to talk to.
-
-**Custom.** Policy lives in Go modules compiled into that binary: what the agent is
-allowed to run, when it is allowed to stop, what it remembers. Adding behaviour means
-adding a file and a line to a list, not learning an extension format that someone
-designed for a general case I do not have.
-
-**Multiplatform,** in two senses. It builds for macOS, Linux and Windows, and the tests
-run on all three in CI. And a session is not tied to whatever is looking at it: a
-daemon owns the sessions and clients attach to it, so the terminal is not the only way
-in.
-
-## How a request travels
-
-Everything is an append-only log of events. The daemon owns it, clients read it, and
-nothing else is the truth: a client that reconnects replays from the log rather than
-being told what it missed.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor You
-    participant Client as TUI or phone
-    participant Daemon
-    participant Log as session log
-    participant Model
-    participant Judge as judge · fresh context
-
-    You->>Client: a prompt
-    Client->>Daemon: nabu.session.send_prompt
-    Daemon->>Log: append message
-    Log-->>Client: event
-
-    loop until every stop gate agrees
-        Daemon->>Log: read it back
-        Note over Daemon: assemble the request from<br/>the log alone
-        Daemon->>Model: system prompt, log, tools
-        Model-->>Daemon: reasoning, text, tool calls
-        Daemon->>Log: append thinking, then message
-        Log-->>Client: events
-
-        opt the model asked for a tool
-            Note over Daemon: modules may refuse,<br/>or ask you first
-            Daemon-->>Client: permission request
-            Client-->>Daemon: approve or deny
-            Daemon->>Log: append tool_call, tool_result
-            Log-->>Client: events
-        end
-
-        opt the model says it is done
-            Note over Daemon: the cheap checks first:<br/>open tasks, failed checks,<br/>the project gate, a clean tree
-            opt a run goal is set
-                Daemon->>Judge: the goal, the tasks,<br/>a window of transcript
-                Judge-->>Daemon: met, unmet or impossible
-            end
-            alt any gate objects
-                Daemon->>Log: append stop_veto
-                Log-->>Client: event
-                Note over Daemon: round again
-            end
-        end
-    end
-
-    Daemon->>Log: append report
-    Log-->>Client: event
-```
-
-The loop is the part worth understanding. The model does not decide when it has
-finished: it says so, and the stop gates are asked whether that is true. Any objection
-appends a veto and sends it back round. That is why the same session can keep working
-after you close the terminal, and why two clients can watch it at once — neither is
-driving it.
-
-The last of those gates is another model. When a run has a goal, the judge is given the
-condition, the tasks and a window of transcript — never the loop's own history, so it is
-not being asked to agree with itself — and answers met, unmet or impossible. It is a
-second model call on every stop attempt, which is why the mechanical checks are asked
-first: a stop that is obviously wrong should never cost one. A judge call that fails or
-answers in the wrong shape counts as unmet, because a judge that fails open would make
-the whole mechanism theatre.
-
-## What it actually does
-
-**It refuses to claim it is done when it isn't.** When the agent thinks it has
-finished, a stop gate asks whether tasks are still open, whether the project's test
-command passes, whether this session left uncommitted changes, and whether the stated
-goal was met. Any objection sends it back to work. The model's account of its own
-success is not treated as evidence.
-
-**It remembers between sessions.** After a session ends, a curator asks whether
-anything in it is worth keeping and writes what it finds as markdown under
-`~/.nabu/memory`. The next session on that repository starts already knowing. That
-directory is a git repository, so you can read, diff and revert whatever it chose to
-remember.
-
-**The run outlives the window.** Quit the terminal UI and the agent keeps working.
-Reattach and the transcript replays from where you left off. Two clients can watch the
-same session at once.
-
-**It only interrupts for things that matter.** A guard judges a command by what it
-would do rather than what it is called. `rm -rf build` runs. `rm -rf /etc` asks.
-
-**It asks instead of guessing.** When the work genuinely forks and the choice is yours
-— which of two designs, which file you meant, whether to do something that cannot be
-undone — the agent can put the question to whichever client is attached, phone included,
-and waits. The first answer wins. This is separate from permission, which is asked for
-it rather than by it.
-
-## What the agent can do
-
-Built-in tools: `read`, `write`, `edit`, `glob`, `grep`, `bash`, and `task.update` for
-its own task list. Modules add `skill.load`, `memory.recall`, `memory.save`,
-`memory.forget`, and `ask`. With a key configured, `web.search` and `web.fetch` as well.
-
-## Making it yours
-
-Everything below is optional. nabu works with none of it.
-
-### Your test command
-
-```json
-{ "modules": { "verify": { "command": "go build ./... && go test ./..." } } }
-```
-
-It runs only when the turn changed something, so a question or a turn that only read
-files is never held up by a build it did not touch.
-
-How hard nabu holds the agent to it depends on whether anyone is watching. In an
-ordinary session, when the agent finishes a turn that changed files, nabu reminds it
-once: what is uncommitted or unpushed, whether the branch has a pull request, which
-tasks are still open, and what the gate said. It asks the agent to commit and open a
-PR if the work is finished, or to say what is left if it is not, and then lets it stop.
-In a session with a goal, which the runner gives each of its work sessions, nobody is
-there to say "carry on", so the agent cannot finish while the command fails, the tree
-is dirty, or tasks are open.
-
-A gate for one repository goes under `commands`, keyed by its path. It replaces
-`command` there, and an empty string turns the gate off for that repository:
-
-```json
-{ "modules": { "verify": { "commands": {
-  "C:/src/app": "cd android && ./gradlew.sh :app:assembleDebug :app:testDebugUnitTest"
-} } } }
-```
-
-A gate runs for up to `command_timeout` seconds (default 300). Raise it for a slow build.
-
-### Memory
-
-On by default. To seed it from an existing Claude Code memory directory, read-only:
-
-```json
-{ "modules": { "memory": { "import_dirs": ["~/.claude/projects/<project>/memory"] } } }
-```
-
-Turn the automatic writing off with `"curator": false` and the `memory.save` tool still
-works when the model chooses to use it.
-
-### Skills
-
-Markdown instructions the agent can load on demand. It reads `~/.claude/skills` and
-`~/.nabu/skills` by default; point it elsewhere with
-`{"modules": {"skills": {"paths": ["..."]}}}`.
-
-A skill can name the files it covers with a `paths:` line in its frontmatter, a
-comma-separated list of globs such as `**/*.gradle.kts, **/AndroidManifest.xml`. The first
-time the agent touches a matching file without having loaded the skill, it is told to
-load it. Claude Code ignores the key.
-
-### Permission mode
-
-Sessions default to `auto`: the guard decides, and only genuinely dangerous calls reach
-you. `ask` prompts for everything, `bypass` for nothing. Per session, not global.
-
-### Budgets
-
-```json
-{ "budget": { "max_turns": 100 } }
-```
-
-Turns are the unit. A run that exhausts its budget pauses rather than dying, and
-`nabu resume` continues it.
-
-## Clients
-
-- **Terminal UI** — the default, in this repo, built with the daemon.
-- **Headless CLI** — `nabu run`, same binary.
-- **Android** — Kotlin and Compose, under `clients/android`. Sessions, a transcript
-  with markdown, the model's thinking, tasks, permission prompts and questions, and an
-  outbox that holds a prompt written with no signal and sends it when there is one.
-  Built and installed from source; there is no release.
-- **Desktop GUI** — a later milestone, not started.
-
-The protocol is JSON-RPC over WebSocket and is specified in `protocol/spec.md` with
-conformance vectors, so a client can be written in anything.
-
-## Remote access
-
-The daemon binds to loopback by default. To reach it from a phone, bind wider and set a
-token:
-
-```json
-{ "daemon": { "bind": "0.0.0.0:8737", "token": "a-long-random-string" } }
-```
-
-A connection from anywhere but loopback is refused without that token. This matters:
-the daemon runs shell commands in your repositories. Use Tailscale or a comparable
-private network rather than exposing the port.
-
-## Phone notifications
-
-The daemon can tell your phone when something needs you:
-- a question is waiting;
-- a run or a goal finished, failed or blocked;
-- a session stopped on an error;
-- a turn longer than a minute finished.
-
-Step sessions never notify on their own: their run or goal does. Notifications carry
-identifiers and states only, and the phone writes the words from its own copy of the
-sessions.
-
-They go through Firebase Cloud Messaging, which needs a project of your own:
-
-1. In the [Firebase console](https://console.firebase.google.com), create a project, then
-   add an Android app with the package name `com.nabu.client`. Download its
-   `google-services.json` to `clients/android/app/`. It is git-ignored.
-2. In **Project settings → Service accounts**, generate a new private key. Save it as
-   `~/.nabu/fcm-service-account.json`, and point the config at it:
-
-   ```json
-   { "notify": { "service_account": "fcm-service-account.json" } }
-   ```
-
-3. Rebuild and install the app (`clients/android/gradlew.sh :app:assembleDebug`), and
-   restart the daemon. The app asks to show notifications, and registers itself each
-   time it connects.
-
-`notify.labels` sets which labels notify. The default is `run:done`, `run:failed`,
-`goal:done` and `goal:blocked`. `notify.done_after_seconds` sets the shortest turn whose
-end notifies; the default is 60. Without `google-services.json` the app builds and runs,
-and is never notified.
-
-## Where things live
-
-```
-~/.nabu/
-  config.json
-  sessions/     one append-only .jsonl per session
-  memory/       markdown, and a git repository
-  skills/
-  modules/      whatever a module keeps for itself
-  daemon.log    beside daemon.pid and daemon.port
-  devices.json  the phones that asked to be notified
-```
-
-Session logs are plain JSON lines. You can read one with `cat`, and nothing is hidden
-from you.
-
-## Measuring it
-
-`bench/` runs the same tasks through nabu, pi and Claude Code and reports what each one
-completed, what it cost, and how the diff reads.
-
-```bash
-go run ./cmd/nabubench                  # nabu against pi, the whole suite
-go run ./cmd/nabubench --claude         # add the reference, and spend Claude quota
-```
-
-Never in CI, and there is no pass mark: the exit code says the suite ran, not that
-anything did well. Tasks are split into a `basic` tier that confirms a harness works at
-all and a `hard` tier meant to tell good ones apart, and some keep part of their check
-back until the harness has finished — a check the agent can run is a check it can grind
-against, which measures persistence rather than understanding. `bench/README.md` has the
-rest.
+## More
+
+- [docs/configuration.md](docs/configuration.md): every setting. This covers models,
+  compaction, budgets, each module, the runner and the GitHub jobs.
+- [docs/android.md](docs/android.md): the phone client, remote access and notifications.
+- [docs/how-it-works.md](docs/how-it-works.md): the session log, stop gates, permission,
+  memory and the tools.
+- [ARCHITECTURE.md](ARCHITECTURE.md): the map and its invariants. Every design decision is
+  under `docs/specs/`.
+- [bench/README.md](bench/README.md) runs the same tasks through nabu, pi and Claude
+  Code, and compares the results.
 
 ## Contributing
 
-Read `ARCHITECTURE.md` first; it is short and states the invariants. The full design,
-including every rejected alternative, is under `docs/specs/`.
-
-The gate, which CI runs on Linux, macOS and Windows:
+Read `ARCHITECTURE.md` first. The gate, which CI runs on Linux, macOS and Windows:
 
 ```bash
 go build ./... && go vet ./... && go test ./... && gofmt -l .
 ```
 
-Policy belongs in a module under `daemon/modules/`, not in the daemon core. Changing
-the protocol means changing the spec, the JSON schema and a conformance vector together.
+Policy belongs in a module under `daemon/modules/`, not in the daemon core. Changing the
+protocol means changing the spec, the JSON schema and a conformance vector together.
 
 ## Licence
 
