@@ -76,7 +76,7 @@ func (m *Module) consolidate(ctx context.Context, s module.Session) {
 		Model:     m.CuratorModel,
 		System:    consolidateSystem,
 		Messages:  []module.Message{{Role: "user", Content: consolidatePrompt(own)}},
-		MaxTokens: 1500,
+		MaxTokens: m.CuratorMaxTokens,
 	})
 	if err != nil {
 		m.log.Warn("memory: the consolidation pass failed", "error", err)
