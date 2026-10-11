@@ -72,6 +72,12 @@ class ProjectionTest {
                 val g = requireNotNull(got.goal) { "$name: expected a goal" }
                 assertEquals("$name goal state", it.jsonObject["state"]!!.jsonPrimitive.content, g.state)
             }
+            want["status"]?.let {
+                val st = requireNotNull(got.status) { "$name: expected a status" }
+                assertEquals("$name status kind", it.jsonObject["kind"]!!.jsonPrimitive.content, st.kind)
+                assertEquals("$name status source", it.jsonObject["source"]!!.jsonPrimitive.content, st.source)
+                assertEquals("$name status data", it.jsonObject["data"]!!.jsonObject, st.data)
+            }
         }
     }
 

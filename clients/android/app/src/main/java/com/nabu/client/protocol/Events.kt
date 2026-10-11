@@ -168,6 +168,17 @@ data class ContextData(
     val content: String = "",
 )
 
+/**
+ * What a client is doing in a session, for people: the runner's run or goal.
+ * [data] is the runner's own shape, kept raw here and read by Status.kt.
+ */
+@Serializable
+data class StatusData(
+    val source: String = "",
+    val kind: String = "",
+    val data: JsonObject = JsonObject(emptyMap()),
+)
+
 /** Event type names, matching protocol/types.go. */
 object EventType {
     const val SESSION = "session"
@@ -185,6 +196,7 @@ object EventType {
     const val REPORT = "report"
     const val COMPACTION = "compaction"
     const val CONTEXT = "context"
+    const val STATUS = "status"
 }
 
 /**

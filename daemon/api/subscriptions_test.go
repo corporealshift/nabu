@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -324,6 +325,59 @@ func TestUpdateTasks(t *testing.T) {
 	}
 }
 
+// set_status appends a snapshot as given, starts nothing, and refuses one the
+// protocol would not accept before anything is written (spec 7.27).
+func TestSetStatus(t *testing.T) {
+	big := map[string]any{"history": strings.Repeat("x", protocol.MaxStatusBytes)}
+	for _, tc := range []struct {
+		name string
+		kind string
+		data any
+		ok   bool
+	}{
+		{"a run", "run", map[string]any{"version": 1, "step": "plan"}, true},
+		{"a goal", "goal", map[string]any{"version": 1, "round": 2}, true},
+		{"an unknown kind", "build", map[string]any{"version": 1}, false},
+		{"data that is not an object", "run", []string{"plan"}, false},
+		{"no data", "run", nil, false},
+		{"data over the limit", "run", big, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hn := newHarness(t)
+			id := hn.mustCreate(t)
+			s, _ := hn.h.getSession(id)
+			before := len(s.Events())
+
+			resp := hn.call(t, 1, "nabu.session.set_status", map[string]any{
+				"session_id": id, "kind": tc.kind, "data": tc.data})
+			if !tc.ok {
+				if resp == nil || resp.Error == nil || resp.Error.Code != protocol.CodeInvalidParams {
+					t.Fatalf("want invalid_params, got %+v", resp)
+				}
+				if len(s.Events()) != before {
+					t.Fatalf("a refused status appended %d events", len(s.Events())-before)
+				}
+				return
+			}
+			var out struct {
+				EventID string `json:"event_id"`
+			}
+			result(t, resp, &out)
+			st := s.State()
+			if st.Status == nil || st.Status.Kind != tc.kind || st.Status.Source != "client" || st.LastEventID != out.EventID {
+				t.Fatalf("status: %+v, last event %s, returned %s", st.Status, st.LastEventID, out.EventID)
+			}
+			want, _ := json.Marshal(tc.data)
+			if string(st.Status.Data) != string(want) {
+				t.Errorf("data: got %s, want %s", st.Status.Data, want)
+			}
+			if st.State != protocol.StateIdle {
+				t.Errorf("state: got %q, want idle", st.State)
+			}
+		})
+	}
+}
+
 // Interrupt is a no-op when the session is not running, per spec 7.7.
 func TestInterruptWhenIdleIsNoOp(t *testing.T) {
 	hn := newHarness(t)
@@ -357,7 +411,7 @@ func TestMutatorsRejectUnknownSession(t *testing.T) {
 	for _, method := range []string{
 		"nabu.session.send_prompt", "nabu.session.interrupt", "nabu.session.stop",
 		"nabu.session.resume", "nabu.session.set_goal", "nabu.session.clear_goal",
-		"nabu.session.set_option", "nabu.session.update_tasks",
+		"nabu.session.set_option", "nabu.session.update_tasks", "nabu.session.set_status",
 	} {
 		resp := hn.call(t, 1, method, unknown)
 		if resp == nil || resp.Error == nil {
