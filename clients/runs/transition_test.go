@@ -8,6 +8,9 @@ import (
 
 func at(s Step) Run { return Run{Home: "H", Step: s} }
 
+// sessionHistory is a history in which a session did some of the run's work.
+var sessionHistory = []Record{{Step: StepSetup, OK: true}, {Step: StepPlan, Session: "S1", OK: true}}
+
 func TestTransition(t *testing.T) {
 	ok := Outcome{OK: true}
 	failed := Outcome{Why: "no plan.md"}
@@ -131,6 +134,35 @@ func TestTransition(t *testing.T) {
 		{name: "and fails on the third", from: Run{Step: StepVerifyReview, Attempt: 2}, o: failed, want: StepFailed},
 		{name: "the pr gets three tries", from: Run{Step: StepPR, Attempt: 2}, o: failed, want: StepFailed},
 		{name: "a finished run stays finished", from: at(StepDone), o: failed, want: StepDone},
+		// A run reflects before it ends, when a session did any of its work
+		// (docs/specs/2026-10-11-run-reflection-design.md).
+		{name: "ci passes after sessions: reflect", from: Run{Step: StepCI, History: sessionHistory}, o: Outcome{OK: true, CI: CIPass}, want: StepReflect,
+			check: func(t *testing.T, r Run) {
+				if r.FailedAt != "" || !r.Waiting {
+					t.Errorf("a reflection waits for a slot, and a merged run is no failure: %+v", r)
+				}
+			}},
+		{name: "merge after sessions: reflect", from: Run{Step: StepMerge, Goal: "G", History: sessionHistory}, o: ok, want: StepReflect},
+		{name: "a failure after sessions reflects first", from: Run{Step: StepCheck, Fixes: MaxFixes, History: sessionHistory}, o: ok, want: StepReflect,
+			check: func(t *testing.T, r Run) {
+				if r.FailedAt != StepFix || r.Why == "" {
+					t.Errorf("the failure is recorded before the reflection: failed at %q, why %q", r.FailedAt, r.Why)
+				}
+			}},
+		{name: "a reflection ends a merged run", from: Run{Step: StepReflect, History: sessionHistory}, o: ok, want: StepDone},
+		{name: "a reflection ends a failed run as it failed", from: Run{Step: StepReflect, FailedAt: StepFix, Why: "still failing", History: sessionHistory}, o: ok, want: StepFailed,
+			check: func(t *testing.T, r Run) {
+				if r.FailedAt != StepFix || r.Why != "still failing" {
+					t.Errorf("failed at %q, why %q", r.FailedAt, r.Why)
+				}
+			}},
+		{name: "a reflection that did not work still ends the run", from: Run{Step: StepReflect, History: sessionHistory}, o: failed, want: StepDone},
+		{name: "and is not retried on a failed run", from: Run{Step: StepReflect, FailedAt: StepWork, Why: "y", History: sessionHistory}, o: failed, want: StepFailed,
+			check: func(t *testing.T, r Run) {
+				if r.Why != "y" {
+					t.Errorf("why = %q: the reflection's own failure replaced the run's", r.Why)
+				}
+			}},
 		{name: "a new step clears the session", from: Run{Step: StepPlan, Session: "S", Start: "abc", Prompted: true, Stopped: true}, o: ok, want: StepPlanReview,
 			check: func(t *testing.T, r Run) {
 				if r.Session != "" || r.Start != "" || r.Prompted || r.Stopped || r.Waiting {

@@ -36,6 +36,9 @@ type Config struct {
 	// cap: caps of 50 and 100 failed a run whose sessions were still working.
 	PlanTurns int `json:"plan_turns"`
 	WorkTurns int `json:"work_turns"`
+	// ReflectTurns caps the reflection a run ends with. Default
+	// DefaultReflectTurns: it reads one digest and saves a few memories.
+	ReflectTurns int `json:"reflect_turns"`
 	// GoalRounds is how many rounds of runs a goal gets before it stops and
 	// waits for Kyle. Default 5.
 	GoalRounds int `json:"goal_rounds"`
@@ -86,4 +89,10 @@ func (c *Config) withDefaults() {
 	if c.GoalRounds < 1 {
 		c.GoalRounds = 5
 	}
+	if c.ReflectTurns < 1 {
+		c.ReflectTurns = DefaultReflectTurns
+	}
 }
+
+// DefaultReflectTurns is the reflection's turn cap when none is set.
+const DefaultReflectTurns = 30

@@ -53,6 +53,11 @@ func Transition(r Run, o Outcome) Run {
 	if r.Step.Over() || o.Wait {
 		return r
 	}
+	if r.Step == StepReflect {
+		// Whatever came of it: the reflection never decides how a run ends,
+		// and is not worth a second try.
+		return finish(r)
+	}
 	if !o.OK {
 		r.Attempt++
 		tries := otherTries
@@ -128,16 +133,16 @@ func Transition(r Run, o Outcome) Run {
 	case StepPR, StepPush:
 		return enter(r, StepCI, true)
 	case StepMerge:
-		return enter(r, StepDone, true)
+		return finish(r)
 	case StepCI:
 		switch o.CI {
 		case CIPass:
 			if r.Goal != "" {
 				return enter(r, StepMerge, true)
 			}
-			return enter(r, StepDone, true)
+			return finish(r)
 		case CIMerged:
-			return enter(r, StepDone, true)
+			return finish(r)
 		case CIClosed:
 			return fail(r, StepCI, "the PR was closed")
 		case CIFail:
@@ -165,11 +170,35 @@ func enter(r Run, s Step, fresh bool) Run {
 	return r
 }
 
-// fail ends a run at a step, with the reason.
+// fail ends a run at a step, with the reason. The reason is recorded first,
+// so a reflection in between hands it on unchanged.
 func fail(r Run, at Step, why string) Run {
-	r = enter(r, StepFailed, true)
 	r.FailedAt, r.Why = at, why
-	return r
+	return finish(r)
+}
+
+// finish ends a run, done or failed as FailedAt says. A run a session worked
+// on reflects first, so what it taught is saved before it closes
+// (docs/specs/2026-10-11-run-reflection-design.md); one no session touched,
+// such as a failed setup, has nothing to reflect on.
+func finish(r Run) Run {
+	if r.Step != StepReflect && worked(r) {
+		return enter(r, StepReflect, true)
+	}
+	if r.FailedAt != "" {
+		return enter(r, StepFailed, true)
+	}
+	return enter(r, StepDone, true)
+}
+
+// worked reports whether any of a run's steps was done by a session.
+func worked(r Run) bool {
+	for _, rec := range r.History {
+		if rec.Session != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Resume puts a failed run back at the step it failed at, with that step's

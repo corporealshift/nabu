@@ -264,13 +264,14 @@ func (rn *Runner) advance(ctx context.Context, d Daemon, r *Run) error {
 			// do until the next poll.
 			return errors.Join(err, rn.label(ctx, d, r, nil))
 		}
-		from := r.Step
+		from, failedBefore := r.Step, r.FailedAt
 		rn.record(r, o)
 		*r = Transition(*r, o)
 		if !o.OK {
 			rn.logf("run %s: %s did not work: %s", r.Home, from, o.Why)
 		}
-		if r.Step == StepFailed {
+		// Said when it fails, not after the reflection that follows.
+		if r.FailedAt != "" && failedBefore == "" {
 			rn.logf("run %s failed at %s: %s; worktree %s", r.Home, r.FailedAt, r.Why, r.Worktree)
 		}
 		if r.Step.Over() && r.Issue != 0 && !r.Reported {
@@ -370,8 +371,11 @@ func (rn *Runner) begin(ctx context.Context, d Daemon, r *Run) error {
 		return err
 	}
 	turns := rn.Cfg.PlanTurns
-	if r.Step == StepWork || r.Step == StepFix || r.Step == StepCIFix {
+	switch r.Step {
+	case StepWork, StepFix, StepCIFix:
 		turns = rn.Cfg.WorkTurns
+	case StepReflect:
+		turns = rn.Cfg.ReflectTurns
 	}
 	id, err := d.Create(ctx, r.Worktree, r.Home, turns, rn.contextOf(ctx, d, r.Home))
 	if err != nil {
@@ -427,8 +431,36 @@ func (rn *Runner) prompt(ctx context.Context, d Daemon, r *Run) (string, string,
 	case StepCIFix:
 		p, g := CIFixPrompt(*r, r.Output)
 		return p, g, nil
+	case StepReflect:
+		return ReflectPrompt(*r, rn.digest(ctx, d, r)), "", nil
 	}
 	return "", "", fmt.Errorf("%s has no session", r.Step)
+}
+
+// digest is the run's Digest, from its files and its sessions' logs. A log
+// that cannot be read is left out, rather than holding up the run's end.
+func (rn *Runner) digest(ctx context.Context, d Daemon, r *Run) string {
+	run := *r
+	if run.Brief == "" {
+		run.Brief, _ = rn.read(r, BriefFile)
+	}
+	tasks, _ := rn.read(r, TasksFile)
+	logs := map[string][]protocol.Event{}
+	for _, rec := range r.History {
+		if rec.Session == "" {
+			continue
+		}
+		if _, ok := logs[rec.Session]; ok {
+			continue
+		}
+		events, err := d.Events(ctx, rec.Session)
+		if err != nil {
+			rn.logf("run %s: the reflection goes without session %s: %v", r.Home, rec.Session, err)
+			continue
+		}
+		logs[rec.Session] = events
+	}
+	return Digest(run, tasks, logs)
 }
 
 func (rn *Runner) path(r *Run, name string) string {
@@ -661,6 +693,14 @@ func answered(events []protocol.Event) bool {
 // goalMet is whether the session's goal was judged met, which is how a work
 // session that found its task already done is told from one that did nothing.
 func (rn *Runner) produced(ctx context.Context, d Daemon, r *Run, goalMet bool) (Outcome, error) {
+	if r.Step == StepReflect {
+		// A reflection saves memories, which live outside the worktree, so
+		// whatever it changed here goes.
+		if err := rn.resetHard(ctx, r.Worktree, r.Start); err != nil {
+			return Outcome{}, err
+		}
+		return Outcome{OK: true}, nil
+	}
 	if r.Step != StepVerify {
 		changed, err := rn.Git.Changed(ctx, r.Worktree, r.Start)
 		if err != nil {

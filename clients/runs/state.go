@@ -47,14 +47,17 @@ const (
 	StepCIFix        Step = "ci-fix"
 	StepPush         Step = "push"
 	StepMerge        Step = "merge"
-	StepDone         Step = "done"
-	StepFailed       Step = "failed"
+	// StepReflect is the run looking back before it ends, done or failed
+	// (docs/specs/2026-10-11-run-reflection-design.md).
+	StepReflect Step = "reflect"
+	StepDone    Step = "done"
+	StepFailed  Step = "failed"
 )
 
 // Session reports whether a step is done by a model session.
 func (s Step) Session() bool {
 	switch s {
-	case StepBrief, StepPlan, StepTasks, StepVerify, StepWork, StepFix, StepCIFix:
+	case StepBrief, StepPlan, StepTasks, StepVerify, StepWork, StepFix, StepCIFix, StepReflect:
 		return true
 	}
 	return false

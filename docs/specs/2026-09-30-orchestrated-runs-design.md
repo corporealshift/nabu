@@ -85,6 +85,7 @@ so they belong in the PR.
 | `pr` | runner | Push the branch; `gh pr create` with the `nabu` label | — |
 | `ci` | runner, model | Part 3 | — |
 | `merge` | runner | Only for a goal's run (amended 2026-10-06, `2026-10-06-goals-design.md`): `gh pr merge --squash` into the goal's branch, which is the run's base. Such a run's PR carries no label. | — |
+| `reflect` | model | The last step of every run that a session worked on, whether done or failed (amended 2026-10-11, `2026-10-11-run-reflection-design.md`). A session reads a digest of the whole run and saves memories with what went right first. It never changes the outcome and is never retried; the worktree is reset after it. Turn cap `reflect_turns`, default 30. | — |
 
 The run then ends `done`, or `failed` at the step that ran out of attempts.
 

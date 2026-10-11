@@ -109,3 +109,93 @@ func TestReflectPrompt(t *testing.T) {
 		}
 	}
 }
+
+// reflectingRun takes a run with two tasks to its reflection, and leaves it
+// there.
+func (g *rig) reflectingRun(id string) *Run {
+	g.t.Helper()
+	g.holdReflect = true
+	g.shell.results = []bool{false} // verify-review's run before any work fails, as it should
+	r := g.planned(id)
+	g.finish(map[string]string{"stats.go": "package stats\n"})
+	g.tick()
+	g.finish(map[string]string{"stats_test.go": "package stats\n"})
+	g.tick()
+	if r.Step != StepReflect {
+		g.t.Fatalf("run at %q, want reflect\nlog:\n%s", r.Step, g.log.String())
+	}
+	return r
+}
+
+func TestARunReflectsBeforeItEnds(t *testing.T) {
+	g := newRig(t)
+	r := g.reflectingRun("H1")
+	id, s := g.d.last()
+	if s.turns != DefaultReflectTurns || len(s.goals) != 0 {
+		t.Errorf("reflection session: %d turns, goals %q", s.turns, s.goals)
+	}
+	for _, want := range []string{"How the run went", "Add a Median function to stats", "Test Median", "check: passed", "memory.save"} {
+		if !strings.Contains(s.prompts[0], want) {
+			t.Errorf("the reflection's prompt lacks %q:\n%s", want, s.prompts[0])
+		}
+	}
+	start := r.Start
+	// A reflection that writes a file anyway leaves nothing behind.
+	g.finish(map[string]string{"notes.md": "what I learned"})
+	g.tick()
+	if r.Step != StepDone {
+		t.Fatalf("run at %q after its reflection\nlog:\n%s", r.Step, g.log.String())
+	}
+	if len(g.git.resets) == 0 || g.git.resets[len(g.git.resets)-1] != start {
+		t.Errorf("resets = %q, want the worktree back at %s", g.git.resets, start)
+	}
+	if last := r.History[len(r.History)-1]; last.Step != StepReflect || last.Session != id {
+		t.Errorf("the reflection is not in the history: %+v", last)
+	}
+}
+
+func TestAReflectionThatFailsStillEndsTheRun(t *testing.T) {
+	g := newRig(t)
+	r := g.reflectingRun("H1")
+	_, s := g.d.last()
+	s.state = protocol.StateBlocked
+	g.tick()
+	if r.Step != StepDone || r.FailedAt != "" {
+		t.Errorf("run = %q, failed at %q\nlog:\n%s", r.Step, r.FailedAt, g.log.String())
+	}
+	if n := len(g.d.order); n != 6 {
+		t.Errorf("%d sessions: a reflection is never retried", n)
+	}
+}
+
+func TestAFailedRunReflectsAndStaysFailed(t *testing.T) {
+	g := newRig(t)
+	g.holdReflect = true
+	r := g.planned("H1")
+	for range sessionTries {
+		g.finish(map[string]string{"stats.go": "x", r.File(VerifyFile): "exit 0\n"})
+		g.tick()
+	}
+	if r.Step != StepReflect || r.FailedAt != StepWork {
+		t.Fatalf("run = %q, failed at %q", r.Step, r.FailedAt)
+	}
+	if !strings.Contains(g.log.String(), "failed at work") {
+		t.Errorf("the failure is not logged when it happens:\n%s", g.log.String())
+	}
+	_, s := g.d.last()
+	if !strings.Contains(s.prompts[0], "failed at work") || !strings.Contains(s.prompts[0], "thrown away") {
+		t.Errorf("the digest does not say how the run failed:\n%s", s.prompts[0])
+	}
+	g.finish(nil)
+	g.tick()
+	if r.Step != StepFailed || r.FailedAt != StepWork || !strings.Contains(r.Why, "verify.sh") {
+		t.Errorf("run = %+v", r)
+	}
+}
+
+func TestReflectTurnsDefault(t *testing.T) {
+	c, err := LoadConfig(t.TempDir())
+	if err != nil || c.ReflectTurns != DefaultReflectTurns {
+		t.Errorf("ReflectTurns = %d, %v", c.ReflectTurns, err)
+	}
+}
