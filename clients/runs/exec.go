@@ -165,10 +165,10 @@ func (c ClaudeCLI) exe() string {
 
 func (c ClaudeCLI) Available() bool { return c.exe() != "" }
 
-// Args is the command line for one question. The prompt is one argument,
-// never part of a shell string.
-func (c ClaudeCLI) Args(prompt string) []string {
-	args := []string{"-p", prompt}
+// Args is the command line for one question. The prompt goes on stdin, not
+// here: a goal check's prompt outgrew Windows' 32K command line.
+func (c ClaudeCLI) Args() []string {
+	args := []string{"-p"}
 	for _, t := range readOnly {
 		args = append(args, "--allowedTools", t)
 	}
@@ -189,8 +189,9 @@ func (c ClaudeCLI) Ask(ctx context.Context, dir, prompt string) (string, error) 
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, exe, c.Args(prompt)...)
+	cmd := exec.CommandContext(cctx, exe, c.Args()...)
 	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(prompt)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	cmd.WaitDelay = time.Second
