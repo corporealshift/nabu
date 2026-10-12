@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Defaults. Spec 10 fixes the behaviour; these fix the numbers.
@@ -413,7 +413,7 @@ func taskOf(d protocol.CheckData) (string, bool) {
 // readCommands reads the per-workspace gates: an object of workspace path to
 // command.
 //
-// They live here because the workspace overlay (<workspace>/.nabu/config.json)
+// They live here because the workspace overlay (<workspace>/.rho/config.json)
 // is never applied: module config is read once, for the whole daemon, so one
 // global "command" ran in every repository or in none. A gate is the one
 // setting that is plainly per project, and the module can pick it per session.

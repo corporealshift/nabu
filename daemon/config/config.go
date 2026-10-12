@@ -1,4 +1,4 @@
-// Package config loads nabu's configuration: the base file under the nabu
+// Package config loads rho's configuration: the base file under the rho
 // root, plus an optional overlay from a trusted workspace.
 package config
 
@@ -22,7 +22,7 @@ type DaemonConfig struct {
 	// "provider/model" or a bare model name, which goes to the default
 	// provider. Without it every request carries a placeholder name.
 	DefaultModel string `json:"default_model"`
-	// BrowseRoots bound what nabu.workspace.browse may list, so a client
+	// BrowseRoots bound what rho.workspace.browse may list, so a client
 	// picking a directory cannot enumerate the whole machine. Empty means the
 	// user's home directory. Point them at where the projects actually are and
 	// the picker stops being a tapping exercise.
@@ -150,7 +150,7 @@ func (c *ProviderConfig) withDefaults() {
 // tokens and dollars optional caps, enforced only for providers that report
 // them. The two loop bounds live here too, because they bound the same loop.
 type BudgetConfig struct {
-	// MaxTurns is the interactive default. 0 means unlimited; "nabu run"
+	// MaxTurns is the interactive default. 0 means unlimited; "rho run"
 	// overrides it to 60 at session creation, per spec 12.
 	MaxTurns  int     `json:"max_turns"`
 	MaxTokens int     `json:"max_tokens"`
@@ -164,7 +164,7 @@ type BudgetConfig struct {
 	NoProgressTurns int `json:"no_progress_turns"`
 }
 
-// RunDefaultMaxTurns is the turn cap "nabu run" applies when config leaves
+// RunDefaultMaxTurns is the turn cap "rho run" applies when config leaves
 // MaxTurns unlimited. Spec 12: unlimited interactively, 60 for a headless run.
 const RunDefaultMaxTurns = 60
 
@@ -270,12 +270,12 @@ func absOr(p string) string {
 }
 
 // workspaceOf returns the workspace directory an overlay file belongs to.
-// The spec puts the overlay at <workspace>/.nabu/config.json, so a parent
-// directory named ".nabu" is skipped; otherwise the containing directory is
+// The spec puts the overlay at <workspace>/.rho/config.json, so a parent
+// directory named ".rho" is skipped; otherwise the containing directory is
 // the workspace.
 func workspaceOf(overlayPath string) string {
 	dir := filepath.Dir(overlayPath)
-	if filepath.Base(dir) == ".nabu" {
+	if filepath.Base(dir) == ".rho" {
 		return filepath.Dir(dir)
 	}
 	return dir

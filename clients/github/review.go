@@ -9,14 +9,14 @@ import (
 	"strings"
 )
 
-// Marker ends everything the watcher posts. Kyle and nabu post as the same
+// Marker ends everything the watcher posts. Kyle and rho post as the same
 // login, and later jobs never start from a comment that carries it, or a
-// review from nabu would be answered by nabu.
-const Marker = "<!-- nabu -->"
+// review from rho would be answered by rho.
+const Marker = "<!-- rho -->"
 
-// Signature opens everything the watcher posts, so a reader can tell nabu's
+// Signature opens everything the watcher posts, so a reader can tell rho's
 // words from Kyle's: they share a login, and the marker is invisible.
-const Signature = "🤖 **nabu**"
+const Signature = "🤖 **rho**"
 
 // Review is what a review session's final message ends with.
 type Review struct {
@@ -145,7 +145,7 @@ func mark(out map[string]map[int]bool, file string, line int) {
 // the body, so one bad line number does not lose the rest. Without a parsed
 // review the whole final message is the body.
 //
-// Everything is signed as nabu's, because it is posted under Kyle's login and
+// Everything is signed as rho's, because it is posted under Kyle's login and
 // GitHub will show him as the author. A line comment is signed on its own,
 // since it is read in the diff apart from the review it came with.
 func BuildReview(r Review, ok bool, final, diff, sha string) ReviewPost {

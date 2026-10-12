@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Window bounds. A pass is a model call, so what it sees has to be affordable

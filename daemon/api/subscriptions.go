@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // eventBuffer is how many events a subscription may fall behind before the
@@ -46,7 +46,7 @@ func (h *Handler) subscribe(sessionID string, cs *connState) *protocol.RPCError 
 func (h *Handler) pump(sessionID string, f *fanout, ch <-chan protocol.Event) {
 	for ev := range ch {
 		for _, cs := range h.subscribers(sessionID) {
-			cs.notify("nabu.session.event", map[string]any{
+			cs.notify("rho.session.event", map[string]any{
 				"session_id": sessionID,
 				"event":      ev,
 			})
@@ -134,7 +134,7 @@ func (h *Handler) dropConn(cs *connState) {
 func (h *Handler) Deltas() func(sessionID, turnID, text string) {
 	return func(sessionID, turnID, text string) {
 		for _, cs := range h.subscribers(sessionID) {
-			cs.notify("nabu.session.delta", map[string]any{
+			cs.notify("rho.session.delta", map[string]any{
 				"session_id": sessionID,
 				"turn_id":    turnID,
 				"text":       text,
@@ -148,7 +148,7 @@ func (h *Handler) Deltas() func(sessionID, turnID, text string) {
 func (h *Handler) Thinking() func(sessionID, turnID, text string) {
 	return func(sessionID, turnID, text string) {
 		for _, cs := range h.subscribers(sessionID) {
-			cs.notify("nabu.session.thinking", map[string]any{
+			cs.notify("rho.session.thinking", map[string]any{
 				"session_id": sessionID,
 				"turn_id":    turnID,
 				"text":       text,
@@ -157,7 +157,7 @@ func (h *Handler) Thinking() func(sessionID, turnID, text string) {
 	}
 }
 
-// handleSessionSubscribe implements nabu.session.subscribe (spec 7.6).
+// handleSessionSubscribe implements rho.session.subscribe (spec 7.6).
 func (h *Handler) handleSessionSubscribe(_ context.Context, cs *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
@@ -174,7 +174,7 @@ func (h *Handler) handleSessionSubscribe(_ context.Context, cs *connState, param
 	return map[string]any{"subscribed": true}, nil
 }
 
-// handleSessionUnsubscribe implements nabu.session.unsubscribe (spec 7.6).
+// handleSessionUnsubscribe implements rho.session.unsubscribe (spec 7.6).
 func (h *Handler) handleSessionUnsubscribe(_ context.Context, cs *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func event(typ protocol.EventType, data any) protocol.Event {
@@ -17,7 +17,7 @@ func assistantTurn(text string) protocol.Event {
 	return event(protocol.EventMessage, protocol.MessageData{Role: "assistant", Content: text})
 }
 
-// askClaude is a claude.ask call and its answer, made by nabu when source is
+// askClaude is a claude.ask call and its answer, made by rho when source is
 // a module, else by the model.
 func askClaude(id, source, prompt, answer string) []protocol.Event {
 	args, _ := json.Marshal(map[string]string{"prompt": prompt})
@@ -41,7 +41,7 @@ func reflectedRun() (Run, map[string][]protocol.Event) {
 		"S1": {assistantTurn("planning"), assistantTurn("done")},
 		"S2": {assistantTurn("a"), assistantTurn("b"), assistantTurn("c")},
 		"S3": append(append([]protocol.Event{assistantTurn("trying")},
-			askClaude("c1", "module:claude", "nabu is asking on behalf of a smaller local model that has spent 50 turns", "Sort a copy, not the input: sort.Float64s(slices.Clone(xs)).")...),
+			askClaude("c1", "module:claude", "rho is asking on behalf of a smaller local model that has spent 50 turns", "Sort a copy, not the input: sort.Float64s(slices.Clone(xs)).")...),
 			askClaude("c2", "", "Which rounding does the brief want?", "Round half to even, as the plan says.")...),
 	}
 	return r, logs
@@ -59,16 +59,16 @@ func TestTheDigestTellsTheWholeRun(t *testing.T) {
 		"check: failed", "FAIL TestMedian: got 2, want 2.5",
 		"final-review: 1 blockers", "Median of an even count",
 		// Each ask, who asked, after how many turns, and the answer in full.
-		"nabu asked for the model after 1 turns", "Sort a copy, not the input: sort.Float64s(slices.Clone(xs)).",
+		"rho asked for the model after 1 turns", "Sort a copy, not the input: sort.Float64s(slices.Clone(xs)).",
 		"the model asked after 1 turns", "Which rounding does the brief want?", "Round half to even, as the plan says.",
 	} {
 		if !strings.Contains(d, want) {
 			t.Errorf("the digest lacks %q:\n%s", want, d)
 		}
 	}
-	// nabu's own ask is the same framing every time: only its answer counts.
-	if strings.Contains(d, "nabu is asking on behalf") {
-		t.Errorf("the digest carries nabu's framing of its own ask:\n%s", d)
+	// rho's own ask is the same framing every time: only its answer counts.
+	if strings.Contains(d, "rho is asking on behalf") {
+		t.Errorf("the digest carries rho's framing of its own ask:\n%s", d)
 	}
 }
 

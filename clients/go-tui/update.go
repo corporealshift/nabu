@@ -6,8 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/corporealshift/nabu/clients/goclient"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/clients/goclient"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // tickInterval is how often the working indicator advances. Fast enough to

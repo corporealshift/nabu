@@ -87,7 +87,7 @@ func TestLoadBaseConfig(t *testing.T) {
 			"bind": "0.0.0.0:8737",
 			"token": "secret",
 			"log_level": "debug",
-			"log_file": "/var/log/nabu.log"
+			"log_file": "/var/log/rho.log"
 		},
 		"providers": {
 			"openai": {
@@ -134,8 +134,8 @@ func TestLoadBaseConfig(t *testing.T) {
 	if cfg.Daemon.LogLevel != "debug" {
 		t.Errorf("log_level: got %q, want %q", cfg.Daemon.LogLevel, "debug")
 	}
-	if cfg.Daemon.LogFile != "/var/log/nabu.log" {
-		t.Errorf("log_file: got %q, want %q", cfg.Daemon.LogFile, "/var/log/nabu.log")
+	if cfg.Daemon.LogFile != "/var/log/rho.log" {
+		t.Errorf("log_file: got %q, want %q", cfg.Daemon.LogFile, "/var/log/rho.log")
 	}
 
 	if len(cfg.Providers) != 2 {
@@ -362,19 +362,19 @@ func TestProviderDefaultsSurviveLoad(t *testing.T) {
 	}
 }
 
-// The spec puts the overlay at <workspace>/.nabu/config.json, so trusting the
-// workspace must be enough — the trust check has to look past the .nabu dir.
+// The spec puts the overlay at <workspace>/.rho/config.json, so trusting the
+// workspace must be enough — the trust check has to look past the .rho dir.
 func TestOverlayAtSpecPathUsesWorkspaceTrust(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(`{}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	ws := filepath.Join(root, "workspace")
-	nabuDir := filepath.Join(ws, ".nabu")
-	if err := os.MkdirAll(nabuDir, 0o755); err != nil {
+	rhoDir := filepath.Join(ws, ".rho")
+	if err := os.MkdirAll(rhoDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	overlay := filepath.Join(nabuDir, "config.json")
+	overlay := filepath.Join(rhoDir, "config.json")
 	body := `{"providers": {"local": {"base_url": "http://localhost:8033/v1"}}}`
 	if err := os.WriteFile(overlay, []byte(body), 0o644); err != nil {
 		t.Fatal(err)

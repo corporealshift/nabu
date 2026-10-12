@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // ErrNotFound is returned for unknown session ids.
@@ -196,7 +196,7 @@ func (st *Store) Close() error {
 	return errors.Join(errs...)
 }
 
-// Summary is what nabu.session.list returns per session.
+// Summary is what rho.session.list returns per session.
 type Summary struct {
 	SessionID    string                `json:"session_id"`
 	Workspace    string                `json:"workspace"`

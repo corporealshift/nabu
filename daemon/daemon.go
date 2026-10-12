@@ -1,5 +1,5 @@
-// Package daemon owns the nabu daemon's lifecycle: the storage layout under
-// the nabu root, the pid and port files, the foreground run, and the graceful
+// Package daemon owns the rho daemon's lifecycle: the storage layout under
+// the rho root, the pid and port files, the foreground run, and the graceful
 // shutdown that pauses live sessions rather than losing them.
 package daemon
 
@@ -19,19 +19,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/agent"
-	"github.com/corporealshift/nabu/daemon/api"
-	"github.com/corporealshift/nabu/daemon/config"
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/modules"
-	"github.com/corporealshift/nabu/daemon/notify"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/daemon/tools"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/agent"
+	"github.com/corporealshift/rho/daemon/api"
+	"github.com/corporealshift/rho/daemon/config"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/modules"
+	"github.com/corporealshift/rho/daemon/notify"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/daemon/tools"
+	"github.com/corporealshift/rho/protocol"
 )
 
-// File and directory names under the nabu root.
+// File and directory names under the rho root.
 const (
 	ConfigFile  = "config.json"
 	SessionsDir = "sessions"
@@ -44,16 +44,16 @@ const (
 // ErrAlreadyRunning is returned when a live daemon already holds the pid file.
 var ErrAlreadyRunning = errors.New("a daemon is already running")
 
-// DefaultRoot is the nabu root, ~/.nabu, unless NABU_ROOT overrides it.
+// DefaultRoot is the rho root, ~/.rho, unless RHO_ROOT overrides it.
 func DefaultRoot() (string, error) {
-	if r := os.Getenv("NABU_ROOT"); r != "" {
+	if r := os.Getenv("RHO_ROOT"); r != "" {
 		return r, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("daemon: locating home: %w", err)
 	}
-	return filepath.Join(home, ".nabu"), nil
+	return filepath.Join(home, ".rho"), nil
 }
 
 // EnsureLayout creates the directories the daemon expects under root.
@@ -71,7 +71,7 @@ func EnsureLayout(root string) error {
 
 // Options configure a Daemon.
 type Options struct {
-	// Root is the nabu root. Empty means DefaultRoot.
+	// Root is the rho root. Empty means DefaultRoot.
 	Root string
 	// Bind overrides the configured listen address. Empty uses config.
 	Bind string
@@ -145,7 +145,7 @@ func New(opts Options) (*Daemon, error) {
 	log := slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: levelOf(cfg.Daemon.LogLevel)}))
 
 	// session.Open appends "sessions" itself, so it takes the root. Passing
-	// the sessions directory produced ~/.nabu/sessions/sessions.
+	// the sessions directory produced ~/.rho/sessions/sessions.
 	store, err := session.Open(root)
 	if err != nil {
 		closeFile(logFile)
@@ -235,8 +235,8 @@ func New(opts Options) (*Daemon, error) {
 		mgr: mgr, api: srv, providers: providers, logFile: logFile,
 		shutdownDone: make(chan struct{}), stopNotify: stopNotify}
 
-	// The API exposes shutdown; the daemon owns it. nabu.daemon.stop is what
-	// "nabu daemon stop" calls, because signalling by pid is not gracefully
+	// The API exposes shutdown; the daemon owns it. rho.daemon.stop is what
+	// "rho daemon stop" calls, because signalling by pid is not gracefully
 	// portable to Windows.
 	handler.OnShutdown = func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -323,7 +323,7 @@ func levelOf(name string) slog.Level {
 	}
 }
 
-// Root returns the nabu root this daemon owns.
+// Root returns the rho root this daemon owns.
 func (d *Daemon) Root() string { return d.root }
 
 // Addr returns the bound address, or an empty string before Listen.
@@ -559,7 +559,7 @@ func EnsureRunning(ctx context.Context, root string) (string, error) {
 const StartTimeout = 20 * time.Second
 
 // startDetached spawns "<this binary> daemon" as a process that outlives us.
-// The binary is always nabu itself, which is why the CLI and the TUI can share
+// The binary is always rho itself, which is why the CLI and the TUI can share
 // one implementation.
 func startDetached(root string) error {
 	exe, err := os.Executable()

@@ -9,8 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/corporealshift/nabu/daemon/modules/artifact"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/modules/artifact"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // rememberArtifact records a page the agent made, from its tool call. The call
@@ -51,7 +51,7 @@ var openInBrowser = func(path string) error {
 // effects, and Update stays pure.
 func openArtifact(sessionID string, a artifact.Args) tea.Cmd {
 	return func() tea.Msg {
-		dir := filepath.Join(os.TempDir(), "nabu-artifacts", sessionID)
+		dir := filepath.Join(os.TempDir(), "rho-artifacts", sessionID)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return errMsg{text: "could not save the page: " + err.Error()}
 		}

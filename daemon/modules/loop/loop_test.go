@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // fakeSession holds a log the test builds, and the notices the module adds.

@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
-// Builtins is the module that provides nabu's built-in tools. It registers
+// Builtins is the module that provides rho's built-in tools. It registers
 // through module.ToolProvider like any other module: there is no privileged
 // path (spec §14.5).
 type Builtins struct {

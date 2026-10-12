@@ -15,8 +15,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // maxChoices keeps a question answerable on a phone. A list longer than this

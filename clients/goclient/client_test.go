@@ -13,14 +13,14 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"github.com/corporealshift/nabu/daemon/agent"
-	"github.com/corporealshift/nabu/daemon/api"
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/modules/guard"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/daemon/tools"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/agent"
+	"github.com/corporealshift/rho/daemon/api"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/modules/guard"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/daemon/tools"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func discardLogger() *slog.Logger {
@@ -99,7 +99,7 @@ func TestDialRefusedOnProtocolMismatch(t *testing.T) {
 	defer conn.CloseNow()
 
 	if err := wsjson.Write(ctx, conn, Message{
-		JSONRPC: "2.0", ID: 0, Method: "nabu.hello",
+		JSONRPC: "2.0", ID: 0, Method: "rho.hello",
 		Params: mustJSON(map[string]any{"protocol_version": "99.0"}),
 	}); err != nil {
 		t.Fatal(err)
@@ -270,7 +270,7 @@ func TestSubscribeDeliversEvents(t *testing.T) {
 }
 
 func TestParseHelpers(t *testing.T) {
-	perm := Message{Method: "nabu.rpc.permission.request", ID: "r1",
+	perm := Message{Method: "rho.rpc.permission.request", ID: "r1",
 		Params: mustJSON(map[string]any{"request_id": "r1", "tool": "bash",
 			"summary": "rm -rf /", "risk": "high"})}
 	p, ok := ParsePermission(perm)
@@ -281,14 +281,14 @@ func TestParseHelpers(t *testing.T) {
 		t.Error("a method with an id is a request")
 	}
 
-	ask := Message{Method: "nabu.rpc.ui.ask", ID: "r2",
+	ask := Message{Method: "rho.rpc.ui.ask", ID: "r2",
 		Params: mustJSON(map[string]any{"question": "which branch?", "choices": []string{"a", "b"}})}
 	a, ok := ParseAsk(ask)
 	if !ok || a.Question != "which branch?" || len(a.Choices) != 2 {
 		t.Fatalf("ParseAsk: %+v ok=%v", a, ok)
 	}
 
-	delta := Message{Method: "nabu.session.delta",
+	delta := Message{Method: "rho.session.delta",
 		Params: mustJSON(map[string]any{"session_id": "s", "turn_id": "t1", "text": "hi"})}
 	d, ok := ParseDelta(delta)
 	if !ok || d.Text != "hi" || d.TurnID != "t1" {
@@ -529,7 +529,7 @@ func TestALargePromptIsAccepted(t *testing.T) {
 	}
 
 	big := strings.Repeat("a stack trace line\n", 4000) // well over 32 KiB
-	_, err = c.Call(ctx, "nabu.session.send_prompt",
+	_, err = c.Call(ctx, "rho.session.send_prompt",
 		map[string]any{"session_id": s.ID(), "content": big})
 	if err != nil {
 		t.Fatalf("a large prompt was refused: %v", err)

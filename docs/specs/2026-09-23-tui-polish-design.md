@@ -18,7 +18,7 @@ Use Claude Code's spacing and layout, with the glyphs the TUI already uses: `›
 `✓` `!` `✗`. Four options were mocked up side by side, and this is the one Kyle chose:
 
 ```
-  session in C:\Users\corpo\Documents\projects\nabu
+  session in C:\Users\corpo\Documents\projects\rho
 
   › fix the flaky attach test in the tui                        Sep 23 15:01
 

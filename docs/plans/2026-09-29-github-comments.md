@@ -1,4 +1,4 @@
-# nabu github: addressing comments — plan
+# rho github: addressing comments — plan
 
 Spec: `docs/specs/2026-09-28-github-comments-design.md`. One branch, `github-comments`,
 rebased on `main` after #123 merged, and one PR. Every step leaves
@@ -106,7 +106,7 @@ failed-through PR coming back once a newer comment arrives.
     `issues/<n>/comments`, each with the JSON on stdin.
   - `FetchBranch` runs `git fetch origin +refs/heads/<ref>:refs/remotes/origin/<ref>`.
   - `Push` runs `git -C <dir> push origin HEAD:refs/heads/<ref>`.
-- `clients/github/daemon.go`: `SetGoal` calls `nabu.session.set_goal`.
+- `clients/github/daemon.go`: `SetGoal` calls `rho.session.set_goal`.
 - `clients/github/watcher.go`:
   - Starting a job, advancing its session and failing it all work for both kinds. The
     prompt, goal and budget come from the job.
@@ -137,10 +137,10 @@ Then `TestExecArgs` gains rows for every new command.
 ## 5. Checking it for real
 
 On the scratch repository:
-1. Open a PR with the `nabu` label.
+1. Open a PR with the `rho` label.
 2. Leave two line comments (one a question) and one conversation comment.
-3. Run `nabu github --once`, and check the pushed commit, the thread replies, the
-   conversation comment, and that nabu's own replies start nothing on the next run.
+3. Run `rho github --once`, and check the pushed commit, the thread replies, the
+   conversation comment, and that rho's own replies start nothing on the next run.
 4. `--dry-run` against breezeway.
 
 ## Not doing in this plan

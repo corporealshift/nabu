@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // One reminder at the stop, for a session the person is watching.
@@ -17,7 +17,7 @@ import (
 // Repeated vetoes pushed a model past what it was asked for: three of them
 // buried "don't add extra things. just hello world is fine for now", and the
 // model credited its own earlier plan to the person and started on it. Here
-// the turn gets one account of what nabu can see and one question, and then
+// the turn gets one account of what rho can see and one question, and then
 // it may stop. See docs/specs/2026-09-26-one-reminder-stop-design.md.
 
 // remindOnce is the stop gate without a goal.
@@ -76,13 +76,13 @@ const maxQuoted = 400
 // replace. And it says the model may stop, because it may.
 func reminder(asked string, facts []string) string {
 	var b strings.Builder
-	b.WriteString("This is nabu's end-of-turn check, sent once. It is not from the person, " +
+	b.WriteString("This is rho's end-of-turn check, sent once. It is not from the person, " +
 		"and you may stop after answering it.\n")
 	if asked = strings.TrimSpace(asked); asked != "" {
 		fmt.Fprintf(&b, "The person's last message was: %q\nStay within that: start nothing it did not ask for.\n",
 			truncate(asked, maxQuoted))
 	}
-	b.WriteString("What nabu sees:\n")
+	b.WriteString("What rho sees:\n")
 	for _, f := range facts {
 		b.WriteString("  - " + strings.ReplaceAll(strings.TrimSpace(f), "\n", "\n    ") + "\n")
 	}
@@ -92,7 +92,7 @@ func reminder(asked string, facts []string) string {
 	return b.String()
 }
 
-// turnFacts is what nabu can check about the turn's work, each as one line.
+// turnFacts is what rho can check about the turn's work, each as one line.
 func (m *Module) turnFacts(ctx context.Context, s module.Session, info module.StopInfo) []string {
 	var facts []string
 

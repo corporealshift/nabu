@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Watcher polls GitHub, runs a session for each job, and posts what a

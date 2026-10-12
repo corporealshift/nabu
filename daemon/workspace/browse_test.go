@@ -239,7 +239,7 @@ func TestWithin(t *testing.T) {
 		want    bool
 	}{
 		{"/srv/projects", "/srv/projects", true},
-		{"/srv/projects", "/srv/projects/nabu", true},
+		{"/srv/projects", "/srv/projects/rho", true},
 		{"/srv/projects", "/srv/projects-private", false},
 		{"/srv/projects", "/srv", false},
 		{"/srv/projects", "/etc", false},

@@ -1,4 +1,4 @@
-# nabu P1a — Session Store, Provider, Tools, Agent Loop Implementation Plan
+# rho P1a — Session Store, Provider, Tools, Agent Loop Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -24,13 +24,13 @@ ordinary module (`daemon/tools`). Modules see the daemon only through
 **Tech Stack:** Go 1.26, standard library only. `net/http` + hand-rolled SSE for the
 provider. `httptest` for provider tests. `go test ./...` is the gate.
 
-**Spec:** `docs/specs/2026-09-11-nabu-architecture-design.md` §4–§6,
+**Spec:** `docs/specs/2026-09-11-rho-architecture-design.md` §4–§6,
 §8–§10, §12, §14. Wire contract: `protocol/spec.md`.
 
 **P1 is split into three plans** because the spec's P1 covers three independently
 testable subsystems. P1a (this plan) is the engine. P1b is the WebSocket API, config
 loading, daemon lifecycle and the CLI. P1c is the policy modules (`skills`, `guard`,
-`verify`, `report`). The milestone is complete, and Claude Code can delegate to nabu,
+`verify`, `report`). The milestone is complete, and Claude Code can delegate to rho,
 only when all three land. Each ends with working, tested software.
 
 **Task 13 is the largest task** in this plan: it builds the Manager, which is where
@@ -43,7 +43,7 @@ steps give. Every other task fits comfortably in one pass.
 
 - **Turn end → `idle`, `stop` → `completed` + report.** The loop never decides a
   session is "completed"; it returns the session to `idle` when no module vetoes.
-  `nabu.session.stop` (P1b's CLI calls it when a headless run goes idle) appends
+  `rho.session.stop` (P1b's CLI calls it when a headless run goes idle) appends
   `completed` and the report. `blocked`, `paused`, `error` are set by the loop and
   also get a report. This keeps "headless vs interactive" out of the daemon.
 - **Turn = one assistant `message` event**, including tool-call-only turns whose
@@ -120,8 +120,8 @@ steps give. Every other task fits comfortably in one pass.
 
 - Commit style: `area: lowercase summary`. Stage named files.
 - Run the full gate before every commit: `go build ./... && go vet ./... && go test ./...`
-- Tests use `t.TempDir()` for any on-disk state. Never touch `~/.nabu`.
-- All paths in this plan are relative to the repo root `C:\Users\corpo\Documents\projects\nabu`.
+- Tests use `t.TempDir()` for any on-disk state. Never touch `~/.rho`.
+- All paths in this plan are relative to the repo root `C:\Users\corpo\Documents\projects\rho`.
 
 ---
 
@@ -486,7 +486,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 var opts = protocol.Options{Model: "local/qwen", CompactionEnabled: true, PermissionMode: protocol.PermissionAsk}
@@ -626,7 +626,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Session is one append-only log: an in-memory slice mirrored to a JSONL file.
@@ -780,7 +780,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // ErrNotFound is returned for unknown session ids.
@@ -884,7 +884,7 @@ func load(id, path string) (*Session, error) {
 	return &Session{id: id, path: path, f: f, events: events, subs: map[int]chan protocol.Event{}}, nil
 }
 
-// Summary is what nabu.session.list returns per session.
+// Summary is what rho.session.list returns per session.
 type Summary struct {
 	SessionID    string                `json:"session_id"`
 	Workspace    string                `json:"workspace"`
@@ -998,7 +998,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func TestSubscribeReceivesAppends(t *testing.T) {
@@ -1138,7 +1138,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func TestFakePopsScriptInOrder(t *testing.T) {
@@ -1216,7 +1216,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Message is one chat message in provider-neutral form.
@@ -1300,7 +1300,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Fake is a scripted Provider for tests. Each Complete pops the next Response
@@ -1585,7 +1585,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // OpenAI speaks the OpenAI chat-completions streaming API, which llama.cpp,
@@ -2047,8 +2047,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // fakeSession gives tools a workspace and nothing else.
@@ -2201,10 +2201,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
-// Builtins is the module that provides nabu's built-in tools. It registers
+// Builtins is the module that provides rho's built-in tools. It registers
 // through module.ToolProvider like any other module: there is no privileged
 // path (spec §14.5).
 type Builtins struct {
@@ -2314,7 +2314,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // skipDir names directories never walked by glob and grep.
@@ -2765,7 +2765,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // shellCommand returns the interpreter and the flag that takes a command.
@@ -2877,8 +2877,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func ev(t protocol.EventType, data any) protocol.Event {
@@ -3015,8 +3015,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // TaskStore records a task snapshot for a session. The agent implements it:
@@ -3177,8 +3177,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // mklog builds a chained log from (type, data) pairs for tests.
@@ -3344,7 +3344,7 @@ func (c Config) withDefaults() Config {
 // DefaultSystemPrompt is the static prefix of every request. It states
 // mechanism, not policy: how tools work and how a turn ends. Policy (what to
 // gate, when to require tasks) comes from modules as context blocks.
-const DefaultSystemPrompt = `You are nabu, a coding agent running inside the user's workspace.
+const DefaultSystemPrompt = `You are rho, a coding agent running inside the user's workspace.
 
 Rules:
 - Use the tools to inspect and change the workspace. Paths are relative to the workspace unless absolute.
@@ -3361,8 +3361,8 @@ package agent
 import (
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // buildRequest turns the log into a provider request (protocol spec §6).
@@ -3489,9 +3489,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/protocol"
 )
 
 type fakeCore struct {
@@ -3587,9 +3587,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // core is what the handle and host need from the Manager. Task 13's Manager
@@ -3759,11 +3759,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/daemon/tools"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/daemon/tools"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // harness wires a Manager over a temp dir and a fake provider.
@@ -4062,12 +4062,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/daemon/tools"
-	"github.com/corporealshift/nabu/daemon/workspace"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/daemon/tools"
+	"github.com/corporealshift/rho/daemon/workspace"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Asker answers questions that need a human: permission for a gated tool call
@@ -4088,7 +4088,7 @@ type Deps struct {
 	Providers *provider.Registry
 	Modules   *module.Registry
 	Builtins  *tools.Builtins
-	Root      string // ~/.nabu
+	Root      string // ~/.rho
 	Log       *slog.Logger
 	Asker     Asker
 	Deltas    DeltaSink
@@ -4365,7 +4365,7 @@ func (m *Manager) UpdateTasks(ctx context.Context, s module.Session, incoming []
 	return next, nil
 }
 
-// UpdateTasksByID is the client-facing entry point (nabu.session.update_tasks).
+// UpdateTasksByID is the client-facing entry point (rho.session.update_tasks).
 func (m *Manager) UpdateTasksByID(ctx context.Context, id string, incoming []protocol.Task) (protocol.TasksData, error) {
 	h, err := m.handle(id)
 	if err != nil {
@@ -4569,7 +4569,7 @@ func (m *Manager) emitReport(ctx context.Context, h *sessionHandle, exit protoco
 // ---------------------------------------------------------------- core impl
 
 // invokeTool logs the call, gates it, runs it, logs the result, and notifies
-// observers. Every tool call in nabu goes through here, model or module.
+// observers. Every tool call in rho goes through here, model or module.
 func (m *Manager) invokeTool(ctx context.Context, h *sessionHandle, call protocol.ToolCallData) protocol.ToolResultData {
 	if len(call.Arguments) == 0 {
 		call.Arguments = json.RawMessage(`{}`)
@@ -4697,7 +4697,7 @@ func (c Config) ModuleConfig(name string) module.Config {
 }
 ```
 
-Add `"github.com/corporealshift/nabu/daemon/module"` to the config.go imports.
+Add `"github.com/corporealshift/rho/daemon/module"` to the config.go imports.
 
 - [x] **Step 6: Add the stub loop so the package compiles**
 
@@ -4757,8 +4757,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func TestLoopRunsToolsThenStopsIdle(t *testing.T) {
@@ -4937,8 +4937,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // runLoop drives a session's turns until it stops, pauses, blocks, or fails.
@@ -5084,9 +5084,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // vetoTimes vetoes the first n stop attempts, then allows.
@@ -5252,8 +5252,8 @@ package agent
 import (
 	"context"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // stopInfo gathers what a StopGate needs without a second round trip.
@@ -5475,9 +5475,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // bigUsage reports input token usage at the given fraction of an 8000-token
@@ -5632,9 +5632,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // summarizePrompt asks the model to compress the earlier conversation. It
@@ -5904,31 +5904,31 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/daemon/tools"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/daemon/tools"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // TestLiveLocalModel drives the whole loop against a real OpenAI-compatible
-// server. It is skipped unless NABU_LIVE_BASE_URL is set, so the default gate
+// server. It is skipped unless RHO_LIVE_BASE_URL is set, so the default gate
 // stays hermetic.
 //
-//	NABU_LIVE_BASE_URL=http://localhost:8033/v1 \
-//	NABU_LIVE_MODEL=qwen3.6-35b-a3b \
+//	RHO_LIVE_BASE_URL=http://localhost:8033/v1 \
+//	RHO_LIVE_MODEL=qwen3.6-35b-a3b \
 //	go test ./daemon/agent/ -run Live -v -timeout 10m
 func TestLiveLocalModel(t *testing.T) {
-	base := os.Getenv("NABU_LIVE_BASE_URL")
+	base := os.Getenv("RHO_LIVE_BASE_URL")
 	if base == "" {
-		t.Skip("set NABU_LIVE_BASE_URL to run the live smoke test")
+		t.Skip("set RHO_LIVE_BASE_URL to run the live smoke test")
 	}
-	model := os.Getenv("NABU_LIVE_MODEL")
+	model := os.Getenv("RHO_LIVE_MODEL")
 	if model == "" {
 		model = "local-model"
 	}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "greeting.txt"), []byte("hello from nabu\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "greeting.txt"), []byte("hello from rho\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store, err := session.Open(dir)
@@ -5974,7 +5974,7 @@ func TestLiveLocalModel(t *testing.T) {
 	for _, e := range s.Events() {
 		if e.Type == protocol.EventToolResult {
 			d := protocol.MustData[protocol.ToolResultData](e)
-			if d.Tool == "read" && d.Status == "ok" && strings.Contains(d.Content, "hello from nabu") {
+			if d.Tool == "read" && d.Status == "ok" && strings.Contains(d.Content, "hello from rho") {
 				readOK = true
 			}
 		}
@@ -6034,19 +6034,19 @@ curl -s -m 3 http://localhost:8033/v1/models | head -c 200
 Then, in Git Bash:
 
 ```bash
-NABU_LIVE_BASE_URL=http://localhost:8033/v1 NABU_LIVE_MODEL=qwen3.6-35b-a3b \
+RHO_LIVE_BASE_URL=http://localhost:8033/v1 RHO_LIVE_MODEL=qwen3.6-35b-a3b \
   go test ./daemon/agent/ -run Live -v -timeout 10m
 ```
 
 Expected: PASS, with a logged event list showing `message`, `tool_call read`,
-`tool_result ok: hello from nabu`, a final `message`, and `state_change idle`.
+`tool_result ok: hello from rho`, a final `message`, and `state_change idle`.
 
 If it fails, the likely causes in order: the server does not send `usage` in the
 stream (check the logged usage line; set `ContextWindow: 0` in config to disable
 size-based compaction until it does); the model emits tool calls in a non-standard
 field (log the raw SSE by adding a temporary `t.Log` in `readStream`); or the model
 ignores the tools entirely (try a more explicit prompt, and record the finding — that
-is a real signal about which local model can drive nabu).
+is a real signal about which local model can drive rho).
 
 - [x] **Step 4: Record the result in ARCHITECTURE.md**
 
@@ -6066,7 +6066,7 @@ A live smoke test drives the real agent loop against a local OpenAI-compatible
 server. It is skipped unless the base URL is set:
 
 ```
-NABU_LIVE_BASE_URL=http://localhost:8033/v1 NABU_LIVE_MODEL=qwen3.6-35b-a3b \
+RHO_LIVE_BASE_URL=http://localhost:8033/v1 RHO_LIVE_MODEL=qwen3.6-35b-a3b \
   go test ./daemon/agent/ -run Live -v -timeout 10m
 ```
 ```
@@ -6105,8 +6105,8 @@ git push -u origin p1
 
 - **P1b:** the WebSocket API (`daemon/api`), the `hello` handshake, subscriptions,
   delta fan-out, first-responder-wins permission requests, the `Asker`
-  implementation, `~/.nabu/config.toml` loading, daemon lifecycle and auto-start,
-  and the `cmd/nabu` subcommands (`daemon`, `run`, `status`, `attach`, `stop`,
+  implementation, `~/.rho/config.toml` loading, daemon lifecycle and auto-start,
+  and the `cmd/rho` subcommands (`daemon`, `run`, `status`, `attach`, `stop`,
   `resume`) with the documented exit codes. Windows job objects for bash process
   trees belong here too.
 - **P1c:** the policy modules — `skills`, `guard`, `verify` (`require_done_when`,

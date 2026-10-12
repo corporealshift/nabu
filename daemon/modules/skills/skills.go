@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // File and size limits. The index rides on every request until the next
@@ -35,7 +35,7 @@ type Skill struct {
 	Description string
 	// Path is the absolute path to the skill's SKILL.md.
 	Path string
-	// Covers are the workspace files the skill is about, from the nabu-only
+	// Covers are the workspace files the skill is about, from the rho-only
 	// "paths" frontmatter key. Touching one reminds the model of the skill.
 	Covers []glob
 }
@@ -111,7 +111,7 @@ func (m *Module) current() []Skill {
 }
 
 // defaultPaths are the global skill directories: Claude Code's, so an existing
-// library works unchanged, and nabu's own under the module data directory.
+// library works unchanged, and rho's own under the module data directory.
 func (m *Module) defaultPaths(h module.Host) []string {
 	var out []string
 	if home, err := os.UserHomeDir(); err == nil {
@@ -126,7 +126,7 @@ func (m *Module) defaultPaths(h module.Host) []string {
 }
 
 // pathsFromConfig reads the "paths" list. When set it replaces the defaults
-// entirely, so a user can point nabu somewhere else without inheriting them.
+// entirely, so a user can point rho somewhere else without inheriting them.
 func pathsFromConfig(cfg module.Config) ([]string, error) {
 	raw, ok := cfg["paths"]
 	if !ok || raw == nil {
@@ -270,7 +270,7 @@ func parseSkill(path string) (Skill, error) {
 
 // frontmatter extracts the leading --- delimited block as key/value pairs.
 // It is parsed line by line rather than with a YAML library, which keeps the
-// dependency count at zero; the frontmatter nabu reads is flat.
+// dependency count at zero; the frontmatter rho reads is flat.
 func frontmatter(content string) (map[string]string, bool) {
 	content = strings.TrimLeft(content, "\ufeff \t\r\n")
 	if !strings.HasPrefix(content, "---") {

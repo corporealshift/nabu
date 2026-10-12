@@ -1,32 +1,33 @@
-# nabu
+# rho
 
 A coding agent built to get real work out of a local model. It ships as one Go binary
 containing a daemon, a terminal UI and a headless CLI, plus an Android client that
 connects to the daemon.
 
-Nabu was the Mesopotamian god of scribes and record-keeping. Every session is an
-append-only log, and every request to the model is built from that log.
+Rho is named for Cauldron RHO in *Horizon Zero Dawn*: a forge under a mountain
+that builds machines with nobody inside. Every session is an append-only log, and
+every request to the model is built from that log.
 
 > **Status:** early, and built for one person's daily use. It drives a local model
 > through real work every day. Interfaces still change, and there is no release or
 > installer: you build both clients from source.
 
-## Why nabu
+## Why rho
 
 Most coding agents assume a frontier model that follows a long workflow and knows when
 it's done. A local model like Qwen3.6-35B-A3B does neither reliably. It drifts from the
-task, repeats itself, and says it has finished when it hasn't. nabu is built around those
+task, repeats itself, and says it has finished when it hasn't. rho is built around those
 failures.
 
 - **It doesn't take the model's word for it.** When the agent says it's done, stop gates
   check for open tasks, failed checks, a failing test command, and uncommitted changes.
   When a goal is set, a judge with a fresh context checks that too. Any objection sends
   the agent back to work.
-- **It takes work all the way to a merged PR.** `nabu runner` puts each brief through
+- **It takes work all the way to a merged PR.** `rho runner` puts each brief through
   fixed steps: plan, write the check (`verify.sh`) before any code, tasks, fixes until the
   check passes, a pull request, and fixes until CI is green. The model never has to
   remember the workflow, because each step is its own short session. A goal is broader:
-  nabu splits it into briefs and runs them in rounds until a check finds the goal met.
+  rho splits it into briefs and runs them in rounds until a check finds the goal met.
 - **The local model does the bulk of the work; Claude reviews.** Claude reviews the plan,
   the check and the finished work. It also steps in when a session stalls, and it can run
   your tests to see the failure for itself. So your Claude allowance goes on a few
@@ -50,20 +51,20 @@ Git is optional, but memory versioning and runs need it. Runs also need the `cla
 and `gh` to open pull requests.
 
 ```bash
-git clone https://github.com/corporealshift/nabu
-cd nabu
-go install ./cmd/nabu
+git clone https://github.com/corporealshift/rho
+cd rho
+go install ./cmd/rho
 ```
 
-That puts `nabu` in your Go bin directory. To upgrade, run `nabu daemon stop` first,
+That puts `rho` in your Go bin directory. To upgrade, run `rho daemon stop` first,
 because a running daemon holds the binary open. To build for other platforms, use
 `./scripts/build-release.sh 0.1.0`. It cross-compiles for macOS, Linux and Windows into
 `dist/`. Nothing is signed. On macOS, a binary downloaded through a browser needs
-`xattr -d com.apple.quarantine nabu` before it will run.
+`xattr -d com.apple.quarantine rho` before it will run.
 
 ## Quick start
 
-Create `~/.nabu/config.json`:
+Create `~/.rho/config.json`:
 
 ```json
 {
@@ -79,13 +80,13 @@ Create `~/.nabu/config.json`:
 ```
 
 `default_model` is `provider/model`: `local` picks the provider block, and the rest is
-sent to the server as the model name. Always set `context_window`. Without it, nabu never
+sent to the server as the model name. Always set `context_window`. Without it, rho never
 compacts, and a long session grows until the server refuses it.
 
 Then, in a repository:
 
 ```bash
-nabu
+rho
 ```
 
 This starts a daemon if none is running, creates a session in the current directory, and
@@ -93,7 +94,7 @@ opens the terminal UI.
 
 ## Recommended setup: Qwen3.6-35B-A3B
 
-This is the setup nabu is developed and run with every day. Run llama-server like this:
+This is the setup rho is developed and run with every day. Run llama-server like this:
 
 ```bash
 llama-server -m Qwen3.6-35B-A3B-UD-Q4_K_XL-MTP.gguf \
@@ -110,14 +111,14 @@ llama-server -m Qwen3.6-35B-A3B-UD-Q4_K_XL-MTP.gguf \
   [model card](https://huggingface.co/Qwen/Qwen3.6-35B-A3B)'s advice for thinking mode
   and agents. The presence penalty makes the model less likely to repeat itself.
 - **`--reasoning-budget`** stops the model thinking forever.
-- **`-np 1`**: one slot, so one request at a time. nabu's `max_in_flight` defaults to 1 to
+- **`-np 1`**: one slot, so one request at a time. rho's `max_in_flight` defaults to 1 to
   match.
 - **The MTP build with `draft-mtp`** speeds up generation by drafting tokens
   speculatively. Without an MTP model file, leave both `--spec` flags out.
 
-Then set up nabu.
+Then set up rho.
 
-**`~/.nabu/config.json`**:
+**`~/.rho/config.json`**:
 
 ```json
 {
@@ -141,7 +142,7 @@ Then set up nabu.
 }
 ```
 
-**`~/.nabu/runner/config.json`**:
+**`~/.rho/runner/config.json`**:
 
 ```json
 { "work_turns": 130, "goal_rounds": 10 }
@@ -156,7 +157,7 @@ Why these values:
 - **Asking Claude: `auto_ask_after: 50`.** Half of all work sessions in past runs
   finished within 42 turns, but about one in five ran past 150. The long ones we looked
   at closely were stuck on one thing an outside look fixed: a test asserting the wrong
-  thing, or failure output cut off by `| tail`. At 50 turns nabu asks Claude what's going
+  thing, or failure output cut off by `| tail`. At 50 turns rho asks Claude what's going
   wrong, and asks again at 100. The model keeps working meanwhile. In a run, if Claude
   answers that the plan cannot work, the runner stops the session and plans the run
   again from what Claude found.
@@ -205,7 +206,7 @@ A line starting with `/` is a command:
 | `/open <name>` | Open a page the agent made |
 | `/archive`, `/stop`, `/sessions`, `/help` | What they say |
 
-Quitting doesn't stop the session. Reopen it with `nabu --session <id>`, or press `s` and
+Quitting doesn't stop the session. Reopen it with `rho --session <id>`, or press `s` and
 pick it.
 
 ### Runs and goals
@@ -213,25 +214,25 @@ pick it.
 `/run` and `/goal` only queue the work. The runner does it:
 
 ```bash
-nabu runner
+rho runner
 ```
 
 Leave it running. It does one run at a time, and polls every two minutes. Each run works
-in its own worktree on its own branch, and opens a PR labeled `nabu`. A goal's runs merge
+in its own worktree on its own branch, and opens a PR labeled `rho`. A goal's runs merge
 into the goal's branch, and the goal opens one PR at the end. The steps and settings are
 described in [docs/configuration.md](docs/configuration.md#the-runner).
 
-With `~/.nabu/github/config.json`, the runner also:
+With `~/.rho/github/config.json`, the runner also:
 - reviews open pull requests;
-- answers review comments on PRs labeled `nabu`;
-- starts a run for each issue labeled `nabu`.
+- answers review comments on PRs labeled `rho`;
+- starts a run for each issue labeled `rho`.
 
-To run only those GitHub jobs, use `nabu github`.
+To run only those GitHub jobs, use `rho github`.
 
 ### Headless
 
 ```bash
-nabu run "add a health endpoint and a test for it"
+rho run "add a health endpoint and a test for it"
 ```
 
 This runs to completion and prints a report. The exit status says how it ended: 0
@@ -240,15 +241,15 @@ completed, 1 blocked, 2 paused, 3 error.
 ### Other commands
 
 ```bash
-nabu status [id]       # list sessions, or show one
-nabu attach <id>       # stream a session's events
-nabu stop <id>         # end a session
-nabu resume <id>       # resume a paused session
-nabu archive <id>      # put a session away; nabu restore <id> brings it back
-nabu notes [--all]     # the agent's working notes for this repository
-nabu stats [id]        # a session's numbers as JSON, or tokens per day
-nabu daemon            # run the daemon in the foreground
-nabu daemon stop       # stop it
+rho status [id]       # list sessions, or show one
+rho attach <id>       # stream a session's events
+rho stop <id>         # end a session
+rho resume <id>       # resume a paused session
+rho archive <id>      # put a session away; rho restore <id> brings it back
+rho notes [--all]     # the agent's working notes for this repository
+rho stats [id]        # a session's numbers as JSON, or tokens per day
+rho daemon            # run the daemon in the foreground
+rho daemon stop       # stop it
 ```
 
 ## More
@@ -260,7 +261,7 @@ nabu daemon stop       # stop it
   memory and the tools.
 - [ARCHITECTURE.md](ARCHITECTURE.md): the map and its invariants. Every design decision is
   under `docs/specs/`.
-- [bench/README.md](bench/README.md) runs the same tasks through nabu, pi and Claude
+- [bench/README.md](bench/README.md) runs the same tasks through rho, pi and Claude
   Code, and compares the results.
 
 ## Contributing

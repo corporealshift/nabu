@@ -51,7 +51,7 @@ then.
 - `daemon/api/handler.go`: `CreateSessionOptions` gains `Parent` and `Labels`.
 - `daemon/agent/manager.go`:
   - `CreateOptions` gains `Parent` and `Labels`. `Create` refuses with
-    `nabu_invalid_params` if the parent is unknown (neither live nor archived), or if the
+    `rho_invalid_params` if the parent is unknown (neither live nor archived), or if the
     labels fail `ValidLabels`. They are recorded in the `session` event's options.
   - `SetOption`:
     - `labels` takes a JSON array of strings, checked with `ValidLabels`, and records
@@ -101,7 +101,7 @@ With the branch's binary running as a scratch daemon (`--root`, its own port):
 1. create a session;
 2. create a second with the first as its parent;
 3. `/run fix the thing` in the first, from the TUI;
-4. check `nabu status` and the TUI picker show the child indented, and the first
+4. check `rho status` and the TUI picker show the child indented, and the first
    labeled `run:requested` with the goal set.
 
 That's all this part can show. No runner exists until part 2.

@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/agent"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/daemon/stats"
-	"github.com/corporealshift/nabu/daemon/workspace"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/agent"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/daemon/stats"
+	"github.com/corporealshift/rho/daemon/workspace"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // methodFunc handles one JSON-RPC method. The context is the connection's, so
@@ -33,7 +33,7 @@ type Handler struct {
 	subMu   sync.Mutex
 	fanouts map[string]*fanout
 
-	// browseRoots bound nabu.workspace.browse. Guarded by mu.
+	// browseRoots bound rho.workspace.browse. Guarded by mu.
 	browseRoots []string
 
 	// RequestTimeout bounds a daemon-to-client request. 0 uses the spec
@@ -47,7 +47,7 @@ type Handler struct {
 	reqMu   sync.Mutex
 	pending map[string]*pendingRequest
 
-	// OnShutdown, when set, is what nabu.daemon.stop calls. The daemon owns
+	// OnShutdown, when set, is what rho.daemon.stop calls. The daemon owns
 	// the shutdown; the API only exposes it.
 	OnShutdown func()
 
@@ -67,22 +67,22 @@ func NewHandler(m *agent.Manager, st *session.Store, log *slog.Logger) *Handler 
 		fanouts: make(map[string]*fanout),
 		pending: make(map[string]*pendingRequest),
 	}
-	h.register("nabu.session.list", h.handleSessionList)
-	h.register("nabu.workspace.browse", h.handleWorkspaceBrowse)
-	h.register("nabu.workspace.create_directory", h.handleWorkspaceCreateDirectory)
-	h.register("nabu.session.create", h.handleSessionCreate)
-	h.register("nabu.session.events_after", h.handleSessionEventsAfter)
-	h.register("nabu.session.state", h.handleSessionState)
-	h.register("nabu.session.stats", h.handleSessionStats)
-	h.register("nabu.usage", h.handleUsage)
-	h.register("nabu.stats", h.handleStats)
-	h.register("nabu.stats.calls", h.handleStatsCalls)
-	h.register("nabu.session.subscribe", h.handleSessionSubscribe)
-	h.register("nabu.session.unsubscribe", h.handleSessionUnsubscribe)
+	h.register("rho.session.list", h.handleSessionList)
+	h.register("rho.workspace.browse", h.handleWorkspaceBrowse)
+	h.register("rho.workspace.create_directory", h.handleWorkspaceCreateDirectory)
+	h.register("rho.session.create", h.handleSessionCreate)
+	h.register("rho.session.events_after", h.handleSessionEventsAfter)
+	h.register("rho.session.state", h.handleSessionState)
+	h.register("rho.session.stats", h.handleSessionStats)
+	h.register("rho.usage", h.handleUsage)
+	h.register("rho.stats", h.handleStats)
+	h.register("rho.stats.calls", h.handleStatsCalls)
+	h.register("rho.session.subscribe", h.handleSessionSubscribe)
+	h.register("rho.session.unsubscribe", h.handleSessionUnsubscribe)
 	h.registerMutators()
-	h.register("nabu.daemon.stop", h.handleDaemonStop)
-	h.register("nabu.device.register", h.handleDeviceRegister)
-	h.register("nabu.device.unregister", h.handleDeviceUnregister)
+	h.register("rho.daemon.stop", h.handleDaemonStop)
+	h.register("rho.device.register", h.handleDeviceRegister)
+	h.register("rho.device.unregister", h.handleDeviceUnregister)
 	return h
 }
 
@@ -111,8 +111,8 @@ const callQueue = 64
 // exists to end whatever is ahead of it, so queueing one behind a compaction
 // would make it useless for exactly the case it is for.
 var jumpsQueue = map[string]bool{
-	"nabu.session.interrupt": true,
-	"nabu.session.stop":      true,
+	"rho.session.interrupt": true,
+	"rho.session.stop":      true,
 }
 
 // ServeConn implements ConnHandler: read messages, dispatch calls, reply.
@@ -290,7 +290,7 @@ func (h *Handler) getSession(id string) (*session.Session, *protocol.RPCError) {
 	return s, nil
 }
 
-// handleSessionList implements nabu.session.list (spec 7.2).
+// handleSessionList implements rho.session.list (spec 7.2).
 func (h *Handler) handleSessionList(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		// Archived lists the archive instead (spec 7.19).
@@ -313,7 +313,7 @@ func (h *Handler) handleSessionList(_ context.Context, _ *connState, params json
 	return map[string]any{"sessions": summaries}, nil
 }
 
-// CreateSessionOptions are the optional parameters of nabu.session.create.
+// CreateSessionOptions are the optional parameters of rho.session.create.
 type CreateSessionOptions struct {
 	Model             string   `json:"model,omitempty"`
 	PermissionMode    string   `json:"permission_mode,omitempty"`
@@ -324,7 +324,7 @@ type CreateSessionOptions struct {
 	Context           string   `json:"context,omitempty"`
 }
 
-// handleSessionCreate implements nabu.session.create (spec 7.3).
+// handleSessionCreate implements rho.session.create (spec 7.3).
 func (h *Handler) handleSessionCreate(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		Workspace string                `json:"workspace"`
@@ -369,7 +369,7 @@ func (h *Handler) handleSessionCreate(ctx context.Context, _ *connState, params 
 	return map[string]any{"session_id": s.ID(), "event": events[0]}, nil
 }
 
-// handleSessionEventsAfter implements nabu.session.events_after (spec 7.5, 4).
+// handleSessionEventsAfter implements rho.session.events_after (spec 7.5, 4).
 func (h *Handler) handleSessionEventsAfter(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID   string  `json:"session_id"`
@@ -397,7 +397,7 @@ func (h *Handler) handleSessionEventsAfter(_ context.Context, _ *connState, para
 	return map[string]any{"events": events, "synced": synced}, nil
 }
 
-// handleSessionState implements nabu.session.state (spec 7.10, 5). The State
+// handleSessionState implements rho.session.state (spec 7.10, 5). The State
 // projection carries the spec's field names in its own JSON tags, so it is
 // returned whole rather than copied into a map that could drift from it.
 func (h *Handler) handleSessionState(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
@@ -414,7 +414,7 @@ func (h *Handler) handleSessionState(_ context.Context, _ *connState, params jso
 	return s.State(), nil
 }
 
-// handleSessionStats implements nabu.session.stats (spec 7.21). With tree,
+// handleSessionStats implements rho.session.stats (spec 7.21). With tree,
 // it measures the session and every session under it, archived ones
 // included: a step archived since still did its work.
 func (h *Handler) handleSessionStats(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
@@ -446,7 +446,7 @@ const (
 	maxUsageDays     = 90
 )
 
-// handleUsage implements nabu.usage (spec 7.22): tokens and turns per day,
+// handleUsage implements rho.usage (spec 7.22): tokens and turns per day,
 // across every session, archived ones included.
 func (h *Handler) handleUsage(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
@@ -483,7 +483,7 @@ func (h *Handler) handleUsage(_ context.Context, _ *connState, params json.RawMe
 	return map[string]any{"days": stats.Usage(logs, first, now, time.Local)}, nil
 }
 
-// A week answers "what has it been doing lately"; the cap is nabu.usage's.
+// A week answers "what has it been doing lately"; the cap is rho.usage's.
 // Calls are rows on a phone: a hundred is more than a screen, and five
 // hundred is plenty to scroll.
 const (
@@ -492,7 +492,7 @@ const (
 	maxCallsLimit     = 500
 )
 
-// handleStats implements nabu.stats (spec 7.25): the work done across
+// handleStats implements rho.stats (spec 7.25): the work done across
 // sessions over the last days.
 func (h *Handler) handleStats(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
@@ -516,7 +516,7 @@ func (h *Handler) handleStats(_ context.Context, _ *connState, params json.RawMe
 	}{days, kind, stats.Totals(logs, from, to, time.Local, kind), skipped}, nil
 }
 
-// handleStatsCalls implements nabu.stats.calls (spec 7.26): one tool's calls
+// handleStatsCalls implements rho.stats.calls (spec 7.26): one tool's calls
 // and what came back, newest first.
 func (h *Handler) handleStatsCalls(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
@@ -603,7 +603,7 @@ func countErrors(err error) int {
 	return 1
 }
 
-// BrowseRoots bound what nabu.workspace.browse may list. Empty falls back to
+// BrowseRoots bound what rho.workspace.browse may list. Empty falls back to
 // the user's home directory rather than to everything.
 func (h *Handler) SetBrowseRoots(roots []string) {
 	h.mu.Lock()
@@ -621,7 +621,7 @@ func (h *Handler) roots() []string {
 	return workspace.DefaultRoots()
 }
 
-// handleWorkspaceBrowse implements nabu.workspace.browse (spec 7.16).
+// handleWorkspaceBrowse implements rho.workspace.browse (spec 7.16).
 //
 // A client picking a directory on another machine cannot see its filesystem,
 // and typing an absolute Windows path on a phone is not a user interface. An
@@ -642,7 +642,7 @@ func (h *Handler) handleWorkspaceBrowse(_ context.Context, _ *connState, params 
 	return listing, nil
 }
 
-// handleWorkspaceCreateDirectory implements nabu.workspace.create_directory
+// handleWorkspaceCreateDirectory implements rho.workspace.create_directory
 // (spec 7.17).
 //
 // The one place a client writes to the daemon's filesystem. Not a new tier of

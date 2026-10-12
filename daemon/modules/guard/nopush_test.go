@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Seen live: a runner's verify session pushed its branch and opened its own
@@ -19,7 +19,7 @@ func TestANoPushSessionMayNotPublish(t *testing.T) {
 	plain := fakeSession{workspace: ws, mode: protocol.PermissionAuto}
 
 	denied := []string{
-		"git push origin nabu/x",
+		"git push origin rho/x",
 		"git -C . push",
 		"git add . && git commit -m x && git push -u origin HEAD",
 		`gh pr create --title "x" --body "y"`,
@@ -40,7 +40,7 @@ func TestANoPushSessionMayNotPublish(t *testing.T) {
 			t.Errorf("%q in a no-push bypass session: %v, want deny", c, v.Decision)
 		}
 	}
-	if v := m.GateTool(context.Background(), plain, bashCall("git push origin nabu/x")); v.Decision != module.Allow {
+	if v := m.GateTool(context.Background(), plain, bashCall("git push origin rho/x")); v.Decision != module.Allow {
 		t.Errorf("an unlabeled auto session may push as before: %v", v.Decision)
 	}
 

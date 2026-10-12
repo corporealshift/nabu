@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // runLoop drives a session's turns until it stops, pauses, blocks, or fails.
@@ -122,7 +122,7 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 
 	// The provider rebuilt a call the server had reported as thinking. Saying
 	// so keeps the log honest — the alternative is quietly rewriting what the
-	// model produced — and names a fault that lives upstream of nabu.
+	// model produced — and names a fault that lives upstream of rho.
 	if resp.Recovered > 0 {
 		h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "warn",
 			Message: fmt.Sprintf("the model wrote %s into its reasoning instead of calling %s; "+

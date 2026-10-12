@@ -101,7 +101,7 @@ Let me check if there's a specific issue or incomplete work. The user said "fini
 Let me look at the existing code to understand what's complete and what's not.
 
 
-The user wants me to "finish the work on m4". Looking at the context, "m4" likely refers to the P4 milestone (Android Client Implementation Plan) based on the memory about the nabu project and the plan file `docs/plans/2026-09-15-p4-android-client.md`.
+The user wants me to "finish the work on m4". Looking at the context, "m4" likely refers to the P4 milestone (Android Client Implementation Plan) based on the memory about the rho project and the plan file `docs/plans/2026-09-15-p4-android-client.md`.
 
 Let me understand what's already done and what remains. The Android project exists and builds with tests passing. I need to check what tasks from the plan are complete and what's missing.
 

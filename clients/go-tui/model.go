@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/clients/goclient"
-	"github.com/corporealshift/nabu/daemon/modules/artifact"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/clients/goclient"
+	"github.com/corporealshift/rho/daemon/modules/artifact"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // connState is what the client is doing about its connection.

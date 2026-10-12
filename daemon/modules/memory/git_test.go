@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // needGit skips when git is unavailable. A machine without git must still be

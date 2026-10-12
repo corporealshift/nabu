@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func under(hours float64, parent string, labels ...string) protocol.Event {

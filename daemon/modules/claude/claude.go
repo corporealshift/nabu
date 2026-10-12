@@ -1,6 +1,6 @@
 // Package claude lets the agent fetch a second opinion from Claude Code.
 //
-// The loop it replaces had the owner in the middle of every round trip: nabu
+// The loop it replaces had the owner in the middle of every round trip: rho
 // opened a pull request, the owner asked Claude to review it, the owner carried
 // the answer back.
 //
@@ -27,8 +27,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 const (

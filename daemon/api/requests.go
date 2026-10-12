@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // DefaultRequestTimeout bounds how long the daemon waits for a client to
@@ -75,13 +75,13 @@ func (p *pendingRequest) markTimedOut() {
 	}
 }
 
-// permissionReply is what a client returns for nabu.rpc.permission.request.
+// permissionReply is what a client returns for rho.rpc.permission.request.
 type permissionReply struct {
 	Verdict string `json:"verdict"`
 	Reason  string `json:"reason,omitempty"`
 }
 
-// askReply is what a client returns for nabu.rpc.ui.ask.
+// askReply is what a client returns for rho.rpc.ui.ask.
 type askReply struct {
 	Answer string `json:"answer"`
 }
@@ -235,7 +235,7 @@ func (h *Handler) resumeAfterLateAnswer(ctx context.Context, sessionID string) {
 // denies: refusing a gated call is the safe outcome. It reports those cases as
 // unanswered, because no person made that decision.
 func (h *Handler) Permission(ctx context.Context, sessionID string, call protocol.ToolCallData, summary, risk string) (bool, string, bool) {
-	raw, err := h.ask(ctx, sessionID, "nabu.rpc.permission.request", map[string]any{
+	raw, err := h.ask(ctx, sessionID, "rho.rpc.permission.request", map[string]any{
 		"tool":    call.Tool,
 		"summary": summary,
 		"risk":    risk,
@@ -263,7 +263,7 @@ func (h *Handler) Ask(ctx context.Context, sessionID, question string, choices [
 	if len(choices) > 0 {
 		params["choices"] = choices
 	}
-	raw, err := h.ask(ctx, sessionID, "nabu.rpc.ui.ask", params, true)
+	raw, err := h.ask(ctx, sessionID, "rho.rpc.ui.ask", params, true)
 	if err != nil {
 		return "", err
 	}

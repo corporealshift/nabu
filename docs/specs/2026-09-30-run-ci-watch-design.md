@@ -50,7 +50,7 @@ it is.
 
 ### What the run does not touch
 
-- The PR's review comments. The PR carries the `nabu` label, so the comments job
+- The PR's review comments. The PR carries the `rho` label, so the comments job
   (`2026-09-28-github-comments-design.md`) handles them in its own worktree, as for any
   labeled PR.
 - **A push from the comments job while the run is at `ci`** moves the head, and the run

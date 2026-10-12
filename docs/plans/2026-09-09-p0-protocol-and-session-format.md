@@ -1,24 +1,24 @@
-# nabu P0 — Protocol and Session Format
+# rho P0 — Protocol and Session Format
 
 **Status:** Complete as of 2026-09-11 (revision 2). The revision-1 plan this file
 replaced was written against subprocess plugins and seven event types; it is in git
 history at 8843a6c. This document records what P0 delivers, where it lives, and how
 it is verified, so the P1 plan can build on it without re-deriving anything.
 
-**Goal:** Define and prove nabu's normative wire contract — the append-only session
+**Goal:** Define and prove rho's normative wire contract — the append-only session
 event schema, session states and options, the JSON-RPC method set, error codes, the
 state projection, request assembly, and the two normative text templates — backed by
 a language-neutral conformance vector suite and a Go reference implementation.
 
-**Architecture:** `docs/specs/2026-09-11-nabu-architecture-design.md`
-§5–§7 and §14. The protocol is the one process boundary in nabu (daemon ↔ clients);
+**Architecture:** `docs/specs/2026-09-11-rho-architecture-design.md`
+§5–§7 and §14. The protocol is the one process boundary in rho (daemon ↔ clients);
 the Go daemon, Go TUI, Kotlin Android client, and later Rust GUI all implement it.
 
 ## Delivered
 
 | Artifact | Path | Notes |
 |---|---|---|
-| Normative spec | `protocol/spec.md` | 15 event types, ULIDs, cursors (`nabu_cursor_unknown` on unknown ids), projection, assembly order, Current state block, veto message, 19 methods incl. `hello` and ephemeral `delta`, 13 error codes, vector format |
+| Normative spec | `protocol/spec.md` | 15 event types, ULIDs, cursors (`rho_cursor_unknown` on unknown ids), projection, assembly order, Current state block, veto message, 19 methods incl. `hello` and ephemeral `delta`, 13 error codes, vector format |
 | JSON Schema | `protocol/schema/event.json`, `protocol/schema/jsonrpc.json` | draft 2020-12; a Go test pins the type, method and error enums to the Go constants |
 | Go package | `protocol/` | `types.go` (events + per-type data), `ulid.go`, `errors.go`, `validate.go`, `cursor.go`, `project.go`, `render.go`, `assemble.go`, `vectors.go` |
 | Conformance vectors | `protocol/vectors/<family>/*.json` | 33 cases in 7 families: validation (11), event-ordering (2), cursor-semantics (5), projection (4), rendering (5), assembly (4), partial-sync (2) |
@@ -63,7 +63,7 @@ the boundary test.
   with mechanical `evidence`.
 - `daemon/modules/{skills,guard,verify,report}` and one line each in
   `daemon/modules/all.go`.
-- `cmd/nabu`: `daemon`, `run --done-when --max-turns`, `status`, `attach`, `stop`,
+- `cmd/rho`: `daemon`, `run --done-when --max-turns`, `status`, `attach`, `stop`,
   `resume`; auto-start of a detached daemon.
 
 ## Not in P0

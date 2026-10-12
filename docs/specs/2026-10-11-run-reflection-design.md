@@ -3,7 +3,7 @@
 **Date:** 2026-10-11
 **Status:** Approved by Kyle in conversation
 **Amends:** `docs/specs/2026-09-30-orchestrated-runs-design.md` (a new last step) and
-`docs/specs/2026-09-11-nabu-architecture-design.md` §11.4 (no curator on run steps).
+`docs/specs/2026-09-11-rho-architecture-design.md` §11.4 (no curator on run steps).
 
 ## Problem
 

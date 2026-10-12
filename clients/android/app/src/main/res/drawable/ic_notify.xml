@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The status-bar icon: Android draws it in one colour, so it is a shape,
-     not the launcher icon. A speech bubble. -->
+<!-- The status-bar icon: Android draws it in one colour, so the mountain
+     and the ring are one shape. Same geometry as ui/theme/Mark.kt. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -8,5 +8,10 @@
     android:viewportHeight="24">
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M4,4h16a2,2 0,0 1,2 2v10a2,2 0,0 1,-2 2H8l-4,4V6a2,2 0,0 1,2 -2z" />
+        android:fillType="evenOdd"
+        android:pathData="M2,16 L12,6 L22,16 Z M5.33,16 L12,9.33 L18.67,16 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M7.83,12.67 A4.17,3.33 0 1,0 16.17,12.67 A4.17,3.33 0 1,0 7.83,12.67 Z M9.54,12.5 A2.46,1.71 0 1,0 14.46,12.5 A2.46,1.71 0 1,0 9.54,12.5 Z" />
 </vector>

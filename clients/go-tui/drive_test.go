@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/corporealshift/nabu/clients/goclient"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/clients/goclient"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // running puts the model into a running turn.
@@ -323,7 +323,7 @@ func TestEmptyPickerSaysSo(t *testing.T) {
 func TestPickerShowsWhatEachSessionIsAbout(t *testing.T) {
 	m := sized(t, nil)
 	m, _ = send(m, sessionsMsg{sessions: []goclient.SessionSummary{
-		{SessionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", State: "idle", Workspace: `C:\code\nabu`,
+		{SessionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", State: "idle", Workspace: `C:\code\rho`,
 			LastPrompt: "fix the flaky\nattach test", UpdatedAt: time.Now().Add(-3 * time.Hour)},
 		{SessionID: "01BRZ3NDEKTSV4RRFFQ69G5FAV", State: "running", Workspace: "/home/k/scratch"},
 	}})
@@ -331,7 +331,7 @@ func TestPickerShowsWhatEachSessionIsAbout(t *testing.T) {
 
 	for _, want := range []string{
 		"fix the flaky attach test", // one line, however it was typed
-		"nabu · idle · 3 hours ago",
+		"rho · idle · 3 hours ago",
 		"nothing asked yet",
 		"scratch · running",
 	} {

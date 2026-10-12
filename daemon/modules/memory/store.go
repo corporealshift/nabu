@@ -267,7 +267,7 @@ func unquote(s string) string {
 }
 
 // render writes a memory back in the format it was read in, keeping unknown
-// keys: nabu is not the only writer of these files.
+// keys: rho is not the only writer of these files.
 func render(m Memory) string {
 	var b strings.Builder
 	b.WriteString("---\n")

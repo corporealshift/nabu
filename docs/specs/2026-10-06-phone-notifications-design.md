@@ -11,7 +11,7 @@ predates runs and goals, and would have buzzed for every one of a run's step ses
 
 ## Problem
 
-Kyle drives nabu from his phone. Runs and goals now work for hours without him, and they
+Kyle drives rho from his phone. Runs and goals now work for hours without him, and they
 stop for him: a goal that blocks, a run that fails, a question waiting for an answer. The
 phone hears about none of it unless the app is open. Android freezes the app, and its
 socket, soon after it goes to the background.
@@ -26,7 +26,7 @@ question, which waits for a person wherever it is asked.
 
 | kind | fires when | the phone shows |
 |---|---|---|
-| `question` | the daemon opens a daemon-to-client request (`nabu.rpc.ui.ask`, or a permission request sent to subscribers) in any session | "<project> is asking you something", high priority |
+| `question` | the daemon opens a daemon-to-client request (`rho.rpc.ui.ask`, or a permission request sent to subscribers) in any session | "<project> is asking you something", high priority |
 | `resolved` | that request is answered, or times out | the question's notification goes away |
 | `label` | a session with no parent gains a label listed in `notify.labels`, by default `run:done`, `run:failed`, `goal:done` and `goal:blocked` | "Goal blocked: <title>" |
 | `stopped` | a session with no parent goes from `running` to `blocked`, `error` or `paused` | "<project> stopped: error" |
@@ -71,8 +71,8 @@ of its description).
     session, whether or not a client is attached.
   - `Handler.ask` reports a request opening and closing.
 - **Protocol:**
-  - `nabu.device.register {token, name}` → `{}` upserts a device.
-  - `nabu.device.unregister {token}` → `{}` removes one.
+  - `rho.device.register {token, name}` → `{}` upserts a device.
+  - `rho.device.unregister {token}` → `{}` removes one.
 
   Both go in `spec.md` §7 and the JSON-RPC schema. Neither adds an event, so there is no
   new conformance vector: the vectors cover the log, and the method list is checked
@@ -85,7 +85,7 @@ of its description).
               "done_after_seconds": 60}}
   ```
 
-  A relative path resolves against the nabu root. With no `service_account`, nothing is
+  A relative path resolves against the rho root. With no `service_account`, nothing is
   sent; devices still register, so setting the key later needs nothing from the phone.
 - Every send and every failure goes to `daemon.log`. A push is not a logged event: it is
   derived entirely from the log, as the fan-out to clients is, and an event per push would
@@ -107,16 +107,16 @@ of its description).
     dropped. A `resolved` cancels its question.
   - Tapping a notification opens the app on that session.
 - **Registration:** on every connect, and when the token rotates, the app sends
-  `nabu.device.register` with its token and the phone's model name.
+  `rho.device.register` with its token and the phone's model name.
 - **Permission:** `POST_NOTIFICATIONS` is asked for once, on Android 13 and later.
 
 ### Setup only Kyle can do
 
-1. Create a Firebase project and add an Android app with package `com.nabu.client`.
+1. Create a Firebase project and add an Android app with package `com.rho.client`.
    Download its `google-services.json` to `clients/android/app/`.
 2. In the project settings, under service accounts, generate a private key. Save it as
-   `~/.nabu/fcm-service-account.json`, and set `notify.service_account` in
-   `~/.nabu/config.json`.
+   `~/.rho/fcm-service-account.json`, and set `notify.service_account` in
+   `~/.rho/config.json`.
 3. Rebuild and install the app, and restart the daemon.
 
 The README gets these steps.

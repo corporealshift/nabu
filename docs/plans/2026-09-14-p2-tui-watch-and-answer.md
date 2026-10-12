@@ -1,4 +1,4 @@
-# nabu P2 — TUI: Watch and Answer Implementation Plan
+# rho P2 — TUI: Watch and Answer Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
@@ -21,7 +21,7 @@ The spec leaves several details open. This plan decides them:
 ### Shared client placement
 
 The shared client lives at **`clients/goclient/`** as package `goclient`, a peer of the
-TUI rather than part of it. `cmd/nabu` and `clients/go-tui` both import it.
+TUI rather than part of it. `cmd/rho` and `clients/go-tui` both import it.
 
 **Why not inside `clients/go-tui/`.** That would make the CLI depend on the TUI, which
 inverts the relationship: the CLI existed first and does not need a terminal UI. It is
@@ -93,7 +93,7 @@ Key bindings:
 - `Enter` or `y` — approve
 - `Esc` or `n` — deny
 
-When a permission request arrives while another is already on screen, the new request is queued behind it. The daemon sends requests with unique `request_id` values; the TUI tracks which request it is answering and queues any that arrive for a different `request_id` until the current one is resolved. When the TUI answers (approve or deny), it sends the JSON-RPC response with the correct `request_id`. Late answers to already-resolved requests receive `nabu_already_resolved` (error code -32004); the TUI dismisses the overlay.
+When a permission request arrives while another is already on screen, the new request is queued behind it. The daemon sends requests with unique `request_id` values; the TUI tracks which request it is answering and queues any that arrive for a different `request_id` until the current one is resolved. When the TUI answers (approve or deny), it sends the JSON-RPC response with the correct `request_id`. Late answers to already-resolved requests receive `rho_already_resolved` (error code -32004); the TUI dismisses the overlay.
 
 ### What the user sees while disconnected
 
@@ -101,7 +101,7 @@ When the connection drops, a dim banner appears at the top of the screen: `⚠ D
 
 When reconnected, the banner briefly changes to `Replaying events…` while events are fetched from the cursor, then disappears. If the replay catches up to the live stream, the banner disappears and the transcript continues. If the session ended during disconnection, the banner changes to `Session completed` and the transcript shows the final report event.
 
-A disconnect that lasts longer than the daemon's request timeout (default 10 minutes) means any outstanding permission request times out on the daemon side. The TUI, when it reconnects, may receive `nabu_already_resolved` for a request it was still displaying. It dismisses the overlay and shows a notice: `Permission request timed out while disconnected`.
+A disconnect that lasts longer than the daemon's request timeout (default 10 minutes) means any outstanding permission request times out on the daemon side. The TUI, when it reconnects, may receive `rho_already_resolved` for a request it was still displaying. It dismisses the overlay and shows a notice: `Permission request timed out while disconnected`.
 
 ### How the TUI is tested
 
@@ -110,7 +110,7 @@ Bubble Tea programs consist of a model (pure data) and an update function (pure 
 The client (WebSocket + JSON-RPC) is tested against a fake client that implements the same interface but talks to a scripted event stream or a mock WebSocket. The fake client does not bind a real port or require a running daemon.
 
 Integration tests stand up a real daemon on port 0 and attach the client to it, the way
-`cmd/nabu/main_test.go` already does. **No build tag**: a test that CI never runs is not
+`cmd/rho/main_test.go` already does. **No build tag**: a test that CI never runs is not
 a test. They must skip cleanly if something they need is unavailable rather than being
 excluded by default.
 
@@ -129,8 +129,8 @@ excluded by default.
 | `clients/go-tui/render.go` | **New.** One event to one rendered line, per the table above. Pure and directly testable. |
 | `clients/go-tui/model_test.go` | **New.** The model and update function driven with injected messages. |
 | `clients/go-tui/render_test.go` | **New.** Every event type renders as specified. |
-| `cmd/nabu/client.go` | **Delete.** Replaced by `clients/goclient`. |
-| `cmd/nabu/commands.go` | **Modify.** Import `clients/goclient` instead of the local client. |
+| `cmd/rho/client.go` | **Delete.** Replaced by `clients/goclient`. |
+| `cmd/rho/commands.go` | **Modify.** Import `clients/goclient` instead of the local client. |
 
 ---
 
@@ -140,12 +140,12 @@ excluded by default.
 - Create: `clients/go-tui/client.go`
 - Create: `clients/go-tui/client_test.go`
 
-**Goal:** A shared JSON-RPC-over-WebSocket client that the CLI and TUI both import. It speaks `nabu.hello`, `nabu.session.subscribe`, `nabu.session.events_after`, and answers daemon-to-client requests (`nabu.rpc.permission.request`, `nabu.rpc.ui.ask`).
+**Goal:** A shared JSON-RPC-over-WebSocket client that the CLI and TUI both import. It speaks `rho.hello`, `rho.session.subscribe`, `rho.session.events_after`, and answers daemon-to-client requests (`rho.rpc.permission.request`, `rho.rpc.ui.ask`).
 
 - [ ] **Step 1: Write the failing test for client construction and hello**
 
 Append to `clients/go-tui/client_test.go` a test that creates a fake WebSocket connection (implementing the `github.com/coder/websocket.Conn` interface or wrapping a real one in a test harness) and verifies:
-- `Dial(ctx, addr, token)` sends `nabu.hello` with `client: "go-tui"`, a version string, and `protocol.Version`
+- `Dial(ctx, addr, token)` sends `rho.hello` with `client: "go-tui"`, a version string, and `protocol.Version`
 - The daemon's hello response is parsed and returned
 - A protocol version mismatch (major version differs) returns an error
 - A missing hello returns an error
@@ -161,15 +161,15 @@ Create `clients/go-tui/client.go` with package `client`. The file contains:
 
 A `Client` struct wrapping a `*websocket.Conn`, an ID counter, and a mutex.
 
-`Dial(ctx, addr, token string) (*Client, error)` — dials the WebSocket, sends `nabu.hello` with `client: "go-tui"`, `client_version: "0.1.0"`, `protocol_version: protocol.Version`, reads the response, and returns an error on mismatch or failure.
+`Dial(ctx, addr, token string) (*Client, error)` — dials the WebSocket, sends `rho.hello` with `client: "go-tui"`, `client_version: "0.1.0"`, `protocol_version: protocol.Version`, reads the response, and returns an error on mismatch or failure.
 
-`Subscribe(ctx, sessionID string) (<-chan Event, <-chan Delta, error)` — sends `nabu.session.subscribe`, returns a channel for `Event` notifications and a channel for `Delta` notifications. The channels are closed when the connection closes.
+`Subscribe(ctx, sessionID string) (<-chan Event, <-chan Delta, error)` — sends `rho.session.subscribe`, returns a channel for `Event` notifications and a channel for `Delta` notifications. The channels are closed when the connection closes.
 
-`EventsAfter(ctx, sessionID, lastEventID string) ([]protocol.Event, bool, error)` — calls `nabu.session.events_after` with `session_id` and `last_event_id`, returns the event list and the `synced` boolean.
+`EventsAfter(ctx, sessionID, lastEventID string) ([]protocol.Event, bool, error)` — calls `rho.session.events_after` with `session_id` and `last_event_id`, returns the event list and the `synced` boolean.
 
-`AnswerPermission(ctx, requestID, sessionID, verdict, reason string) error` — sends a JSON-RPC response to the daemon-to-client request `nabu.rpc.permission.request` with the verdict (`"approve"` or `"deny"`) and optional reason.
+`AnswerPermission(ctx, requestID, sessionID, verdict, reason string) error` — sends a JSON-RPC response to the daemon-to-client request `rho.rpc.permission.request` with the verdict (`"approve"` or `"deny"`) and optional reason.
 
-`AnswerAsk(ctx, requestID, sessionID, answer string) error` — sends a JSON-RPC response to `nabu.rpc.ui.ask`.
+`AnswerAsk(ctx, requestID, sessionID, answer string) error` — sends a JSON-RPC response to `rho.rpc.ui.ask`.
 
 `Close() error` — closes the WebSocket with `StatusNormalClosure`.
 
@@ -177,8 +177,8 @@ An `OnRequest` method that registers a callback: `OnRequest(func(method string, 
 
 The internal message loop (started in `Subscribe` or `Dial`) reads from the WebSocket and dispatches:
 - Responses (message with `id` matching a pending call) → returned to the caller
-- Notifications (`nabu.session.event`, `nabu.session.delta`) → sent to the appropriate channel
-- Daemon-to-client requests (message with `id` and method `nabu.rpc.permission.request` or `nabu.rpc.ui.ask`) → dispatched to the `OnRequest` callback
+- Notifications (`rho.session.event`, `rho.session.delta`) → sent to the appropriate channel
+- Daemon-to-client requests (message with `id` and method `rho.rpc.permission.request` or `rho.rpc.ui.ask`) → dispatched to the `OnRequest` callback
 
 An `Event` type alias for `protocol.Event` and a `Delta` struct `{SessionID, TurnID, Text string}`.
 
@@ -193,29 +193,29 @@ Append tests:
 - `Subscribe` sends the correct method and params
 - Events arrive on the event channel in order
 - Deltas arrive on the delta channel
-- A `nabu.session.unsubscribe` stops delivery
+- A `rho.session.unsubscribe` stops delivery
 
 - [ ] **Step 6: Implement subscribe and event delivery**
 
-The subscribe method sends `nabu.session.subscribe {session_id}` and returns two channels. The internal loop dispatches `nabu.session.event` to the event channel and `nabu.session.delta` to the delta channel.
+The subscribe method sends `rho.session.subscribe {session_id}` and returns two channels. The internal loop dispatches `rho.session.event` to the event channel and `rho.session.delta` to the delta channel.
 
 - [ ] **Step 7: Write the failing test for events_after**
 
 Append tests:
 - `EventsAfter` with `last_event_id: ""` returns all events
 - `EventsAfter` with a valid `last_event_id` returns only events after it
-- `EventsAfter` with an unknown `last_event_id` returns `nabu_cursor_unknown`
+- `EventsAfter` with an unknown `last_event_id` returns `rho_cursor_unknown`
 
 - [ ] **Step 8: Implement events_after**
 
-The method calls `nabu.session.events_after` and decodes the `{events, synced}` response.
+The method calls `rho.session.events_after` and decodes the `{events, synced}` response.
 
 - [ ] **Step 9: Write the failing test for answering permission requests**
 
 Append tests:
 - `AnswerPermission` with verdict `"approve"` sends the correct response
 - `AnswerPermission` with verdict `"deny"` and a reason sends the correct response
-- A late answer (after the request is resolved) receives `nabu_already_resolved`
+- A late answer (after the request is resolved) receives `rho_already_resolved`
 
 - [ ] **Step 10: Implement AnswerPermission and AnswerAsk**
 
@@ -236,23 +236,23 @@ Expected: all packages pass, no vet errors.
 ## Task 2: Refactor CLI to use the shared client
 
 **Files:**
-- Modify: `cmd/nabu/client.go`
+- Modify: `cmd/rho/client.go`
 
-**Goal:** The CLI imports the shared client and delegates to it. No other file in `cmd/nabu/` changes its imports or behaviour. The CLI's exported surface remains identical.
+**Goal:** The CLI imports the shared client and delegates to it. No other file in `cmd/rho/` changes its imports or behaviour. The CLI's exported surface remains identical.
 
 - [ ] **Step 1: Write the failing test for CLI import**
 
-The test is implicit: `go build ./cmd/nabu/` must succeed and the existing CLI commands must still work. There are no existing tests in `cmd/nabu/` to update.
+The test is implicit: `go build ./cmd/rho/` must succeed and the existing CLI commands must still work. There are no existing tests in `cmd/rho/` to update.
 
-- [ ] **Step 2: Refactor cmd/nabu/client.go**
+- [ ] **Step 2: Refactor cmd/rho/client.go**
 
-Replace the contents of `cmd/nabu/client.go` with a thin shim that:
-- Imports `github.com/corporealshift/nabu/clients/go-tui/client`
+Replace the contents of `cmd/rho/client.go` with a thin shim that:
+- Imports `github.com/corporealshift/rho/clients/go-tui/client`
 - Re-exports every function that external callers (i.e. `commands.go`) use: `dial`, `call`, `stream`, `close`, `version`
 - Each function delegates to the shared package, e.g. `func dial(ctx, addr, token) (*client.Client, error) { return client.Dial(ctx, addr, token) }`
 - The internal types (`rpcError`, `message`) are removed; the shared package does not expose them, and the CLI does not need them.
 
-The `version` variable stays local to `cmd/nabu/client.go` (it is set via `-ldflags`).
+The `version` variable stays local to `cmd/rho/client.go` (it is set via `-ldflags`).
 
 - [ ] **Step 3: Run the full gate**
 
@@ -261,7 +261,7 @@ Expected: all packages pass, no vet errors. The CLI binary must still build.
 
 - [ ] **Step 4: Verify CLI commands still work**
 
-Run: `go build -o /tmp/nabu ./cmd/nabu && /tmp/nabu --help`
+Run: `go build -o /tmp/rho ./cmd/rho && /tmp/rho --help`
 Expected: help output is identical to before.
 
 ---
@@ -492,7 +492,7 @@ Create `clients/go-tui/main.go` with:
 - A `--root` flag (for finding config, same as CLI)
 - `main()` that:
   1. Parses flags
-  2. Loads config from `~/.nabu/config.json` (using the same config loader as the CLI, or a simple JSON parse)
+  2. Loads config from `~/.rho/config.json` (using the same config loader as the CLI, or a simple JSON parse)
   3. Creates the model
   4. Dials the daemon with `client.Dial`
   5. Subscribes to the session
@@ -557,7 +557,7 @@ Expected: all packages pass, no vet errors.
 - `clients/go-tui/integration_test.go` — end-to-end tests
 
 **Files modified:**
-- `cmd/nabu/client.go` — refactored to import and delegate to `clients/go-tui/client`
+- `cmd/rho/client.go` — refactored to import and delegate to `clients/go-tui/client`
 
 **Bubble Tea dependencies pinned:**
 - `github.com/charmbracelet/bubbletea v1.3.10`
@@ -585,8 +585,8 @@ Expected: all packages pass, no vet errors.
 - `protocol.CodeAlreadyResolved` → `protocol/errors.go` — `-32004`
 - `protocol.CodeCursorUnknown` → `protocol/errors.go` — `-32005`
 - `protocol.Methods` → `protocol/errors.go` — all method names
-- `client.client` (existing) → `cmd/nabu/client.go` — the existing thin JSON-RPC client to extract
-- `client.dial`, `client.call`, `client.stream` → `cmd/nabu/client.go` — the functions the CLI uses
+- `client.client` (existing) → `cmd/rho/client.go` — the existing thin JSON-RPC client to extract
+- `client.dial`, `client.call`, `client.stream` → `cmd/rho/client.go` — the functions the CLI uses
 - `api.Handler` → `daemon/api/handler.go` — the WebSocket handler
 - `api.connState` → `daemon/api/subscriptions.go` — connection state
 - `api.fanout` → `daemon/api/subscriptions.go` — event pump

@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/daemon/tools"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/daemon/tools"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // harness wires a Manager over a temp dir and a fake provider.
@@ -395,8 +395,8 @@ func TestDefaultPermissionModeIsAuto(t *testing.T) {
 	}
 }
 
-// A module's data directory is a top-level directory of the nabu root, named
-// for the module. Nabu's data is organised by what it is, not hidden one level
+// A module's data directory is a top-level directory of the rho root, named
+// for the module. Rho's data is organised by what it is, not hidden one level
 // down under an implementation detail.
 func TestDataDirIsTopLevel(t *testing.T) {
 	h := newHarness(t, nil, nil)

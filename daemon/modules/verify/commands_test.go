@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // The workspace overlay is never applied, so one global command ran in every
 // repository or none. A per-workspace gate lets breezeway build its Android app
-// at every stop without nabu's own sessions doing it too.
+// at every stop without rho's own sessions doing it too.
 func TestAWorkspaceCommandReplacesTheGlobalOne(t *testing.T) {
 	android, other, off := t.TempDir(), t.TempDir(), t.TempDir()
 	m := newVerify(t, module.Config{

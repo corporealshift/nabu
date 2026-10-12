@@ -6,7 +6,7 @@
 
 ## 1. The problem
 
-Session `01M39RT5…` (nabu, 2026-09-24). Kyle asked "Can you create a PR for this work now?"
+Session `01M39RT5…` (rho, 2026-09-24). Kyle asked "Can you create a PR for this work now?"
 about Android work that was already on `main`. The premise was wrong, and the model found
 that out one minute in (event 153):
 
@@ -168,7 +168,7 @@ call, with no opinion about the work, and modules have no hook into the stream.
 
 ## 4. What proves it
 
-- **Replay** (`NABU_LOOP_REPLAY`) over every session log. On 2026-09-24, over 3,254 calls:
+- **Replay** (`RHO_LOOP_REPLAY`) over every session log. On 2026-09-24, over 3,254 calls:
   - **11 stalled notices and 4 stops**, all in sessions already known to loop. The one
     newer session among them, `01M39VB8…`, ran `cd breezeway && git diff --cached --stat`
     four times into `No such file or directory`.

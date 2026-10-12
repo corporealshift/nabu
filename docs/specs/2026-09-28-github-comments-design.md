@@ -1,4 +1,4 @@
-# nabu github: addressing comments on pull requests
+# rho github: addressing comments on pull requests
 
 **Date:** 2026-09-28
 **Status:** Approved by Kyle in conversation
@@ -11,8 +11,8 @@ repository's path also applies to that repository's worktrees.
 ## Problem
 
 When Kyle leaves comments on a pull request, someone has to go back to the branch, make
-the changes, push them, and answer each comment. For a PR nabu opened (part 3), or one
-Kyle hands to it, nabu should do that.
+the changes, push them, and answer each comment. For a PR rho opened (part 3), or one
+Kyle hands to it, rho should do that.
 
 ## Decision
 
@@ -20,8 +20,8 @@ A second job kind for the watcher, `comments`.
 
 ### Which PRs, and which comments
 
-**PRs.** Open, not from a fork, and carrying the `label` from config (`nabu`). The label
-is the opt-in. Part 3 puts it on every PR nabu opens, and Kyle can add it to any other
+**PRs.** Open, not from a fork, and carrying the `label` from config (`rho`). The label
+is the opt-in. Part 3 puts it on every PR rho opens, and Kyle can add it to any other
 PR. Taking the label off stops the job.
 
 **Comments.** Three kinds, each read with `gh api`:
@@ -30,7 +30,7 @@ PR. Taking the label off stops the job.
 - review bodies that are not empty, from `pulls/<n>/reviews`;
 - conversation comments, from `issues/<n>/comments`.
 
-A comment counts if it does not carry the `<!-- nabu -->` marker and its ID is newer than
+A comment counts if it does not carry the `<!-- rho -->` marker and its ID is newer than
 the last one handled **of its own kind** on that PR. The three kinds come from three
 endpoints, each with its own sequence of IDs, so one number cannot be compared across
 them. The state keeps three watermarks per PR, one for each kind.
@@ -105,7 +105,7 @@ The watcher pushes with `git push origin HEAD:refs/heads/<head>`. It never uses 
 
 ### When it is done
 
-When the state is `idle`, the watcher calls `nabu.session.stop` and reads the replies
+When the state is `idle`, the watcher calls `rho.session.stop` and reads the replies
 block from the newest assistant message that has one. That is not always the last
 message. In the first live run, the model wrote its block, then the stop gate sent it
 round again, and its last message was a summary with no block. Reading only the last
@@ -119,7 +119,7 @@ review blocks. Then:
    - a review comment is replied to in its thread (`pulls/<n>/comments/<id>/replies`);
    - review bodies and conversation comments get one conversation comment that quotes
      each and answers it underneath;
-   - every body opens with the signature (`🤖 **nabu**: `) and ends with the marker.
+   - every body opens with the signature (`🤖 **rho**: `) and ends with the marker.
 3. Any counting comment without a reply goes into a closing line: "Not answered
    individually: …, see the pushed commits."
 4. Record the newest ID of each kind in the job as handled, and remove the worktree.
@@ -130,7 +130,7 @@ the whole final message is posted as one conversation comment.
 ### The gate in a worktree
 
 `verify` finds a workspace's gate in `commands`, keyed by exact path. A worktree at
-`~/.nabu/github/worktrees/breezeway/…` does not match `C:/…/breezeway`, so it would get
+`~/.rho/github/worktrees/breezeway/…` does not match `C:/…/breezeway`, so it would get
 the global `command`, which is empty. Breezeway is where a session once opened two pull
 requests without compiling, and that is the reason it has a gate.
 
@@ -166,7 +166,7 @@ The part 1 table applies, plus:
 - PRs from forks, and pushing anywhere except the PR's own head branch.
 - Force-pushing, rebasing, or resolving merge conflicts with the base.
 - Addressing comments on PRs without the label.
-- Answering comments that nabu itself posted.
+- Answering comments that rho itself posted.
 
 ## Rejected
 
@@ -204,5 +204,5 @@ The part 1 table applies, plus:
   a directory that is not a repository gets `command`; an exact entry for the worktree
   wins over its main worktree's.
 - A real run on a scratch repository: open a PR with the label, leave two line comments
-  and one conversation comment, run `nabu github --once`, and check the pushed commit and
+  and one conversation comment, run `rho github --once`, and check the pushed commit and
   the three replies.

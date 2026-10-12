@@ -83,14 +83,14 @@ func (m *Marks) Merge(o Marks) {
 // IsZero reports whether nothing has been marked.
 func (m Marks) IsZero() bool { return m == Marks{} }
 
-// fromNabu reports whether the watcher posted a comment. Kyle and nabu share a
+// fromRho reports whether the watcher posted a comment. Kyle and rho share a
 // login, so the marker is the only way to tell.
-func fromNabu(c Comment) bool { return strings.Contains(c.Body, Marker) }
+func fromRho(c Comment) bool { return strings.Contains(c.Body, Marker) }
 
 // CommentsDue is the comments a job for this PR should answer now, oldest
 // first, or nil if no job is due. pr must be open.
 //
-// A comment counts if nabu did not post it, it says something, and it is past
+// A comment counts if rho did not post it, it says something, and it is past
 // the handled mark of its kind. A job is due once the newest counting comment
 // has sat for the quiet period, so a review written as several comments is
 // one job. After a failure, only a comment past where the failed job reached
@@ -110,7 +110,7 @@ func CommentsDue(cfg Config, st *RepoState, pr PR, comments []Comment, now time.
 	var newest time.Time
 	pastFailure := !hasFailed
 	for _, c := range comments {
-		if fromNabu(c) || strings.TrimSpace(c.Body) == "" || c.ID <= handled.Of(c.Kind) {
+		if fromRho(c) || strings.TrimSpace(c.Body) == "" || c.ID <= handled.Of(c.Kind) {
 			continue
 		}
 		due = append(due, c)

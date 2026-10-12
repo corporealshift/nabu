@@ -14,7 +14,7 @@ func TestCommentsDue(t *testing.T) {
 	off := base
 	off.Comments.Enabled = &f
 
-	labeled := PR{Number: 7, HeadSHA: "abc", HeadRef: "feat", Labels: []string{"bug", "Nabu"}}
+	labeled := PR{Number: 7, HeadSHA: "abc", HeadRef: "feat", Labels: []string{"bug", "Rho"}}
 	line := Comment{Kind: CommentLine, ID: 100, Body: "rename this", Created: old}
 	review := Comment{Kind: CommentReview, ID: 50, Body: "a few things", Created: old}
 	issue := Comment{Kind: CommentIssue, ID: 900, Body: "and the README", Created: old}
@@ -30,12 +30,12 @@ func TestCommentsDue(t *testing.T) {
 		{name: "all three kinds", cfg: base, pr: labeled, comments: []Comment{line, review, issue}, want: 3},
 		{name: "comments off", cfg: off, pr: labeled, comments: []Comment{line}},
 		{name: "no label", cfg: base, pr: PR{Number: 7}, comments: []Comment{line}},
-		{name: "fork", cfg: base, pr: PR{Number: 7, Labels: []string{"nabu"}, Fork: true}, comments: []Comment{line}},
+		{name: "fork", cfg: base, pr: PR{Number: 7, Labels: []string{"rho"}, Fork: true}, comments: []Comment{line}},
 		{name: "job running", cfg: base, pr: labeled, comments: []Comment{line},
 			setup: func(r *RepoState) { r.Running = []Job{{Kind: KindComments, PR: 7}} }},
 		{name: "a review job running does not block", cfg: base, pr: labeled, comments: []Comment{line}, want: 1,
 			setup: func(r *RepoState) { r.Running = []Job{{Kind: KindReview, PR: 7}} }},
-		{name: "nabu's own comments", cfg: base, pr: labeled,
+		{name: "rho's own comments", cfg: base, pr: labeled,
 			comments: []Comment{{Kind: CommentLine, ID: 101, Body: Signature + ": x\n\n" + Marker, Created: old}}},
 		{name: "an empty review body", cfg: base, pr: labeled,
 			comments: []Comment{{Kind: CommentReview, ID: 51, Body: "  ", Created: old}}},
@@ -75,7 +75,7 @@ func TestCommentsDueOldestFirst(t *testing.T) {
 		{Kind: CommentLine, ID: 9, Body: "a", Created: now.Add(-3 * time.Hour)},
 		{Kind: CommentReview, ID: 1, Body: "b", Created: now.Add(-2 * time.Hour)},
 	}
-	got := CommentsDue(cfg, r, PR{Number: 1, Labels: []string{"nabu"}}, cs, now)
+	got := CommentsDue(cfg, r, PR{Number: 1, Labels: []string{"rho"}}, cs, now)
 	if len(got) != 3 || got[0].Body != "a" || got[1].Body != "b" || got[2].Body != "c" {
 		t.Errorf("order = %+v", got)
 	}
@@ -99,7 +99,7 @@ func TestMarks(t *testing.T) {
 }
 
 func TestHasLabelIgnoresCase(t *testing.T) {
-	if !(PR{Labels: []string{"NaBu"}}).HasLabel("nabu") || (PR{}).HasLabel("nabu") {
+	if !(PR{Labels: []string{"RhO"}}).HasLabel("rho") || (PR{}).HasLabel("rho") {
 		t.Error("HasLabel")
 	}
 }

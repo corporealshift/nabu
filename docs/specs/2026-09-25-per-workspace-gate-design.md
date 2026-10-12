@@ -11,8 +11,8 @@ that changed something run a command first, and it is the mechanical answer to t
 it cannot be set for breezeway alone:
 
 - `verify.command` is module config, which the daemon reads once, globally. Set there, it
-  would run breezeway's Gradle build in nabu's own sessions too.
-- The architecture spec gives each workspace an overlay at `<workspace>/.nabu/config.json`,
+  would run breezeway's Gradle build in rho's own sessions too.
+- The architecture spec gives each workspace an overlay at `<workspace>/.rho/config.json`,
   and `config.ApplyOverlay` implements merging one. Nothing calls it: overlays are never
   read.
 

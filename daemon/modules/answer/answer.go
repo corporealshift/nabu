@@ -17,8 +17,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // reminder is the suffix block on a turn that asked a question.

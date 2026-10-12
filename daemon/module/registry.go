@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Options configure a Registry.

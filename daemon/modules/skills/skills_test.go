@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // writeSkill creates dir/name/SKILL.md with the given frontmatter and body.

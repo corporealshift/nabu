@@ -63,7 +63,7 @@ it under `claude.ask`.
 
 Built from the log since the person last spoke, at most 24 KB:
 
-- a first line saying who is asking: "nabu is asking on behalf of a smaller local model
+- a first line saying who is asking: "rho is asking on behalf of a smaller local model
   that has spent N turns on this without anyone stepping in";
 - **the task**: the user message that started the stretch, cut to 6 KB;
 - **what it has been saying**: its last 10 assistant messages, each cut to 600 bytes;

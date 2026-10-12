@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/corporealshift/nabu/clients/goclient"
+	"github.com/corporealshift/rho/clients/goclient"
 )
 
 func asked(m model, q string, choices ...string) model {

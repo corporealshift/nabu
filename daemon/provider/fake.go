@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Fake is a scripted Provider for tests. Each Complete pops the next Response

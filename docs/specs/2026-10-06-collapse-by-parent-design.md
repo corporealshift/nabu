@@ -18,11 +18,11 @@ each has sat long enough.
 
 ### Archiving takes the whole family (daemon)
 
-- **`nabu.session.archive`** archives the session and every session descended from it.
+- **`rho.session.archive`** archives the session and every session descended from it.
   - If any of them is `running`, nothing is archived. The call fails with
-    `nabu_invalid_transition` and names the running session.
+    `rho_invalid_transition` and names the running session.
   - Each descendant gets the usual `info` notice: `archived with <parent id>: <why>`.
-- **`nabu.session.restore`** brings back the session and every descendant archived
+- **`rho.session.restore`** brings back the session and every descendant archived
   with it. A descendant that had been archived on its own earlier stays archived: its
   last notice does not name the parent.
 - **The idle sweep** looks only at sessions with no listed parent. Their children go with

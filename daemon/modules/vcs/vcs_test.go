@@ -3,7 +3,7 @@ package vcs
 import (
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 func toolNames(m *Module) []string {

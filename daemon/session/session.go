@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Session is one append-only log: an in-memory slice mirrored to a JSONL file.

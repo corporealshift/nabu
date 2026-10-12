@@ -9,8 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/corporealshift/nabu/clients/goclient"
-	"github.com/corporealshift/nabu/daemon"
+	"github.com/corporealshift/rho/clients/goclient"
+	"github.com/corporealshift/rho/daemon"
 )
 
 // recorder stands in for the program and keeps everything sent to it.
@@ -93,7 +93,7 @@ func createSession(t *testing.T, addr string) string {
 	var out struct {
 		SessionID string `json:"session_id"`
 	}
-	if err := c.CallInto(ctx, "nabu.session.create", map[string]any{"workspace": t.TempDir()}, &out); err != nil {
+	if err := c.CallInto(ctx, "rho.session.create", map[string]any{"workspace": t.TempDir()}, &out); err != nil {
 		t.Fatal(err)
 	}
 	return out.SessionID

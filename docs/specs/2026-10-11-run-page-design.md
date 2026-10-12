@@ -3,14 +3,14 @@
 **Date:** 2026-10-11
 **Status:** Approved by Kyle in conversation
 **Amends:** `protocol/spec.md` §3.1 (a `status` event), §5 (the projection's `status`),
-§6 (never sent), §7.21 (`tree`), and a new §7.27 (`nabu.session.set_status`); the
+§6 (never sent), §7.21 (`tree`), and a new §7.27 (`rho.session.set_status`); the
 runner; the Android session screen.
 
 ## Problem
 
 A run's or goal's home on the phone shows a conversation and a list of tasks. Kyle
 cannot tell from it where a run is, how it got there, or what the goal has done so
-far. That means asking Claude to read `~/.nabu/runner/runs/*.json`, which lives on
+far. That means asking Claude to read `~/.rho/runner/runs/*.json`, which lives on
 the desktop. The Stats screen for a run home is empty, because the work happened in
 its child sessions.
 
@@ -88,23 +88,23 @@ it already keeps.
 **§6.** `status` joins the list of events never sent to the model. It is for people;
 the step sessions get what they need from their prompts.
 
-**§7.27 `nabu.session.set_status {session_id, kind, data}` → `{event_id}`.**
+**§7.27 `rho.session.set_status {session_id, kind, data}` → `{event_id}`.**
 
 - Appends a `status` event with `source: client`.
 - `invalid_params` when `kind` is not `run` or `goal`, or `data` is not an object or is
   over 64 KB.
 - Allowed in any session state, and it starts nothing, as `update_tasks` does.
 
-**§7.21 `nabu.session.stats {session_id, tree?}`.**
+**§7.21 `rho.session.stats {session_id, tree?}`.**
 
 - With `tree: true`, the result is the session and every session under it, by `parent`,
   at any depth: a goal home, its run homes and their step sessions.
-- The totals are summed the way `nabu.stats` sums sessions.
+- The totals are summed the way `rho.stats` sums sessions.
 - `members` lists each session's own `{session_id, parent, labels, turns,
   working_seconds, tokens: {input, output}, started_at, last_event_at, archived}`, so
   the phone can put numbers on timeline rows by session id. (Changed while building:
   this said `sessions`, which the summed totals already use for the count.)
-- Archived sessions count, as in `nabu.stats`, because their work happened.
+- Archived sessions count, as in `rho.stats`, because their work happened.
 - Without `tree`, the result is unchanged.
 
 The spec, the JSON schema, and the conformance vectors change together:
@@ -178,7 +178,7 @@ verdict reasons, until it fits. The run's history is already bounded at 200 reco
 
 - A status parser for both shapes, tested against the shared fixture.
 - The Run page and Goal page as described, built from the projection's `status` and
-  one `nabu.session.stats {tree: true}` call, repeated once a minute while the page is
+  one `rho.session.stats {tree: true}` call, repeated once a minute while the page is
   open.
 - Opening on status, with Chat and Status to move between the two.
 - An unknown `version`: the page says the status is from a newer runner, and offers
@@ -190,7 +190,7 @@ verdict reasons, until it fits. The run's history is already bounded at 200 reco
 - **Backfill beyond what the runner holds.** Finished runs and goals still in the
   runner's state get a status the first time it polls, from what that state holds:
   runs from before run reflection have no history, so their timelines are empty. A home
-  that is gone (archived) answers `nabu_session_not_found`, and the runner takes that
+  that is gone (archived) answers `rho_session_not_found`, and the runner takes that
   snapshot as set rather than asking at every poll.
 
 ## Rejected

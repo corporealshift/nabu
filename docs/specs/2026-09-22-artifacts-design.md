@@ -7,7 +7,7 @@
 ## 1. Purpose
 
 Claude can make a page to show something: a chart of what it measured, a table, a diagram,
-a small interactive tool. Issue 41 asks for the same in nabu.
+a small interactive tool. Issue 41 asks for the same in rho.
 
 ## 2. Decision
 

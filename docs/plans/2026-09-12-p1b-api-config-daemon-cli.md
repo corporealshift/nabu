@@ -1,8 +1,8 @@
-# nabu P1b — WebSocket API, Config, Daemon Lifecycle, CLI Implementation Plan
+# rho P1b — WebSocket API, Config, Daemon Lifecycle, CLI Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Put a JSON-RPC-over-WebSocket daemon and a CLI in front of the P1a engine, so Claude Code and the future TUI, Android, and Rust clients can drive nabu sessions over one protocol.
+**Goal:** Put a JSON-RPC-over-WebSocket daemon and a CLI in front of the P1a engine, so Claude Code and the future TUI, Android, and Rust clients can drive rho sessions over one protocol.
 
 **Architecture:** A long-lived Go daemon owns sessions and is the sole writer of the append-only log. The `api` package exposes the normative protocol from `protocol/spec.md` over one WebSocket transport bound to loopback plus Tailscale, fanning session events out to every subscriber and issuing daemon-to-client requests resolved first-responder-wins. The CLI is a thin client that starts a detached daemon if none is listening.
 
@@ -34,31 +34,31 @@ rather than hand-repairing. The real code wins over this document.
 - **Mechanism in core, policy in modules.** The `api` package carries transport
   mechanism, not policy. Permission decisions, verification, and skills are modules
   (P1c). The API only implements the wire protocol.
-- **Configuration is JSON, not TOML.** `~/.nabu/config.json` is the base; a trusted
-  workspace may add `<workspace>/.nabu/config.json` as an overlay, and an untrusted
+- **Configuration is JSON, not TOML.** `~/.rho/config.json` is the base; a trusted
+  workspace may add `<workspace>/.rho/config.json` as an overlay, and an untrusted
   workspace's overlay is ignored until trusted. Parsed with the standard library
   `encoding/json` using `DisallowUnknownFields`, so a typo in a key is a loud error.
   **This deviates from architecture spec §8, which says TOML.** The owner changed it
   deliberately to keep the config loader dependency-free; JSON's cost is that the
   config file cannot carry comments. Spec §8 needs an amendment note recording this.
 - **Exactly one third-party dependency.** `github.com/coder/websocket v1.8.15`, chosen
-  over gorilla for its context-aware API, because `nabu.session.interrupt` must cancel
+  over gorilla for its context-aware API, because `rho.session.interrupt` must cancel
   a live provider stream. Version verified as published and current. The repo had zero
   dependencies and no `go.sum` before Task 2.
-- **First-responder-wins for daemon-to-client requests.** `nabu.rpc.permission.request`
-  and `nabu.rpc.ui.ask` broadcast to all subscribers; the first response wins and later
-  responders receive `nabu_already_resolved` (spec §7.15).
-- **Deltas are ephemeral.** `nabu.session.delta` notifications are never logged and
+- **First-responder-wins for daemon-to-client requests.** `rho.rpc.permission.request`
+  and `rho.rpc.ui.ask` broadcast to all subscribers; the first response wins and later
+  responders receive `rho_already_resolved` (spec §7.15).
+- **Deltas are ephemeral.** `rho.session.delta` notifications are never logged and
   never replayed. The final `message` event carries the full text.
 - **Multi-client is the normal case.** Several connections may subscribe to one
   session; events fan out to all of them.
 - **Bearer token for non-loopback.** Non-loopback connections must present the token
-  during the upgrade. Missing or wrong is refused with `nabu_unauthorized`.
+  during the upgrade. Missing or wrong is refused with `rho_unauthorized`.
 - **Daemon auto-start.** Every CLI subcommand except `daemon` starts a detached daemon
   if none is listening. Claude Code delegation must never fail with "daemon not
   running".
 - **Default bind is `127.0.0.1:8737`.** Port 8080 is taken on the owner's machine.
-- **`~/.nabu/` layout.** `config.json`, `sessions/` (from P1a), `memory/`,
+- **`~/.rho/` layout.** `config.json`, `sessions/` (from P1a), `memory/`,
   `modules/<name>/`, `daemon.log` via `log/slog`, `daemon.pid`, `daemon.port`.
 - **Exit codes mirror final session state.** completed 0, blocked 1, paused 2, error 3.
 - **`--json`** emits flushed JSONL per event; **`--done-when`** sets the session goal.
@@ -70,11 +70,11 @@ rather than hand-repairing. The real code wins over this document.
 
 | Path | Responsibility |
 |---|---|
-| `daemon/config/config.go` | **New.** JSON config loader: `~/.nabu/config.json` base, workspace overlay, trusted-workspace tracking. |
+| `daemon/config/config.go` | **New.** JSON config loader: `~/.rho/config.json` base, workspace overlay, trusted-workspace tracking. |
 | `daemon/config/config_test.go` | **New.** Defaults, overlay, trust, unknown-key rejection. |
-| `daemon/api/transport.go` | **New.** WebSocket upgrade, non-loopback bearer auth, `nabu.hello` handshake enforcement, protocol version check. |
+| `daemon/api/transport.go` | **New.** WebSocket upgrade, non-loopback bearer auth, `rho.hello` handshake enforcement, protocol version check. |
 | `daemon/api/transport_test.go` | **New.** Upgrade, auth, handshake, version mismatch. |
-| `daemon/api/handler.go` | **New.** JSON-RPC 2.0 dispatch and every `nabu.session.*` method; subscriptions, event fan-out, delta broadcast. |
+| `daemon/api/handler.go` | **New.** JSON-RPC 2.0 dispatch and every `rho.session.*` method; subscriptions, event fan-out, delta broadcast. |
 | `daemon/api/handler_test.go` | **New.** Every method, multi-client fan-out, delta non-logging. |
 | `daemon/api/requests.go` | **New.** Daemon-to-client requests, first-responder-wins, timeout. |
 | `daemon/api/requests_test.go` | **New.** First answer wins, `already_resolved`, timeout, disconnect. |
@@ -82,13 +82,13 @@ rather than hand-repairing. The real code wins over this document.
 | `daemon/daemon_test.go` | **New.** Startup, shutdown, pid/port handling. |
 | `daemon/pid.go` | **New.** Stale-pid detection, `//go:build !windows`. |
 | `daemon/pid_windows.go` | **New.** Stale-pid detection on Windows. |
-| `cmd/nabu/main.go` | **Modify.** Replace the P0 scaffold with subcommand routing. |
-| `cmd/nabu/run.go` | **New.** `nabu run` — headless run, goal, stream, exit code. |
-| `cmd/nabu/status.go` | **New.** `nabu status`. |
-| `cmd/nabu/attach.go` | **New.** `nabu attach` — JSONL event stream. |
-| `cmd/nabu/stop.go` | **New.** `nabu stop`. |
-| `cmd/nabu/resume.go` | **New.** `nabu resume`. |
-| `cmd/nabu/daemon.go` | **New.** `nabu daemon` and `nabu daemon stop`. |
+| `cmd/rho/main.go` | **Modify.** Replace the P0 scaffold with subcommand routing. |
+| `cmd/rho/run.go` | **New.** `rho run` — headless run, goal, stream, exit code. |
+| `cmd/rho/status.go` | **New.** `rho status`. |
+| `cmd/rho/attach.go` | **New.** `rho attach` — JSONL event stream. |
+| `cmd/rho/stop.go` | **New.** `rho stop`. |
+| `cmd/rho/resume.go` | **New.** `rho resume`. |
+| `cmd/rho/daemon.go` | **New.** `rho daemon` and `rho daemon stop`. |
 | `go.mod`, `go.sum` | **Modify/New.** Add `github.com/coder/websocket v1.8.15`. |
 
 ---
@@ -101,7 +101,7 @@ rather than hand-repairing. The real code wins over this document.
 - Create: `daemon/config/config.go`
 - Create: `daemon/config/config_test.go`
 
-**Goal:** Load `~/.nabu/config.json` with defaults, support `<workspace>/.nabu/config.json` overlay for trusted workspaces, track which workspaces are trusted. Spec: Architecture design §8 configuration.
+**Goal:** Load `~/.rho/config.json` with defaults, support `<workspace>/.rho/config.json` overlay for trusted workspaces, track which workspaces are trusted. Spec: Architecture design §8 configuration.
 
 ---
 
@@ -268,7 +268,7 @@ Expected output:
 === RUN   TestLoadEmptyJSON
 --- PASS: TestLoadEmptyJSON (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/config	0.052s
+ok  	github.com/corporealshift/rho/daemon/config	0.052s
 ```
 
 - [ ] **Step 5: Write the failing test for missing file**
@@ -305,7 +305,7 @@ Expected output:
 === RUN   TestLoadMissingFile
 --- PASS: TestLoadMissingFile (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/config	0.052s
+ok  	github.com/corporealshift/rho/daemon/config	0.052s
 ```
 
 - [ ] **Step 7: Write the failing test for DisallowUnknownFields**
@@ -377,7 +377,7 @@ Expected output:
 === RUN   TestLoadRejectsUnknownFields
 --- PASS: TestLoadRejectsUnknownFields (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/config	0.052s
+ok  	github.com/corporealshift/rho/daemon/config	0.052s
 ```
 
 - [ ] **Step 11: Write the failing test for loading base config with all values**
@@ -393,7 +393,7 @@ func TestLoadBaseConfig(t *testing.T) {
 			"bind": "0.0.0.0:8737",
 			"token": "secret",
 			"log_level": "debug",
-			"log_file": "/var/log/nabu.log"
+			"log_file": "/var/log/rho.log"
 		},
 		"providers": {
 			"openai": {
@@ -440,8 +440,8 @@ func TestLoadBaseConfig(t *testing.T) {
 	if cfg.Daemon.LogLevel != "debug" {
 		t.Errorf("log_level: got %q, want %q", cfg.Daemon.LogLevel, "debug")
 	}
-	if cfg.Daemon.LogFile != "/var/log/nabu.log" {
-		t.Errorf("log_file: got %q, want %q", cfg.Daemon.LogFile, "/var/log/nabu.log")
+	if cfg.Daemon.LogFile != "/var/log/rho.log" {
+		t.Errorf("log_file: got %q, want %q", cfg.Daemon.LogFile, "/var/log/rho.log")
 	}
 
 	if len(cfg.Providers) != 2 {
@@ -502,7 +502,7 @@ Expected output:
 === RUN   TestLoadBaseConfig
 --- PASS: TestLoadBaseConfig (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/config	0.052s
+ok  	github.com/corporealshift/rho/daemon/config	0.052s
 ```
 
 - [ ] **Step 13: Write the failing test for overlay merge**
@@ -677,7 +677,7 @@ Expected output:
 === RUN   TestOverlayMerges
 --- PASS: TestOverlayMerges (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/config	0.052s
+ok  	github.com/corporealshift/rho/daemon/config	0.052s
 ```
 
 - [ ] **Step 17: Write the failing test for overlay ignored when untrusted**
@@ -744,7 +744,7 @@ Expected output:
 === RUN   TestOverlayIgnoredWhenUntrusted
 --- PASS: TestOverlayIgnoredWhenUntrusted (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/config	0.052s
+ok  	github.com/corporealshift/rho/daemon/config	0.052s
 ```
 
 - [ ] **Step 19: Write the failing test for TrustWorkspace**
@@ -780,7 +780,7 @@ Expected output:
 === RUN   TestTrustWorkspace
 --- PASS: TestTrustWorkspace (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/config	0.052s
+ok  	github.com/corporealshift/rho/daemon/config	0.052s
 ```
 
 - [ ] **Step 21: Run the full gate**
@@ -811,7 +811,7 @@ git commit -m "config: json loader with trusted-workspace overlay"
 **Number of steps:** 23
 
 **Key design decisions:**
-- `Load(root string)` — testable via injectable root, no global state, no touch to real `~/.nabu`
+- `Load(root string)` — testable via injectable root, no global state, no touch to real `~/.rho`
 - `Config.TrustWorkspace(path)` / `IsWorkspaceTrusted(path)` — in-memory trust tracking, keyed by absolute path
 - `Config.ApplyOverlay(path)` — merges overlay providers/modules into base; returns nil (no-op) when workspace is untrusted
 - `json.Decoder.DisallowUnknownFields()` — unknown fields are a hard error
@@ -846,8 +846,8 @@ git commit -m "config: json loader with trusted-workspace overlay"
 **Symbols confirmed:**
 - `protocol.CodeProtocolMismatch = -32006` → `protocol/errors.go:18` — confirmed
 - `protocol.CodeUnauthorized = -32007` → `protocol/errors.go:19` — confirmed
-- `protocol.ErrorNames[CodeProtocolMismatch] = "nabu_protocol_mismatch"` → `protocol/errors.go:22` — confirmed
-- `protocol.ErrorNames[CodeUnauthorized] = "nabu_unauthorized"` → `protocol/errors.go:22` — confirmed
+- `protocol.ErrorNames[CodeProtocolMismatch] = "rho_protocol_mismatch"` → `protocol/errors.go:22` — confirmed
+- `protocol.ErrorNames[CodeUnauthorized] = "rho_unauthorized"` → `protocol/errors.go:22` — confirmed
 - `protocol.Version = "1.0"` → `protocol/types.go:10` — confirmed
 - `protocol.RPCError` (Code, Message, Data) → `protocol/errors.go:24` — confirmed
 - `protocol.NewRPCError(code, message)` → `protocol/errors.go:34` — confirmed
@@ -1070,7 +1070,7 @@ Expected output:
 === RUN   TestRejectNonWebSocket
 --- PASS: TestRejectNonWebSocket (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 7: Write the failing test for hello handshake**
@@ -1093,8 +1093,8 @@ func TestHelloHandshake(t *testing.T) {
 				t.Error(err)
 				return err
 			}
-			if req.Method != "nabu.hello" {
-				t.Errorf("method: got %q, want %q", req.Method, "nabu.hello")
+			if req.Method != "rho.hello" {
+				t.Errorf("method: got %q, want %q", req.Method, "rho.hello")
 				return nil
 			}
 			resp := helloResponse{
@@ -1295,7 +1295,7 @@ Expected output:
 === RUN   TestHelloHandshake
 --- PASS: TestHelloHandshake (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.062s
+ok  	github.com/corporealshift/rho/daemon/api	0.062s
 ```
 
 - [ ] **Step 13: Write the failing test for non-hello method before hello**
@@ -1326,7 +1326,7 @@ func TestNonHelloBeforeHelloIsRefused(t *testing.T) {
 	req := helloRequest{
 		JSONRPC: "2.0",
 		ID:      "1",
-		Method:  "nabu.session.list",
+		Method:  "rho.session.list",
 	}
 	if err := wsjson.Write(context.Background(), c, req); err != nil {
 		t.Fatal(err)
@@ -1365,7 +1365,7 @@ In `daemon/api/transport.go`, replace the ServeHTTP upgrade section:
 	}
 	defer c.CloseNow()
 
-	// Enforce hello handshake: the first message must be nabu.hello.
+	// Enforce hello handshake: the first message must be rho.hello.
 	if err := enforceHello(c); err != nil {
 		s.log.Error("hello failed", "error", err)
 		return
@@ -1392,11 +1392,11 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // enforceHello reads the first message on the connection and verifies it is
-// a nabu.hello JSON-RPC request. If not, it writes a protocol mismatch error.
+// a rho.hello JSON-RPC request. If not, it writes a protocol mismatch error.
 func enforceHello(c *websocket.Conn) error {
 	var req helloRequest
 	ctx := context.Background()
@@ -1404,13 +1404,13 @@ func enforceHello(c *websocket.Conn) error {
 		return err
 	}
 
-	if req.Method != "nabu.hello" {
+	if req.Method != "rho.hello" {
 		resp := helloResponse{
 			JSONRPC: "2.0",
 			ID:      req.ID,
 			Error: &rpcError{
 				Code:    -32006,
-				Message: "nabu_protocol_mismatch: first message must be nabu.hello",
+				Message: "rho_protocol_mismatch: first message must be rho.hello",
 			},
 		}
 		_ = wsjson.Write(ctx, c, resp)
@@ -1443,7 +1443,7 @@ Expected output:
 === RUN   TestNonHelloBeforeHelloIsRefused
 --- PASS: TestNonHelloBeforeHelloIsRefused (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.062s
+ok  	github.com/corporealshift/rho/daemon/api	0.062s
 ```
 
 - [ ] **Step 17: Write the failing test for protocol version mismatch**
@@ -1474,7 +1474,7 @@ func TestProtocolVersionMismatch(t *testing.T) {
 	hello := map[string]any{
 		"jsonrpc":       "2.0",
 		"id":            "1",
-		"method":        "nabu.hello",
+		"method":        "rho.hello",
 		"params":        map[string]any{"protocol_version": "2.0"},
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
@@ -1492,8 +1492,8 @@ func TestProtocolVersionMismatch(t *testing.T) {
 	if resp.Error.Code != -32006 {
 		t.Errorf("error code: got %d, want -32006", resp.Error.Code)
 	}
-	if !strings.Contains(resp.Error.Message, "nabu_protocol_mismatch") {
-		t.Errorf("error message: got %q, want 'nabu_protocol_mismatch'", resp.Error.Message)
+	if !strings.Contains(resp.Error.Message, "rho_protocol_mismatch") {
+		t.Errorf("error message: got %q, want 'rho_protocol_mismatch'", resp.Error.Message)
 	}
 }
 ```
@@ -1509,8 +1509,8 @@ In `daemon/api/transport.go`, replace the `enforceHello` function:
 
 ```go
 // enforceHello reads the first message on the connection and verifies it is
-// a nabu.hello JSON-RPC request with a compatible protocol version.
-// A mismatched MAJOR version is refused with nabu_protocol_mismatch.
+// a rho.hello JSON-RPC request with a compatible protocol version.
+// A mismatched MAJOR version is refused with rho_protocol_mismatch.
 // A differing MINOR is accepted; the client ignores unknown fields.
 func enforceHello(c *websocket.Conn) error {
 	var req helloRequest
@@ -1519,13 +1519,13 @@ func enforceHello(c *websocket.Conn) error {
 		return err
 	}
 
-	if req.Method != "nabu.hello" {
+	if req.Method != "rho.hello" {
 		resp := helloResponse{
 			JSONRPC: "2.0",
 			ID:      req.ID,
 			Error: &rpcError{
 				Code:    -32006,
-				Message: "nabu_protocol_mismatch: first message must be nabu.hello",
+				Message: "rho_protocol_mismatch: first message must be rho.hello",
 			},
 		}
 		_ = wsjson.Write(ctx, c, resp)
@@ -1550,7 +1550,7 @@ func enforceHello(c *websocket.Conn) error {
 			ID:      req.ID,
 			Error: &rpcError{
 				Code:    -32006,
-				Message: fmt.Sprintf("nabu_protocol_mismatch: protocol version %s incompatible with daemon %s", clientVer, protocol.Version),
+				Message: fmt.Sprintf("rho_protocol_mismatch: protocol version %s incompatible with daemon %s", clientVer, protocol.Version),
 			},
 		}
 		_ = wsjson.Write(ctx, c, resp)
@@ -1595,7 +1595,7 @@ Expected output:
 === RUN   TestProtocolVersionMismatch
 --- PASS: TestProtocolVersionMismatch (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.062s
+ok  	github.com/corporealshift/rho/daemon/api	0.062s
 ```
 
 - [ ] **Step 21: Write the failing test for loopback with no token accepted**
@@ -1668,7 +1668,7 @@ Expected output:
 === RUN   TestLoopbackNoTokenAccepted
 --- PASS: TestLoopbackNoTokenAccepted (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.062s
+ok  	github.com/corporealshift/rho/daemon/api	0.062s
 ```
 
 - [ ] **Step 23: Write the failing test for isLoopback unit test**
@@ -1729,7 +1729,7 @@ Expected output:
     --- PASS: TestIsLoopback/10.0.0.1:8737 (0.00s)
     --- PASS: TestIsLoopback/0.0.0.0:8737 (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 25: Write the failing test for non-loopback with wrong token refused**
@@ -1840,7 +1840,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer c.CloseNow()
 
-	// Enforce hello handshake: the first message must be nabu.hello.
+	// Enforce hello handshake: the first message must be rho.hello.
 	if err := enforceHello(c); err != nil {
 		s.log.Error("hello failed", "error", err)
 		return
@@ -1861,7 +1861,7 @@ Expected output:
 === RUN   TestNonLoopbackWrongTokenRefused
 --- PASS: TestNonLoopbackWrongTokenRefused (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.062s
+ok  	github.com/corporealshift/rho/daemon/api	0.062s
 ```
 
 - [ ] **Step 31: Write the failing test for non-loopback with correct token accepted**
@@ -1944,7 +1944,7 @@ Expected output:
 === RUN   TestNonLoopbackCorrectTokenAccepted
 --- PASS: TestNonLoopbackCorrectTokenAccepted (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.062s
+ok  	github.com/corporealshift/rho/daemon/api	0.062s
 ```
 
 - [ ] **Step 33: Run the full gate**
@@ -1977,7 +1977,7 @@ git commit -m "api: websocket transport and hello handshake"
 **Key design decisions:**
 - `github.com/coder/websocket v1.8.15` — pinned version, latest at time of writing
 - `Server.ServeHTTP` owns routing: rejects non-WebSocket with 426, checks token for non-loopback, performs upgrade via `websocket.Accept`
-- `enforceHello` reads the first message, rejects non-hello with `-32006 nabu_protocol_mismatch`, checks MAJOR version, sends hello response
+- `enforceHello` reads the first message, rejects non-hello with `-32006 rho_protocol_mismatch`, checks MAJOR version, sends hello response
 - `isLoopback` handles addresses with and without ports, checks 127.0.0.1, ::1, localhost, and `net.IP.IsLoopback()`
 - `Conn` interface abstracts `*websocket.Conn` — the transport calls `ConnHandler.ServeConn(ctx, conn)` after hello passes
 - `ConnHandler.ServeConn` is the seam for Task 3: implementations handle JSON-RPC dispatch
@@ -1985,15 +1985,15 @@ git commit -m "api: websocket transport and hello handshake"
 - Non-loopback connections MUST present `Authorization: Bearer <token>` when a token is configured
 - `findNonLoopbackIP` helper finds the machine's first non-loopback IPv4 for integration tests
 - `majorVersion` extracts the MAJOR component from "MAJOR.MINOR" for version comparison
-- Protocol version MAJOR mismatch → `-32006 nabu_protocol_mismatch`
+- Protocol version MAJOR mismatch → `-32006 rho_protocol_mismatch`
 - Protocol version MINOR mismatch → accepted (per spec)
 - Hello response fields: `daemon_version`, `protocol_version`, `capabilities[]` (per spec §1.1)
 
 **Symbols confirmed in source:**
 - `protocol.CodeProtocolMismatch = -32006` → `protocol/errors.go:18` — confirmed
 - `protocol.CodeUnauthorized = -32007` → `protocol/errors.go:19` — confirmed
-- `protocol.ErrorNames[CodeProtocolMismatch] = "nabu_protocol_mismatch"` → `protocol/errors.go:22` — confirmed
-- `protocol.ErrorNames[CodeUnauthorized] = "nabu_unauthorized"` → `protocol/errors.go:22` — confirmed
+- `protocol.ErrorNames[CodeProtocolMismatch] = "rho_protocol_mismatch"` → `protocol/errors.go:22` — confirmed
+- `protocol.ErrorNames[CodeUnauthorized] = "rho_unauthorized"` → `protocol/errors.go:22` — confirmed
 - `protocol.Version = "1.0"` → `protocol/types.go:10` — confirmed
 - `protocol.RPCError` (Code, Message, Data) → `protocol/errors.go:24` — confirmed
 - `protocol.NewRPCError(code, message)` → `protocol/errors.go:34` — confirmed
@@ -2007,7 +2007,7 @@ git commit -m "api: websocket transport and hello handshake"
 - Create: `daemon/api/handler.go`
 - Create: `daemon/api/handler_test.go`
 
-**Goal:** JSON-RPC 2.0 dispatch on top of the Task 2 transport seam: request/response envelopes, id echoing, unknown-method handling, malformed-request handling. Four read-only session methods: `nabu.session.list`, `nabu.session.create`, `nabu.session.events_after`, `nabu.session.state`. Defines the method-name → handler-func map that Task 4 extends with `send_prompt`, `subscribe`, `interrupt`, `stop`, `resume`, `set_goal`, `clear_goal`, `set_option`, `update_tasks`. Spec: protocol/spec.md §1, §4, §5, §7.2–7.5, §8.
+**Goal:** JSON-RPC 2.0 dispatch on top of the Task 2 transport seam: request/response envelopes, id echoing, unknown-method handling, malformed-request handling. Four read-only session methods: `rho.session.list`, `rho.session.create`, `rho.session.events_after`, `rho.session.state`. Defines the method-name → handler-func map that Task 4 extends with `send_prompt`, `subscribe`, `interrupt`, `stop`, `resume`, `set_goal`, `clear_goal`, `set_option`, `update_tasks`. Spec: protocol/spec.md §1, §4, §5, §7.2–7.5, §8.
 
 **Third-party dependency:** None. This task uses only `encoding/json`, `log/slog`, and the packages from Tasks 1 and 2.
 
@@ -2059,9 +2059,9 @@ import (
 	"github.com/coder/websocket/wsjson"
 	"log/slog"
 
-	"github.com/corporealshift/nabu/daemon/agent"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/agent"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func TestUnknownMethodReturnsNotFound(t *testing.T) {
@@ -2095,7 +2095,7 @@ func TestUnknownMethodReturnsNotFound(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -2106,7 +2106,7 @@ func TestUnknownMethodReturnsNotFound(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.nonexistent",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.nonexistent",
 	}
 	if err := wsjson.Write(context.Background(), c, req); err != nil {
 		t.Fatal(err)
@@ -2149,9 +2149,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/corporealshift/nabu/daemon/agent"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/agent"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // methodFunc is a handler for one JSON-RPC method.
@@ -2174,10 +2174,10 @@ func NewHandler(m *agent.Manager, st *session.Store, log *slog.Logger) *Handler 
 		log:     log,
 		mods:    make(map[string]methodFunc),
 	}
-	h.mods["nabu.session.list"] = h.handleSessionList
-	h.mods["nabu.session.create"] = h.handleSessionCreate
-	h.mods["nabu.session.events_after"] = h.handleSessionEventsAfter
-	h.mods["nabu.session.state"] = h.handleSessionState
+	h.mods["rho.session.list"] = h.handleSessionList
+	h.mods["rho.session.create"] = h.handleSessionCreate
+	h.mods["rho.session.events_after"] = h.handleSessionEventsAfter
+	h.mods["rho.session.state"] = h.handleSessionState
 	return h
 }
 
@@ -2353,7 +2353,7 @@ Expected output:
 === RUN   TestUnknownMethodReturnsNotFound
 --- PASS: TestUnknownMethodReturnsNotFound (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 7: Write the failing test for malformed JSON returns code -32700**
@@ -2392,7 +2392,7 @@ func TestMalformedJSONReturnsParseError(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -2463,7 +2463,7 @@ Expected output:
 === RUN   TestMalformedJSONReturnsParseError
 --- PASS: TestMalformedJSONReturnsParseError (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 11: Write the failing test for id echoing**
@@ -2502,7 +2502,7 @@ func TestIDEchoing(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": "abc-123", "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": "abc-123", "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -2513,7 +2513,7 @@ func TestIDEchoing(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": "abc-123", "method": "nabu.nonexistent",
+		"jsonrpc": "2.0", "id": "abc-123", "method": "rho.nonexistent",
 	}
 	if err := wsjson.Write(context.Background(), c, req); err != nil {
 		t.Fatal(err)
@@ -2542,7 +2542,7 @@ Expected output:
 === RUN   TestIDEchoing
 --- PASS: TestIDEchoing (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 13: Write the failing test for session.list with no sessions**
@@ -2581,7 +2581,7 @@ func TestSessionListEmpty(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -2592,7 +2592,7 @@ func TestSessionListEmpty(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.list",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.list",
 	}
 	if err := wsjson.Write(context.Background(), c, req); err != nil {
 		t.Fatal(err)
@@ -2627,7 +2627,7 @@ Expected: the test fails because `handleSessionList` is not yet implemented — 
 In `daemon/api/handler.go`, add the `handleSessionList` method:
 
 ```go
-// handleSessionList implements nabu.session.list (spec §7.2).
+// handleSessionList implements rho.session.list (spec §7.2).
 func (h *Handler) handleSessionList(_ *Handler, _ json.RawMessage) (any, *protocol.RPCError) {
 	summaries, err := h.store.List()
 	if err != nil {
@@ -2648,7 +2648,7 @@ Expected output:
 === RUN   TestSessionListEmpty
 --- PASS: TestSessionListEmpty (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 17: Write the failing test for session.list with one session**
@@ -2687,7 +2687,7 @@ func TestSessionListWithSessions(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -2705,7 +2705,7 @@ func TestSessionListWithSessions(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.list",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.list",
 	}
 	if err := wsjson.Write(context.Background(), c, req); err != nil {
 		t.Fatal(err)
@@ -2752,7 +2752,7 @@ Expected output:
 === RUN   TestSessionListWithSessions
 --- PASS: TestSessionListWithSessions (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.062s
+ok  	github.com/corporealshift/rho/daemon/api	0.062s
 ```
 
 - [ ] **Step 19: Write the failing test for session.create**
@@ -2791,7 +2791,7 @@ func TestSessionCreate(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -2802,7 +2802,7 @@ func TestSessionCreate(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.create",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.create",
 		"params": map[string]any{
 			"workspace": "C:/Users/test/workspace",
 		},
@@ -2850,7 +2850,7 @@ Expected: the test fails because `handleSessionCreate` is not yet implemented �
 In `daemon/api/handler.go`, add the `CreateSessionOptions` type:
 
 ```go
-// CreateSessionOptions are the optional parameters for nabu.session.create.
+// CreateSessionOptions are the optional parameters for rho.session.create.
 type CreateSessionOptions struct {
 	Model             string  `json:"model,omitempty"`
 	PermissionMode    string  `json:"permission_mode,omitempty"`
@@ -2863,7 +2863,7 @@ type CreateSessionOptions struct {
 In `daemon/api/handler.go`, add the `handleSessionCreate` method:
 
 ```go
-// handleSessionCreate implements nabu.session.create (spec §7.3).
+// handleSessionCreate implements rho.session.create (spec §7.3).
 func (h *Handler) handleSessionCreate(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		Workspace string                `json:"workspace"`
@@ -2913,7 +2913,7 @@ Expected output:
 === RUN   TestSessionCreate
 --- PASS: TestSessionCreate (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 24: Write the failing test for session.events_after**
@@ -2952,7 +2952,7 @@ func TestEventsAfter(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -2977,7 +2977,7 @@ func TestEventsAfter(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.events_after",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.events_after",
 		"params": map[string]any{
 			"session_id":    s.ID(),
 			"last_event_id": nil,
@@ -3019,7 +3019,7 @@ Expected: the test fails because `handleSessionEventsAfter` is not yet implement
 In `daemon/api/handler.go`, add the `handleSessionEventsAfter` method:
 
 ```go
-// handleSessionEventsAfter implements nabu.session.events_after (spec §7.5, §4).
+// handleSessionEventsAfter implements rho.session.events_after (spec §7.5, §4).
 func (h *Handler) handleSessionEventsAfter(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID   string  `json:"session_id"`
@@ -3070,7 +3070,7 @@ Expected output:
 === RUN   TestEventsAfter
 --- PASS: TestEventsAfter (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 28: Write the failing test for events_after with unknown cursor**
@@ -3109,7 +3109,7 @@ func TestEventsAfterUnknownCursor(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -3127,7 +3127,7 @@ func TestEventsAfterUnknownCursor(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.events_after",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.events_after",
 		"params": map[string]any{
 			"session_id":    s.ID(),
 			"last_event_id": "01J00000000000000000000001",
@@ -3162,7 +3162,7 @@ Expected output:
 === RUN   TestEventsAfterUnknownCursor
 --- PASS: TestEventsAfterUnknownCursor (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 29: Write the failing test for session.state**
@@ -3201,7 +3201,7 @@ func TestSessionState(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -3219,7 +3219,7 @@ func TestSessionState(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.state",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.state",
 		"params": map[string]any{
 			"session_id": s.ID(),
 		},
@@ -3257,7 +3257,7 @@ Expected: the test fails because `handleSessionState` is not yet implemented —
 In `daemon/api/handler.go`, add the `handleSessionState` method:
 
 ```go
-// handleSessionState implements nabu.session.state (spec §7.10, §5).
+// handleSessionState implements rho.session.state (spec §7.10, §5).
 func (h *Handler) handleSessionState(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
@@ -3302,7 +3302,7 @@ Expected output:
 === RUN   TestSessionState
 --- PASS: TestSessionState (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 33: Write the failing test for session.create with missing workspace**
@@ -3341,7 +3341,7 @@ func TestSessionCreateMissingWorkspace(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -3352,7 +3352,7 @@ func TestSessionCreateMissingWorkspace(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.create",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.create",
 	}
 	if err := wsjson.Write(context.Background(), c, req); err != nil {
 		t.Fatal(err)
@@ -3406,16 +3406,16 @@ git commit -m "api: json-rpc dispatch and read-only session methods"
 - `Handler` implements `ConnHandler` (from Task 2) — `ServeConn` runs the JSON-RPC message loop
 - `dispatch` handles JSON-RPC 2.0 parsing: parse errors (-32700), invalid requests (-32600), method dispatch
 - Method routing uses a `map[string]methodFunc` — Task 4 extends this map with mutating/streaming methods
-- `nabu.session.list` → `Store.List()` → `{sessions: [Summary]}` (spec §7.2)
-- `nabu.session.create` → `Manager.Create()` → `{session_id, event}` (spec §7.3)
-- `nabu.session.events_after` → `Session.EventsAfter()` → `{events, synced}` (spec §7.5, §4)
-- `nabu.session.state` → `Session.State()` → §5 projection (spec §7.10)
+- `rho.session.list` → `Store.List()` → `{sessions: [Summary]}` (spec §7.2)
+- `rho.session.create` → `Manager.Create()` → `{session_id, event}` (spec §7.3)
+- `rho.session.events_after` → `Session.EventsAfter()` → `{events, synced}` (spec §7.5, §4)
+- `rho.session.state` → `Session.State()` → §5 projection (spec §7.10)
 - Cursor validation delegated to `protocol.EventsAfter` (cursor.go:13) — no reimplementation
 - State projection delegated to `protocol.Project` (project.go:17) — no reimplementation
 - Empty arrays returned (not null) for sessions and events lists
 - `jsonrpcRequest.ID` is `any` to support string, number, and null IDs per spec
 - `methods` map is read-locked during dispatch for concurrency safety
-- `CreateSessionOptions` is a thin struct for JSON parsing of `nabu.session.create` params
+- `CreateSessionOptions` is a thin struct for JSON parsing of `rho.session.create` params
 
 **Symbols confirmed in source:**
 - `protocol.CodeParseError = -32700` → `protocol/errors.go:10` — confirmed
@@ -3551,10 +3551,10 @@ func NewHandler(m *agent.Manager, st *session.Store, log *slog.Logger) *Handler 
 		mods:          make(map[string]methodFunc),
 		subscriptions: make(map[string]*sessionSubs),
 	}
-	h.mods["nabu.session.list"] = h.handleSessionList
-	h.mods["nabu.session.create"] = h.handleSessionCreate
-	h.mods["nabu.session.events_after"] = h.handleSessionEventsAfter
-	h.mods["nabu.session.state"] = h.handleSessionState
+	h.mods["rho.session.list"] = h.handleSessionList
+	h.mods["rho.session.create"] = h.handleSessionCreate
+	h.mods["rho.session.events_after"] = h.handleSessionEventsAfter
+	h.mods["rho.session.state"] = h.handleSessionState
 	return h
 }
 ```
@@ -3595,7 +3595,7 @@ func TestSendPrompt(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -3613,7 +3613,7 @@ func TestSendPrompt(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.send_prompt",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.send_prompt",
 		"params": map[string]any{
 			"session_id": s.ID(),
 			"content":    "hello world",
@@ -3656,7 +3656,7 @@ Expected: the test fails because `handleSendPrompt` is not yet implemented — i
 In `daemon/api/handler.go`, add:
 
 ```go
-// handleSendPrompt implements nabu.session.send_prompt (spec §7.4).
+// handleSendPrompt implements rho.session.send_prompt (spec §7.4).
 func (h *Handler) handleSendPrompt(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
@@ -3699,7 +3699,7 @@ func (h *Handler) handleSendPrompt(_ *Handler, params json.RawMessage) (any, *pr
 In `NewHandler`, add the method registration:
 
 ```go
-h.mods["nabu.session.send_prompt"] = h.handleSendPrompt
+h.mods["rho.session.send_prompt"] = h.handleSendPrompt
 ```
 
 Run: `go test ./daemon/api/ -run TestSendPrompt -v`
@@ -3708,7 +3708,7 @@ Expected output:
 === RUN   TestSendPrompt
 --- PASS: TestSendPrompt (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 7: Write the failing test for send_prompt to a paused session**
@@ -3747,7 +3747,7 @@ func TestSendPromptPausedSession(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -3770,7 +3770,7 @@ func TestSendPromptPausedSession(t *testing.T) {
 		From: &from, To: protocol.StatePaused, Reason: "daemon_shutdown"})
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.send_prompt",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.send_prompt",
 		"params": map[string]any{
 			"session_id": s.ID(),
 			"content":    "hello world",
@@ -3837,7 +3837,7 @@ func TestSubscribe(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -3855,7 +3855,7 @@ func TestSubscribe(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 		"params": map[string]any{
 			"session_id": s.ID(),
 		},
@@ -3890,7 +3890,7 @@ Expected: the test fails because `handleSubscribe` is not yet implemented — it
 In `daemon/api/handler.go`, add:
 
 ```go
-// handleSubscribe implements nabu.session.subscribe (spec §7.6).
+// handleSubscribe implements rho.session.subscribe (spec §7.6).
 func (h *Handler) handleSubscribe(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
@@ -3962,7 +3962,7 @@ func (h *Handler) fanOut(sessionID string, subID int, ch <-chan protocol.Event, 
 			}
 			if err := cs.conn.WriteJSON(context.Background(), map[string]any{
 				"jsonrpc": "2.0",
-				"method":  "nabu.session.event",
+				"method":  "rho.session.event",
 				"params":  notif,
 			}); err != nil {
 				return
@@ -3979,7 +3979,7 @@ func (h *Handler) fanOut(sessionID string, subID int, ch <-chan protocol.Event, 
 In `NewHandler`, add:
 
 ```go
-h.mods["nabu.session.subscribe"] = h.handleSubscribe
+h.mods["rho.session.subscribe"] = h.handleSubscribe
 ```
 
 Run: `go test ./daemon/api/ -run TestSubscribe -v`
@@ -3988,7 +3988,7 @@ Expected output:
 === RUN   TestSubscribe
 --- PASS: TestSubscribe (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 13: Write the failing test for unsubscribe**
@@ -4027,7 +4027,7 @@ func TestUnsubscribe(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -4046,7 +4046,7 @@ func TestUnsubscribe(t *testing.T) {
 
 	// Subscribe first.
 	subReq := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 		"params": map[string]any{"session_id": s.ID()},
 	}
 	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -4062,7 +4062,7 @@ func TestUnsubscribe(t *testing.T) {
 
 	// Now unsubscribe.
 	unsubReq := map[string]any{
-		"jsonrpc": "2.0", "id": 3, "method": "nabu.session.unsubscribe",
+		"jsonrpc": "2.0", "id": 3, "method": "rho.session.unsubscribe",
 		"params": map[string]any{"session_id": s.ID()},
 	}
 	if err := wsjson.Write(context.Background(), c, unsubReq); err != nil {
@@ -4095,7 +4095,7 @@ Expected: the test fails because `handleUnsubscribe` is not yet implemented — 
 In `daemon/api/handler.go`, add:
 
 ```go
-// handleUnsubscribe implements nabu.session.unsubscribe (spec §7.6).
+// handleUnsubscribe implements rho.session.unsubscribe (spec §7.6).
 func (h *Handler) handleUnsubscribe(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
@@ -4138,7 +4138,7 @@ func (h *Handler) handleUnsubscribe(_ *Handler, params json.RawMessage) (any, *p
 In `NewHandler`, add:
 
 ```go
-h.mods["nabu.session.unsubscribe"] = h.handleUnsubscribe
+h.mods["rho.session.unsubscribe"] = h.handleUnsubscribe
 ```
 
 Run: `go test ./daemon/api/ -run TestUnsubscribe -v`
@@ -4147,7 +4147,7 @@ Expected output:
 === RUN   TestUnsubscribe
 --- PASS: TestUnsubscribe (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 17: Write the failing test for interrupt**
@@ -4186,7 +4186,7 @@ func TestInterrupt(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -4204,7 +4204,7 @@ func TestInterrupt(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.interrupt",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.interrupt",
 		"params": map[string]any{
 			"session_id": s.ID(),
 		},
@@ -4240,7 +4240,7 @@ Expected: the test fails because `handleInterrupt` is not yet implemented — it
 In `daemon/api/handler.go`, add:
 
 ```go
-// handleInterrupt implements nabu.session.interrupt (spec §7.7).
+// handleInterrupt implements rho.session.interrupt (spec §7.7).
 func (h *Handler) handleInterrupt(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
@@ -4273,7 +4273,7 @@ func (h *Handler) handleInterrupt(_ *Handler, params json.RawMessage) (any, *pro
 	return nil, nil
 }
 
-// handleStop implements nabu.session.stop (spec §7.8).
+// handleStop implements rho.session.stop (spec §7.8).
 func (h *Handler) handleStop(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
@@ -4303,8 +4303,8 @@ func (h *Handler) handleStop(_ *Handler, params json.RawMessage) (any, *protocol
 In `NewHandler`, add:
 
 ```go
-h.mods["nabu.session.interrupt"] = h.handleInterrupt
-h.mods["nabu.session.stop"] = h.handleStop
+h.mods["rho.session.interrupt"] = h.handleInterrupt
+h.mods["rho.session.stop"] = h.handleStop
 ```
 
 Run: `go test ./daemon/api/ -run "TestInterrupt|TestStop" -v`
@@ -4315,7 +4315,7 @@ Expected output:
 === RUN   TestStop
 --- PASS: TestStop (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 21: Write the failing test for resume**
@@ -4354,7 +4354,7 @@ func TestResume(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -4383,7 +4383,7 @@ func TestResume(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.resume",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.resume",
 		"params": map[string]any{
 			"session_id": s.ID(),
 		},
@@ -4413,7 +4413,7 @@ Expected: the test fails because `handleResume` is not yet implemented — it re
 In `daemon/api/handler.go`, add:
 
 ```go
-// handleResume implements nabu.session.resume (spec §7.9).
+// handleResume implements rho.session.resume (spec §7.9).
 func (h *Handler) handleResume(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string                          `json:"session_id"`
@@ -4453,7 +4453,7 @@ func (h *Handler) handleResume(_ *Handler, params json.RawMessage) (any, *protoc
 In `NewHandler`, add:
 
 ```go
-h.mods["nabu.session.resume"] = h.handleResume
+h.mods["rho.session.resume"] = h.handleResume
 ```
 
 Run: `go test ./daemon/api/ -run TestResume -v`
@@ -4462,7 +4462,7 @@ Expected output:
 === RUN   TestResume
 --- PASS: TestResume (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 25: Write the failing test for set_goal and clear_goal**
@@ -4501,7 +4501,7 @@ func TestSetGoal(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -4519,7 +4519,7 @@ func TestSetGoal(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.set_goal",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.set_goal",
 		"params": map[string]any{
 			"session_id": s.ID(),
 			"condition":  "all tests pass",
@@ -4576,7 +4576,7 @@ func TestClearGoal(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -4595,7 +4595,7 @@ func TestClearGoal(t *testing.T) {
 
 	// Set a goal first.
 	setReq := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.set_goal",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.set_goal",
 		"params": map[string]any{
 			"session_id":  s.ID(),
 			"condition":   "all tests pass",
@@ -4614,7 +4614,7 @@ func TestClearGoal(t *testing.T) {
 
 	// Now clear it.
 	clearReq := map[string]any{
-		"jsonrpc": "2.0", "id": 3, "method": "nabu.session.clear_goal",
+		"jsonrpc": "2.0", "id": 3, "method": "rho.session.clear_goal",
 		"params": map[string]any{
 			"session_id": s.ID(),
 		},
@@ -4649,7 +4649,7 @@ Expected: both fail because the handlers are not implemented — they return met
 In `daemon/api/handler.go`, add:
 
 ```go
-// handleSetGoal implements nabu.session.set_goal (spec §7.11).
+// handleSetGoal implements rho.session.set_goal (spec §7.11).
 func (h *Handler) handleSetGoal(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
@@ -4687,7 +4687,7 @@ func (h *Handler) handleSetGoal(_ *Handler, params json.RawMessage) (any, *proto
 	return map[string]any{"event_id": e.ID}, nil
 }
 
-// handleClearGoal implements nabu.session.clear_goal (spec §7.12).
+// handleClearGoal implements rho.session.clear_goal (spec §7.12).
 func (h *Handler) handleClearGoal(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
@@ -4721,7 +4721,7 @@ func (h *Handler) handleClearGoal(_ *Handler, params json.RawMessage) (any, *pro
 	return map[string]any{"event_id": e.ID}, nil
 }
 
-// handleSetOption implements nabu.session.set_option (spec §7.13).
+// handleSetOption implements rho.session.set_option (spec §7.13).
 func (h *Handler) handleSetOption(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
@@ -4760,7 +4760,7 @@ func (h *Handler) handleSetOption(_ *Handler, params json.RawMessage) (any, *pro
 	return map[string]any{"event_id": e.ID}, nil
 }
 
-// handleUpdateTasks implements nabu.session.update_tasks (spec §7.14).
+// handleUpdateTasks implements rho.session.update_tasks (spec §7.14).
 func (h *Handler) handleUpdateTasks(_ *Handler, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string      `json:"session_id"`
@@ -4812,10 +4812,10 @@ func (h *Handler) handleUpdateTasks(_ *Handler, params json.RawMessage) (any, *p
 In `NewHandler`, add:
 
 ```go
-h.mods["nabu.session.set_goal"] = h.handleSetGoal
-h.mods["nabu.session.clear_goal"] = h.handleClearGoal
-h.mods["nabu.session.set_option"] = h.handleSetOption
-h.mods["nabu.session.update_tasks"] = h.handleUpdateTasks
+h.mods["rho.session.set_goal"] = h.handleSetGoal
+h.mods["rho.session.clear_goal"] = h.handleClearGoal
+h.mods["rho.session.set_option"] = h.handleSetOption
+h.mods["rho.session.update_tasks"] = h.handleUpdateTasks
 ```
 
 Run: `go test ./daemon/api/ -run "TestSetGoal|TestClearGoal|TestSetOption|TestUpdateTasks" -v`
@@ -4830,7 +4830,7 @@ Expected output:
 === RUN   TestUpdateTasks
 --- PASS: TestUpdateTasks (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 29: Write the multi-client fan-out test**
@@ -4875,7 +4875,7 @@ func TestFanOutToMultipleSubscribers(t *testing.T) {
 	defer c2.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	for _, c := range []*websocket.Conn{c1, c2} {
 		if err := wsjson.Write(context.Background(), c, hello); err != nil {
@@ -4897,7 +4897,7 @@ func TestFanOutToMultipleSubscribers(t *testing.T) {
 	// Both clients subscribe.
 	for _, c := range []*websocket.Conn{c1, c2} {
 		subReq := map[string]any{
-			"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+			"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 			"params": map[string]any{"session_id": s.ID()},
 		}
 		if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -4936,13 +4936,13 @@ func TestFanOutToMultipleSubscribers(t *testing.T) {
 				return
 			}
 			method, _ := notif["method"].(string)
-			received <- method == "nabu.session.event"
+			received <- method == "rho.session.event"
 		}(c)
 	}
 
 	for i := 0; i < 2; i++ {
 		if !<-received {
-			t.Fatal("expected both subscribers to receive nabu.session.event")
+			t.Fatal("expected both subscribers to receive rho.session.event")
 		}
 	}
 }
@@ -4951,7 +4951,7 @@ func TestFanOutToMultipleSubscribers(t *testing.T) {
 - [ ] **Step 30: Run it — it should fail**
 
 Run: `go test ./daemon/api/ -run TestFanOutToMultipleSubscribers -v`
-Expected: the test fails because the fan-out goroutine is not yet started (Step 11 code is not in place yet). The test triggers: `handler_test.go:XX: expected both subscribers to receive nabu.session.event` (timeout waiting on channel).
+Expected: the test fails because the fan-out goroutine is not yet started (Step 11 code is not in place yet). The test triggers: `handler_test.go:XX: expected both subscribers to receive rho.session.event` (timeout waiting on channel).
 
 - [ ] **Step 31: Write the delta non-logging test**
 
@@ -5016,7 +5016,7 @@ Expected output:
 === RUN   TestDeltasAreNotLogged
 --- PASS: TestDeltasAreNotLogged (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 33: Write the delta broadcast test (passes against Step 11)**
@@ -5026,7 +5026,7 @@ Append to `daemon/api/handler_test.go`:
 ```go
 func TestDeltaBroadcastToSubscribers(t *testing.T) {
 	// This test proves that the handler's broadcastDelta method sends
-	// nabu.session.delta notifications to all subscribers.
+	// rho.session.delta notifications to all subscribers.
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -5058,7 +5058,7 @@ func TestDeltaBroadcastToSubscribers(t *testing.T) {
 	defer c.CloseNow()
 
 	hello := map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.hello",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.hello",
 	}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
@@ -5077,7 +5077,7 @@ func TestDeltaBroadcastToSubscribers(t *testing.T) {
 
 	// Subscribe.
 	subReq := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 		"params": map[string]any{"session_id": s.ID()},
 	}
 	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -5107,8 +5107,8 @@ func TestDeltaBroadcastToSubscribers(t *testing.T) {
 	}
 
 	method, _ := notif["method"].(string)
-	if method != "nabu.session.delta" {
-		t.Errorf("method: got %v, want nabu.session.delta", method)
+	if method != "rho.session.delta" {
+		t.Errorf("method: got %v, want rho.session.delta", method)
 	}
 
 	params, _ := notif["params"].(map[string]any)
@@ -5148,7 +5148,7 @@ func (h *Handler) broadcastDelta(sessionID, turnID, text string) {
 		}
 		if err := cs.conn.WriteJSON(context.Background(), map[string]any{
 			"jsonrpc": "2.0",
-			"method":  "nabu.session.delta",
+			"method":  "rho.session.delta",
 			"params":  notif,
 		}); err != nil {
 			// Slow client: drop the delta. The final message event
@@ -5166,7 +5166,7 @@ Expected output:
 === RUN   TestDeltaBroadcastToSubscribers
 --- PASS: TestDeltaBroadcastToSubscribers (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 35: Run the full gate, gofmt, and commit**
@@ -5196,9 +5196,9 @@ git commit -m "api: session mutation methods and event fan-out"
 - `Handler` extends Task 3 with a `subscriptions` map (keyed by session_id) and `subMu` lock
 - `sessionSubs` tracks per-session WebSocket subscribers with `clientSub` carrying the channel, cancel func, and done channel
 - `Subscribe(8)` creates an 8-event buffer channel; slow clients are dropped (session's built-in drop logic)
-- Fan-out goroutine (`fanOut`) reads from the session channel and writes `nabu.session.event` notifications to the client
+- Fan-out goroutine (`fanOut`) reads from the session channel and writes `rho.session.event` notifications to the client
 - Unsubscribe cancels all subscriptions and blocks until fan-out goroutines exit (`<-cs.done`)
-- `broadcastDelta` sends `nabu.session.delta` notifications to all subscribers; slow clients are silently dropped
+- `broadcastDelta` sends `rho.session.delta` notifications to all subscribers; slow clients are silently dropped
 - Deltas are ephemeral: never logged, never replayed by `EventsAfter`, superseded by the final `message` event
 - `send_prompt` while running does not queue — the message is appended immediately and picked up at the next request assembly
 - All mutating methods delegate to the `Manager` which handles state transitions
@@ -5255,7 +5255,7 @@ git commit -m "api: session mutation methods and event fan-out"
 - Modify: `daemon/api/handler.go` — extend `Handler` with pending request map, dispatch incoming responses
 - Modify: `daemon/api/handler_test.go` — extend with request tests
 
-**Goal:** Implement `nabu.rpc.permission.request` and `nabu.rpc.ui.ask` as daemon-to-client requests resolved first-responder-wins. Broadcast to all attached clients. The first answer resolves the request; late answers receive `nabu_already_resolved`. A request that is never answered times out (default 10 minutes) and moves the session to `blocked`. A client that disconnects while a request is outstanding does not wedge it — if the last attached client vanishes, the request resolves by its defined failure path. Spec: protocol/spec.md §7.15.
+**Goal:** Implement `rho.rpc.permission.request` and `rho.rpc.ui.ask` as daemon-to-client requests resolved first-responder-wins. Broadcast to all attached clients. The first answer resolves the request; late answers receive `rho_already_resolved`. A request that is never answered times out (default 10 minutes) and moves the session to `blocked`. A client that disconnects while a request is outstanding does not wedge it — if the last attached client vanishes, the request resolves by its defined failure path. Spec: protocol/spec.md §7.15.
 
 **Third-party dependency:** None. Uses `encoding/json`, `log/slog`, and packages from Tasks 1–4.
 
@@ -5264,7 +5264,7 @@ git commit -m "api: session mutation methods and event fan-out"
 - `agent.Deps.Asker` field → `daemon/agent/manager.go:38` — confirmed
 - `module.UI` interface (method `Ask`) → `daemon/module/module.go:221` — confirmed
 - `protocol.CodeAlreadyResolved = -32004` → `protocol/errors.go:16` — confirmed
-- `protocol.ErrorNames["nabu_already_resolved"]` → `protocol/errors.go:22` — confirmed
+- `protocol.ErrorNames["rho_already_resolved"]` → `protocol/errors.go:22` — confirmed
 - `protocol.RPCError` (Code, Message, Data) → `protocol/errors.go:24` — confirmed
 - `protocol.NewRPCError(code int, message string) *RPCError` → `protocol/errors.go:34` — confirmed
 - `protocol.ToolCallData` (CallID, Tool, Arguments, Source) → `protocol/types.go:96` — confirmed
@@ -5297,7 +5297,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // requestTimeout is the default wait for a daemon-to-client request to be answered.
@@ -5416,11 +5416,11 @@ func NewHandler(m *agent.Manager, st *session.Store, log *slog.Logger) *Handler 
 		subscriptions:   make(map[string]*sessionSubs),
 		pendingRequests: make(map[string]*pendingRequest),
 	}
-	h.mods["nabu.hello"] = h.handleHello
-	h.mods["nabu.session.list"] = h.handleSessionList
-	h.mods["nabu.session.create"] = h.handleSessionCreate
-	h.mods["nabu.session.events_after"] = h.handleSessionEventsAfter
-	h.mods["nabu.session.state"] = h.handleSessionState
+	h.mods["rho.hello"] = h.handleHello
+	h.mods["rho.session.list"] = h.handleSessionList
+	h.mods["rho.session.create"] = h.handleSessionCreate
+	h.mods["rho.session.events_after"] = h.handleSessionEventsAfter
+	h.mods["rho.session.state"] = h.handleSessionState
 	return h
 }
 ```
@@ -5503,7 +5503,7 @@ func TestPermissionRequestBroadcast(t *testing.T) {
 	}
 	defer c.CloseNow()
 
-	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rho.hello"}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
 	}
@@ -5520,7 +5520,7 @@ func TestPermissionRequestBroadcast(t *testing.T) {
 	}
 
 	subReq := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 		"params": map[string]any{"session_id": s.ID()},
 	}
 	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -5551,7 +5551,7 @@ func TestPermissionRequestBroadcast(t *testing.T) {
 			done <- false
 			return
 		}
-		done <- notif["method"] == "nabu.rpc.permission.request"
+		done <- notif["method"] == "rho.rpc.permission.request"
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -5573,7 +5573,7 @@ func TestPermissionRequestBroadcast(t *testing.T) {
 
 	<-done
 	if !<-done {
-		t.Fatal("expected client to receive nabu.rpc.permission.request")
+		t.Fatal("expected client to receive rho.rpc.permission.request")
 	}
 }
 ```
@@ -5600,7 +5600,7 @@ func (h *Handler) BroadcastPermissionRequest(ctx context.Context, pr *permission
 	}
 
 	pending := &pendingRequest{
-		method: "nabu.rpc.permission.response", params: paramsJSON,
+		method: "rho.rpc.permission.response", params: paramsJSON,
 		done: make(chan struct{}),
 	}
 
@@ -5624,7 +5624,7 @@ func (h *Handler) BroadcastPermissionRequest(ctx context.Context, pr *permission
 		}
 		msg := map[string]any{
 			"jsonrpc": "2.0", "id": reqID,
-			"method": "nabu.rpc.permission.request", "params": params,
+			"method": "rho.rpc.permission.request", "params": params,
 		}
 		if err := cs.conn.WriteJSON(context.Background(), msg); err != nil {
 			delete(ss.subs, id)
@@ -5667,7 +5667,7 @@ Expected output:
 === RUN   TestPermissionRequestBroadcast
 --- PASS: TestPermissionRequestBroadcast (2.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	2.052s
+ok  	github.com/corporealshift/rho/daemon/api	2.052s
 ```
 
 - [ ] **Step 12:  Write the failing test for ui.ask broadcast**
@@ -5705,7 +5705,7 @@ func TestAskRequestBroadcast(t *testing.T) {
 	}
 	defer c.CloseNow()
 
-	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rho.hello"}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
 	}
@@ -5722,7 +5722,7 @@ func TestAskRequestBroadcast(t *testing.T) {
 	}
 
 	subReq := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 		"params": map[string]any{"session_id": s.ID()},
 	}
 	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -5754,7 +5754,7 @@ func TestAskRequestBroadcast(t *testing.T) {
 			done <- false
 			return
 		}
-		done <- notif["method"] == "nabu.rpc.ui.ask"
+		done <- notif["method"] == "rho.rpc.ui.ask"
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -5773,7 +5773,7 @@ func TestAskRequestBroadcast(t *testing.T) {
 
 	<-done
 	if !<-done {
-		t.Fatal("expected client to receive nabu.rpc.ui.ask")
+		t.Fatal("expected client to receive rho.rpc.ui.ask")
 	}
 }
 ```
@@ -5803,7 +5803,7 @@ func (h *Handler) BroadcastAskRequest(ctx context.Context, ar *askRequest) (*ask
 	}
 
 	pending := &pendingRequest{
-		method: "nabu.rpc.ui.ask.response", params: paramsJSON,
+		method: "rho.rpc.ui.ask.response", params: paramsJSON,
 		done: make(chan struct{}),
 	}
 
@@ -5827,7 +5827,7 @@ func (h *Handler) BroadcastAskRequest(ctx context.Context, ar *askRequest) (*ask
 		}
 		msg := map[string]any{
 			"jsonrpc": "2.0", "id": reqID,
-			"method": "nabu.rpc.ui.ask", "params": params,
+			"method": "rho.rpc.ui.ask", "params": params,
 		}
 		if err := cs.conn.WriteJSON(context.Background(), msg); err != nil {
 			delete(ss.subs, id)
@@ -5870,7 +5870,7 @@ Expected output:
 === RUN   TestAskRequestBroadcast
 --- PASS: TestAskRequestBroadcast (2.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	2.052s
+ok  	github.com/corporealshift/rho/daemon/api	2.052s
 ```
 
 - [ ] **Step 15:  Write the failing test for first-responder-wins (two clients)**
@@ -5914,7 +5914,7 @@ func TestPermissionRequestFirstResponderWins(t *testing.T) {
 	}
 	defer c2.CloseNow()
 
-	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rho.hello"}
 	for _, c := range []*websocket.Conn{c1, c2} {
 		if err := wsjson.Write(context.Background(), c, hello); err != nil {
 			t.Fatal(err)
@@ -5934,7 +5934,7 @@ func TestPermissionRequestFirstResponderWins(t *testing.T) {
 
 	for _, c := range []*websocket.Conn{c1, c2} {
 		subReq := map[string]any{
-			"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+			"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 			"params": map[string]any{"session_id": s.ID()},
 		}
 		if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -6052,14 +6052,14 @@ In `daemon/api/handler.go`, extend the dispatch:
 ```go
 func (h *Handler) dispatch(conn *websocket.Conn, req *jsonrpcRequest) {
 	if !h.helloDone {
-		if req.Method != "nabu.hello" {
+		if req.Method != "rho.hello" {
 			h.sendError(conn, req.ID, protocol.CodeProtocolMismatch,
 				"hello required first")
 			return
 		}
 	}
 
-	if strings.HasPrefix(req.Method, "nabu.rpc.") &&
+	if strings.HasPrefix(req.Method, "rho.rpc.") &&
 		strings.HasSuffix(req.Method, ".response") {
 		go h.handleIncomingResponse(conn, req)
 		return
@@ -6122,7 +6122,7 @@ func TestPermissionRequestAlreadyResolved(t *testing.T) {
 	}
 	defer c2.CloseNow()
 
-	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rho.hello"}
 	for _, c := range []*websocket.Conn{c1, c2} {
 		if err := wsjson.Write(context.Background(), c, hello); err != nil {
 			t.Fatal(err)
@@ -6142,7 +6142,7 @@ func TestPermissionRequestAlreadyResolved(t *testing.T) {
 
 	for _, c := range []*websocket.Conn{c1, c2} {
 		subReq := map[string]any{
-			"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+			"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 			"params": map[string]any{"session_id": s.ID()},
 		}
 		if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -6247,7 +6247,7 @@ Expected output:
 === RUN   TestPermissionRequestAlreadyResolved
 --- PASS: TestPermissionRequestAlreadyResolved (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 22:  Write the failing test for timeout expiry**
@@ -6285,7 +6285,7 @@ func TestPermissionRequestTimeout(t *testing.T) {
 	}
 	defer c.CloseNow()
 
-	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rho.hello"}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
 	}
@@ -6302,7 +6302,7 @@ func TestPermissionRequestTimeout(t *testing.T) {
 	}
 
 	subReq := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 		"params": map[string]any{"session_id": s.ID()},
 	}
 	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -6352,7 +6352,7 @@ Expected output:
 === RUN   TestPermissionRequestTimeout
 --- PASS: TestPermissionRequestTimeout (0.50s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.552s
+ok  	github.com/corporealshift/rho/daemon/api	0.552s
 ```
 
 - [ ] **Step 25:  Write the failing test for disconnect-with-request-outstanding**
@@ -6389,7 +6389,7 @@ func TestPermissionRequestDisconnectResolves(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rho.hello"}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
 	}
@@ -6406,7 +6406,7 @@ func TestPermissionRequestDisconnectResolves(t *testing.T) {
 	}
 
 	subReq := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 		"params": map[string]any{"session_id": s.ID()},
 	}
 	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -6473,7 +6473,7 @@ func (h *Handler) BroadcastPermissionRequest(ctx context.Context, pr *permission
 	}
 
 	pending := &pendingRequest{
-		method: "nabu.rpc.permission.response", params: paramsJSON,
+		method: "rho.rpc.permission.response", params: paramsJSON,
 		done: make(chan struct{}),
 	}
 
@@ -6497,7 +6497,7 @@ func (h *Handler) BroadcastPermissionRequest(ctx context.Context, pr *permission
 		}
 		msg := map[string]any{
 			"jsonrpc": "2.0", "id": reqID,
-			"method": "nabu.rpc.permission.request", "params": params,
+			"method": "rho.rpc.permission.request", "params": params,
 		}
 		if err := cs.conn.WriteJSON(context.Background(), msg); err != nil {
 			delete(ss.subs, id)
@@ -6542,7 +6542,7 @@ Expected output:
 === RUN   TestPermissionRequestDisconnectResolves
 --- PASS: TestPermissionRequestDisconnectResolves (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 - [ ] **Step 28:  Write the failing test for already_resolved error on the wire**
@@ -6586,7 +6586,7 @@ func TestAlreadyResolvedErrorOnWire(t *testing.T) {
 	}
 	defer c2.CloseNow()
 
-	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rho.hello"}
 	for _, c := range []*websocket.Conn{c1, c2} {
 		if err := wsjson.Write(context.Background(), c, hello); err != nil {
 			t.Fatal(err)
@@ -6606,7 +6606,7 @@ func TestAlreadyResolvedErrorOnWire(t *testing.T) {
 
 	for _, c := range []*websocket.Conn{c1, c2} {
 		subReq := map[string]any{
-			"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+			"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 			"params": map[string]any{"session_id": s.ID()},
 		}
 		if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -6697,14 +6697,14 @@ In `daemon/api/handler.go`, update the dispatch method:
 ```go
 func (h *Handler) dispatch(conn *websocket.Conn, req *jsonrpcRequest) {
 	if !h.helloDone {
-		if req.Method != "nabu.hello" {
+		if req.Method != "rho.hello" {
 			h.sendError(conn, req.ID, protocol.CodeProtocolMismatch,
 				"hello required first")
 			return
 		}
 	}
 
-	if strings.HasPrefix(req.Method, "nabu.rpc.") &&
+	if strings.HasPrefix(req.Method, "rho.rpc.") &&
 		strings.HasSuffix(req.Method, ".response") {
 		go h.handleIncomingResponse(conn, req)
 		return
@@ -6846,8 +6846,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/config"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/config"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func TestNewNilStore(t *testing.T) {
@@ -6881,13 +6881,13 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/corporealshift/nabu/daemon/agent"
-	"github.com/corporealshift/nabu/daemon/api"
-	"github.com/corporealshift/nabu/daemon/config"
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/daemon/tools"
+	"github.com/corporealshift/rho/daemon/agent"
+	"github.com/corporealshift/rho/daemon/api"
+	"github.com/corporealshift/rho/daemon/config"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/daemon/tools"
 )
 
 const (
@@ -6895,7 +6895,7 @@ const (
 	portFileName = "daemon.port"
 )
 
-// Daemon owns the full nabu stack: store, providers, modules, agent manager,
+// Daemon owns the full rho stack: store, providers, modules, agent manager,
 // and the API server. It can run in the foreground or be started detached.
 type Daemon struct {
 	root     string
@@ -7176,13 +7176,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/agent"
-	"github.com/corporealshift/nabu/daemon/api"
-	"github.com/corporealshift/nabu/daemon/config"
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/daemon/tools"
+	"github.com/corporealshift/rho/daemon/agent"
+	"github.com/corporealshift/rho/daemon/api"
+	"github.com/corporealshift/rho/daemon/config"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/daemon/tools"
 )
 ```
 
@@ -7200,7 +7200,7 @@ Expected output:
 === RUN   TestNewNilStore
 --- PASS: TestNewNilStore (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon	0.052s
+ok  	github.com/corporealshift/rho/daemon	0.052s
 ```
 
 - [ ] **Step 5: Write the failing test for `New` with valid config**
@@ -7250,7 +7250,7 @@ Expected output:
 === RUN   TestNewValidConfig
 --- PASS: TestNewValidConfig (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon	0.052s
+ok  	github.com/corporealshift/rho/daemon	0.052s
 ```
 
 - [ ] **Step 7: Write the failing test for PID file write and read**
@@ -7295,7 +7295,7 @@ Expected output:
 === RUN   TestPIDFile
 --- PASS: TestPIDFile (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon	0.052s
+ok  	github.com/corporealshift/rho/daemon	0.052s
 ```
 
 - [ ] **Step 9: Write the failing test for port file write and read**
@@ -7336,7 +7336,7 @@ Expected output:
 === RUN   TestPortFile
 --- PASS: TestPortFile (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon	0.052s
+ok  	github.com/corporealshift/rho/daemon	0.052s
 ```
 
 - [ ] **Step 11: Write the failing test for `IsRunning` with no PID file**
@@ -7434,7 +7434,7 @@ Expected output:
 === RUN   TestIsRunningNoPID
 --- PASS: TestIsRunningNoPID (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon	0.052s
+ok  	github.com/corporealshift/rho/daemon	0.052s
 ```
 
 - [ ] **Step 17: Write the failing test for `IsRunning` with a stale PID**
@@ -7464,7 +7464,7 @@ Expected output:
 === RUN   TestIsRunningStalePID
 --- PASS: TestIsRunningStalePID (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon	0.052s
+ok  	github.com/corporealshift/rho/daemon	0.052s
 ```
 
 - [ ] **Step 19: Write the failing test for graceful shutdown**
@@ -7606,7 +7606,7 @@ Expected output:
 === RUN   TestGracefulShutdown
 --- PASS: TestGracefulShutdown (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon	0.052s
+ok  	github.com/corporealshift/rho/daemon	0.052s
 ```
 
 - [ ] **Step 23: Write the failing test for `Run` with a real listener**
@@ -7681,7 +7681,7 @@ Expected output:
 === RUN   TestRunShutdown
 --- PASS: TestRunShutdown (0.10s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon	0.152s
+ok  	github.com/corporealshift/rho/daemon	0.152s
 ```
 
 - [ ] **Step 25: Write the failing test for listing paused sessions on start**
@@ -7766,7 +7766,7 @@ Expected output:
 === RUN   TestRecoverInterruptedListsPaused
 --- PASS: TestRecoverInterruptedListsPaused (0.00s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon	0.052s
+ok  	github.com/corporealshift/rho/daemon	0.052s
 ```
 
 - [ ] **Step 27: Write the failing test for port-file polling (without forking)**
@@ -7817,7 +7817,7 @@ Expected output:
 === RUN   TestPortFilePolling
 --- PASS: TestPortFilePolling (0.20s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon	0.252s
+ok  	github.com/corporealshift/rho/daemon	0.252s
 ```
 
 - [ ] **Step 29: Write the failing test for `StartDetached`**
@@ -7903,11 +7903,11 @@ func StartDetached(root string, cfg *config.Config, log *slog.Logger) (int, erro
 }
 ```
 
-- [ ] **Step 32: Run it — it should fail at runtime (test process isn't the nabu binary)**
+- [ ] **Step 32: Run it — it should fail at runtime (test process isn't the rho binary)**
 
 Run: `go test ./daemon/ -run TestStartDetached -v`
 Expected: The test will fail because `os.Executable()` returns the test binary
-path, not the nabu binary. The child process will try to run `nabu.test daemon
+path, not the rho binary. The child process will try to run `rho.test daemon
 --root <tmpdir>` which doesn't have a main function. This is expected — `StartDetached`
 is meant for the CLI (Task 7). The test verifies the port-file polling logic in
 step 27, which is sufficient for this task.
@@ -7962,15 +7962,15 @@ git commit -m "daemon: lifecycle, pid and port files, graceful shutdown"
 ### Task 7: CLI — run, status, attach, stop, resume, daemon
 
 **Files:**
-- Modify: `cmd/nabu/main.go`
-- Create: `cmd/nabu/run.go`
-- Create: `cmd/nabu/status.go`
-- Create: `cmd/nabu/attach.go`
-- Create: `cmd/nabu/stop.go`
-- Create: `cmd/nabu/resume.go`
-- Create: `cmd/nabu/daemon.go`
+- Modify: `cmd/rho/main.go`
+- Create: `cmd/rho/run.go`
+- Create: `cmd/rho/status.go`
+- Create: `cmd/rho/attach.go`
+- Create: `cmd/rho/stop.go`
+- Create: `cmd/rho/resume.go`
+- Create: `cmd/rho/daemon.go`
 
-**Goal:** Replace the P0 scaffold in `cmd/nabu/main.go` with real subcommand routing.
+**Goal:** Replace the P0 scaffold in `cmd/rho/main.go` with real subcommand routing.
 Every subcommand (except `daemon`) connects to a running daemon via WebSocket and
 speaks the JSON-RPC protocol from `protocol/spec.md`. If no daemon is listening, the
 command starts one detached using `daemon.StartDetached` (from Task 6) and waits for
@@ -8007,7 +8007,7 @@ spec §13.
 
 - [ ] **Step 1: Write the failing test for exit-code mapping**
 
-Append to `cmd/nabu/cli_test.go`:
+Append to `cmd/rho/cli_test.go`:
 
 ```go
 package main
@@ -8015,7 +8015,7 @@ package main
 import (
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func TestExitCode(t *testing.T) {
@@ -8039,12 +8039,12 @@ func TestExitCode(t *testing.T) {
 
 - [ ] **Step 2: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestExitCode`
+Run: `go test ./cmd/rho/ -run TestExitCode`
 Expected: compile error `undefined: exitCode`.
 
-- [ ] **Step 3: Create `cmd/nabu/run.go` with the shared client and `run` subcommand**
+- [ ] **Step 3: Create `cmd/rho/run.go` with the shared client and `run` subcommand**
 
-Create `cmd/nabu/run.go` with the complete file:
+Create `cmd/rho/run.go` with the complete file:
 
 ```go
 package main
@@ -8061,9 +8061,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon"
-	"github.com/corporealshift/nabu/daemon/config"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon"
+	"github.com/corporealshift/rho/daemon/config"
+	"github.com/corporealshift/rho/protocol"
 	"github.com/coder/websocket"
 )
 
@@ -8124,7 +8124,7 @@ func dialDaemon(root string, startDaemon bool) (*websocket.Conn, error) {
 	}
 
 	if !startDaemon {
-		return nil, fmt.Errorf("no daemon listening at %s; run 'nabu daemon' first", portPath)
+		return nil, fmt.Errorf("no daemon listening at %s; run 'rho daemon' first", portPath)
 	}
 
 	cfg := &config.Config{}
@@ -8136,7 +8136,7 @@ func dialDaemon(root string, startDaemon bool) (*websocket.Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("daemon: start: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "nabu: started daemon (pid %d)\n", pid)
+	fmt.Fprintf(os.Stderr, "rho: started daemon (pid %d)\n", pid)
 
 	for i := 0; i < 50; i++ {
 		if _, err := os.Stat(portPath); err == nil {
@@ -8168,7 +8168,7 @@ func sendHello(ctx context.Context, conn *websocket.Conn) (map[string]any, error
 	req := jsonRPCRequest{
 		JSONRPC: "2.0",
 		ID:      json.RawMessage(`1`),
-		Method:  "nabu.hello",
+		Method:  "rho.hello",
 		Params:  json.RawMessage(`{"client":"cli","client_version":"0.1.0","protocol_version":"1.0"}`),
 	}
 	if err := conn.Write(ctx, websocket.MessageText, mustMarshal(req)); err != nil {
@@ -8268,7 +8268,7 @@ func streamEvents(ctx context.Context, conn *websocket.Conn, w io.Writer, jsonl 
 			}
 		}
 
-		if notif.Method == "nabu.session.event" && notif.Params != nil {
+		if notif.Method == "rho.session.event" && notif.Params != nil {
 			var evData struct {
 				Event struct {
 					Type string          `json:"type"`
@@ -8291,7 +8291,7 @@ func mustMarshal(v any) []byte {
 	return b
 }
 
-// findRoot walks up from workspace to find the .nabu root directory.
+// findRoot walks up from workspace to find the .rho root directory.
 func findRoot(start string) (string, error) {
 	dir, err := filepath.Abs(start)
 	if err != nil {
@@ -8309,14 +8309,14 @@ func findRoot(start string) (string, error) {
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("nabu: find root: %w", err)
+		return "", fmt.Errorf("rho: find root: %w", err)
 	}
-	return filepath.Join(home, ".nabu"), nil
+	return filepath.Join(home, ".rho"), nil
 }
 
-// runCmd handles the `nabu run` subcommand.
+// runCmd handles the `rho run` subcommand.
 //
-// Usage: nabu run [--done-when "condition"] [--max-turns N] [--json] <workspace>
+// Usage: rho run [--done-when "condition"] [--max-turns N] [--json] <workspace>
 //
 // It starts a detached daemon if none is listening, creates a session, optionally
 // sets a goal via --done-when, subscribes to events, and streams them until the
@@ -8343,13 +8343,13 @@ func runCmd(args []string, w io.Writer) int {
 
 	root, err := findRoot(workspace)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
 	conn, err := dialDaemon(root, true)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 	defer conn.Close()
@@ -8358,7 +8358,7 @@ func runCmd(args []string, w io.Writer) int {
 
 	_, err = sendHello(ctx, conn)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
@@ -8369,36 +8369,36 @@ func runCmd(args []string, w io.Writer) int {
 			"permission_mode":    "ask",
 		},
 	}
-	createResult, err := sendRequest[map[string]any](ctx, conn, json.RawMessage(`2`), "nabu.session.create", createParams)
+	createResult, err := sendRequest[map[string]any](ctx, conn, json.RawMessage(`2`), "rho.session.create", createParams)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
 	sessionID, _ := (*createResult)["session_id"].(string)
 	if sessionID == "" {
-		fmt.Fprintf(os.Stderr, "nabu: create returned no session_id\n")
+		fmt.Fprintf(os.Stderr, "rho: create returned no session_id\n")
 		return 3
 	}
 
-	fmt.Fprintf(os.Stderr, "nabu: session %s\n", sessionID)
+	fmt.Fprintf(os.Stderr, "rho: session %s\n", sessionID)
 
 	if doneWhen != "" {
-		_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`3`), "nabu.session.set_goal", map[string]any{
+		_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`3`), "rho.session.set_goal", map[string]any{
 			"session_id": sessionID,
 			"condition":  doneWhen,
 		})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "nabu: set_goal: %v\n", err)
+			fmt.Fprintf(os.Stderr, "rho: set_goal: %v\n", err)
 			return 3
 		}
 	}
 
-	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`4`), "nabu.session.subscribe", map[string]any{
+	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`4`), "rho.session.subscribe", map[string]any{
 		"session_id": sessionID,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: subscribe: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: subscribe: %v\n", err)
 		return 3
 	}
 
@@ -8413,13 +8413,13 @@ func runCmd(args []string, w io.Writer) int {
 
 - [ ] **Step 4: Run it — it should fail with compile error**
 
-Run: `go build ./cmd/nabu/`
+Run: `go build ./cmd/rho/`
 Expected: compile error `daemon.StartDetached undefined` (Task 6 not yet implemented).
 This is expected — Task 7 depends on Task 6.
 
-- [ ] **Step 5: Write the failing test for `nabu status` command function**
+- [ ] **Step 5: Write the failing test for `rho status` command function**
 
-Append to `cmd/nabu/status_test.go`:
+Append to `cmd/rho/status_test.go`:
 
 ```go
 package main
@@ -8431,7 +8431,7 @@ import (
 
 func TestStatusHelp(t *testing.T) {
 	var buf bytes.Buffer
-	code := statusCmd([]string{"nabu", "status", "--help"}, &buf)
+	code := statusCmd([]string{"rho", "status", "--help"}, &buf)
 	if code != 0 {
 		t.Fatalf("statusCmd exit code: got %d, want 0", code)
 	}
@@ -8444,12 +8444,12 @@ func TestStatusHelp(t *testing.T) {
 
 - [ ] **Step 6: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestStatusHelp`
+Run: `go test ./cmd/rho/ -run TestStatusHelp`
 Expected: compile error `undefined: statusCmd`.
 
-- [ ] **Step 7: Create `cmd/nabu/status.go`**
+- [ ] **Step 7: Create `cmd/rho/status.go`**
 
-Create `cmd/nabu/status.go` with the complete file:
+Create `cmd/rho/status.go` with the complete file:
 
 ```go
 package main
@@ -8463,19 +8463,19 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
-// statusCmd handles the `nabu status` subcommand.
+// statusCmd handles the `rho status` subcommand.
 //
-// Usage: nabu status <session_id>
+// Usage: rho status <session_id>
 //
 // It connects to the daemon, queries the session state projection (spec §5), and
 // prints it as a human-readable block.
 func statusCmd(args []string, w io.Writer) int {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintf(w, "usage: nabu status <session_id>\n\n")
+		fmt.Fprintf(w, "usage: rho status <session_id>\n\n")
 		fmt.Fprintf(w, "Show the current state projection of a session.\n")
 	}
 
@@ -8491,13 +8491,13 @@ func statusCmd(args []string, w io.Writer) int {
 	workspace, _ := os.Getwd()
 	root, err := findRoot(workspace)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
 	conn, err := dialDaemon(root, false)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 	defer conn.Close()
@@ -8506,15 +8506,15 @@ func statusCmd(args []string, w io.Writer) int {
 
 	_, err = sendHello(ctx, conn)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
-	result, err := sendRequest[map[string]any](ctx, conn, json.RawMessage(`5`), "nabu.session.state", map[string]any{
+	result, err := sendRequest[map[string]any](ctx, conn, json.RawMessage(`5`), "rho.session.state", map[string]any{
 		"session_id": sessionID,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return exitCode(protocol.StateError)
 	}
 
@@ -8527,12 +8527,12 @@ func statusCmd(args []string, w io.Writer) int {
 
 - [ ] **Step 8: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestStatusHelp`
+Run: `go test ./cmd/rho/ -run TestStatusHelp`
 Expected: compile error `undefined: statusCmd`.
 
-- [ ] **Step 9: Write the failing test for `nabu attach` command function**
+- [ ] **Step 9: Write the failing test for `rho attach` command function**
 
-Append to `cmd/nabu/attach_test.go`:
+Append to `cmd/rho/attach_test.go`:
 
 ```go
 package main
@@ -8544,7 +8544,7 @@ import (
 
 func TestAttachHelp(t *testing.T) {
 	var buf bytes.Buffer
-	code := attachCmd([]string{"nabu", "attach", "--help"}, &buf)
+	code := attachCmd([]string{"rho", "attach", "--help"}, &buf)
 	if code != 0 {
 		t.Fatalf("attachCmd exit code: got %d, want 0", code)
 	}
@@ -8557,12 +8557,12 @@ func TestAttachHelp(t *testing.T) {
 
 - [ ] **Step 10: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestAttachHelp`
+Run: `go test ./cmd/rho/ -run TestAttachHelp`
 Expected: compile error `undefined: attachCmd`.
 
-- [ ] **Step 11: Create `cmd/nabu/attach.go`**
+- [ ] **Step 11: Create `cmd/rho/attach.go`**
 
-Create `cmd/nabu/attach.go` with the complete file:
+Create `cmd/rho/attach.go` with the complete file:
 
 ```go
 package main
@@ -8576,12 +8576,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
-// attachCmd handles the `nabu attach` subcommand.
+// attachCmd handles the `rho attach` subcommand.
 //
-// Usage: nabu attach <session_id>
+// Usage: rho attach <session_id>
 //
 // It connects to the daemon, subscribes to the session's event stream, and prints
 // each event as JSONL to stdout. The command returns when the session reaches a
@@ -8589,7 +8589,7 @@ import (
 func attachCmd(args []string, w io.Writer) int {
 	fs := flag.NewFlagSet("attach", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintf(w, "usage: nabu attach <session_id>\n\n")
+		fmt.Fprintf(w, "usage: rho attach <session_id>\n\n")
 		fmt.Fprintf(w, "Stream a session's events as JSONL to stdout.\n")
 		fmt.Fprintf(w, "Returns when the session reaches a terminal state.\n")
 	}
@@ -8606,13 +8606,13 @@ func attachCmd(args []string, w io.Writer) int {
 	workspace, _ := os.Getwd()
 	root, err := findRoot(workspace)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
 	conn, err := dialDaemon(root, false)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 	defer conn.Close()
@@ -8621,15 +8621,15 @@ func attachCmd(args []string, w io.Writer) int {
 
 	_, err = sendHello(ctx, conn)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
-	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`6`), "nabu.session.subscribe", map[string]any{
+	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`6`), "rho.session.subscribe", map[string]any{
 		"session_id": sessionID,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: subscribe: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: subscribe: %v\n", err)
 		return 3
 	}
 
@@ -8644,12 +8644,12 @@ func attachCmd(args []string, w io.Writer) int {
 
 - [ ] **Step 12: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestAttachHelp`
+Run: `go test ./cmd/rho/ -run TestAttachHelp`
 Expected: compile error `undefined: attachCmd`.
 
-- [ ] **Step 13: Write the failing test for `nabu stop` command function**
+- [ ] **Step 13: Write the failing test for `rho stop` command function**
 
-Append to `cmd/nabu/stop_test.go`:
+Append to `cmd/rho/stop_test.go`:
 
 ```go
 package main
@@ -8661,7 +8661,7 @@ import (
 
 func TestStopHelp(t *testing.T) {
 	var buf bytes.Buffer
-	code := stopCmd([]string{"nabu", "stop", "--help"}, &buf)
+	code := stopCmd([]string{"rho", "stop", "--help"}, &buf)
 	if code != 0 {
 		t.Fatalf("stopCmd exit code: got %d, want 0", code)
 	}
@@ -8674,12 +8674,12 @@ func TestStopHelp(t *testing.T) {
 
 - [ ] **Step 14: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestStopHelp`
+Run: `go test ./cmd/rho/ -run TestStopHelp`
 Expected: compile error `undefined: stopCmd`.
 
-- [ ] **Step 15: Create `cmd/nabu/stop.go`**
+- [ ] **Step 15: Create `cmd/rho/stop.go`**
 
-Create `cmd/nabu/stop.go` with the complete file:
+Create `cmd/rho/stop.go` with the complete file:
 
 ```go
 package main
@@ -8693,19 +8693,19 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
-// stopCmd handles the `nabu stop` subcommand.
+// stopCmd handles the `rho stop` subcommand.
 //
-// Usage: nabu stop <session_id>
+// Usage: rho stop <session_id>
 //
 // It connects to the daemon, sends a stop request, and waits for the session to
 // reach a terminal state.
 func stopCmd(args []string, w io.Writer) int {
 	fs := flag.NewFlagSet("stop", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintf(w, "usage: nabu stop <session_id>\n\n")
+		fmt.Fprintf(w, "usage: rho stop <session_id>\n\n")
 		fmt.Fprintf(w, "Stop a running session.\n")
 	}
 
@@ -8721,13 +8721,13 @@ func stopCmd(args []string, w io.Writer) int {
 	workspace, _ := os.Getwd()
 	root, err := findRoot(workspace)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
 	conn, err := dialDaemon(root, false)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 	defer conn.Close()
@@ -8736,23 +8736,23 @@ func stopCmd(args []string, w io.Writer) int {
 
 	_, err = sendHello(ctx, conn)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
-	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`7`), "nabu.session.subscribe", map[string]any{
+	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`7`), "rho.session.subscribe", map[string]any{
 		"session_id": sessionID,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: subscribe: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: subscribe: %v\n", err)
 		return 3
 	}
 
-	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`8`), "nabu.session.stop", map[string]any{
+	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`8`), "rho.session.stop", map[string]any{
 		"session_id": sessionID,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: stop: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: stop: %v\n", err)
 		return exitCode(protocol.StateError)
 	}
 
@@ -8767,12 +8767,12 @@ func stopCmd(args []string, w io.Writer) int {
 
 - [ ] **Step 16: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestStopHelp`
+Run: `go test ./cmd/rho/ -run TestStopHelp`
 Expected: compile error `undefined: stopCmd`.
 
-- [ ] **Step 17: Write the failing test for `nabu resume` command function**
+- [ ] **Step 17: Write the failing test for `rho resume` command function**
 
-Append to `cmd/nabu/resume_test.go`:
+Append to `cmd/rho/resume_test.go`:
 
 ```go
 package main
@@ -8784,7 +8784,7 @@ import (
 
 func TestResumeHelp(t *testing.T) {
 	var buf bytes.Buffer
-	code := resumeCmd([]string{"nabu", "resume", "--help"}, &buf)
+	code := resumeCmd([]string{"rho", "resume", "--help"}, &buf)
 	if code != 0 {
 		t.Fatalf("resumeCmd exit code: got %d, want 0", code)
 	}
@@ -8797,12 +8797,12 @@ func TestResumeHelp(t *testing.T) {
 
 - [ ] **Step 18: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestResumeHelp`
+Run: `go test ./cmd/rho/ -run TestResumeHelp`
 Expected: compile error `undefined: resumeCmd`.
 
-- [ ] **Step 19: Create `cmd/nabu/resume.go`**
+- [ ] **Step 19: Create `cmd/rho/resume.go`**
 
-Create `cmd/nabu/resume.go` with the complete file:
+Create `cmd/rho/resume.go` with the complete file:
 
 ```go
 package main
@@ -8816,12 +8816,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
-// resumeCmd handles the `nabu resume` subcommand.
+// resumeCmd handles the `rho resume` subcommand.
 //
-// Usage: nabu resume <session_id> [--max-turns N]
+// Usage: rho resume <session_id> [--max-turns N]
 //
 // It connects to the daemon, resumes a paused session (optionally with a new budget),
 // and streams events until the session reaches a terminal state.
@@ -8831,7 +8831,7 @@ func resumeCmd(args []string, w io.Writer) int {
 	fs := flag.NewFlagSet("resume", flag.ExitOnError)
 	fs.IntVar(&maxTurns, "max-turns", 0, "maximum number of turns (0 = no change)")
 	fs.Usage = func() {
-		fmt.Fprintf(w, "usage: nabu resume <session_id> [--max-turns N]\n\n")
+		fmt.Fprintf(w, "usage: rho resume <session_id> [--max-turns N]\n\n")
 		fmt.Fprintf(w, "Resume a paused session.\n")
 	}
 
@@ -8847,13 +8847,13 @@ func resumeCmd(args []string, w io.Writer) int {
 	workspace, _ := os.Getwd()
 	root, err := findRoot(workspace)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
 	conn, err := dialDaemon(root, false)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 	defer conn.Close()
@@ -8862,15 +8862,15 @@ func resumeCmd(args []string, w io.Writer) int {
 
 	_, err = sendHello(ctx, conn)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
-	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`9`), "nabu.session.subscribe", map[string]any{
+	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`9`), "rho.session.subscribe", map[string]any{
 		"session_id": sessionID,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: subscribe: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: subscribe: %v\n", err)
 		return 3
 	}
 
@@ -8886,9 +8886,9 @@ func resumeCmd(args []string, w io.Writer) int {
 		}
 	}
 
-	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`10`), "nabu.session.resume", resumeParams)
+	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`10`), "rho.session.resume", resumeParams)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: resume: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: resume: %v\n", err)
 		return exitCode(protocol.StateError)
 	}
 
@@ -8903,12 +8903,12 @@ func resumeCmd(args []string, w io.Writer) int {
 
 - [ ] **Step 20: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestResumeHelp`
+Run: `go test ./cmd/rho/ -run TestResumeHelp`
 Expected: compile error `undefined: resumeCmd`.
 
-- [ ] **Step 21: Write the failing test for `nabu daemon` command function**
+- [ ] **Step 21: Write the failing test for `rho daemon` command function**
 
-Append to `cmd/nabu/daemon_test.go`:
+Append to `cmd/rho/daemon_test.go`:
 
 ```go
 package main
@@ -8920,7 +8920,7 @@ import (
 
 func TestDaemonHelp(t *testing.T) {
 	var buf bytes.Buffer
-	code := daemonCmd([]string{"nabu", "daemon", "--help"}, &buf)
+	code := daemonCmd([]string{"rho", "daemon", "--help"}, &buf)
 	if code != 0 {
 		t.Fatalf("daemonCmd exit code: got %d, want 0", code)
 	}
@@ -8932,7 +8932,7 @@ func TestDaemonHelp(t *testing.T) {
 
 func TestDaemonStopHelp(t *testing.T) {
 	var buf bytes.Buffer
-	code := daemonStopCmd([]string{"nabu", "daemon", "stop", "--help"}, &buf)
+	code := daemonStopCmd([]string{"rho", "daemon", "stop", "--help"}, &buf)
 	if code != 0 {
 		t.Fatalf("daemonStopCmd exit code: got %d, want 0", code)
 	}
@@ -8945,12 +8945,12 @@ func TestDaemonStopHelp(t *testing.T) {
 
 - [ ] **Step 22: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestDaemonHelp`
+Run: `go test ./cmd/rho/ -run TestDaemonHelp`
 Expected: compile error `undefined: daemonCmd`.
 
-- [ ] **Step 23: Create `cmd/nabu/daemon.go`**
+- [ ] **Step 23: Create `cmd/rho/daemon.go`**
 
-Create `cmd/nabu/daemon.go` with the complete file:
+Create `cmd/rho/daemon.go` with the complete file:
 
 ```go
 package main
@@ -8966,21 +8966,21 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/corporealshift/nabu/daemon"
-	"github.com/corporealshift/nabu/daemon/config"
+	"github.com/corporealshift/rho/daemon"
+	"github.com/corporealshift/rho/daemon/config"
 )
 
-// daemonCmd handles the `nabu daemon` subcommand (foreground run).
+// daemonCmd handles the `rho daemon` subcommand (foreground run).
 //
-// Usage: nabu daemon
+// Usage: rho daemon
 //
 // It loads config, builds the full stack, and runs the daemon in the foreground.
 // Press Ctrl+C to shut down gracefully.
 func daemonCmd(args []string, w io.Writer) int {
 	fs := flag.NewFlagSet("daemon", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintf(w, "usage: nabu daemon\n\n")
-		fmt.Fprintf(w, "Run the nabu daemon in the foreground.\n")
+		fmt.Fprintf(w, "usage: rho daemon\n\n")
+		fmt.Fprintf(w, "Run the rho daemon in the foreground.\n")
 		fmt.Fprintf(w, "Press Ctrl+C to shut down gracefully.\n")
 	}
 
@@ -8989,39 +8989,39 @@ func daemonCmd(args []string, w io.Writer) int {
 	workspace, _ := os.Getwd()
 	root, err := findRoot(workspace)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
 	cfg, err := config.Load(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: load config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: load config: %v\n", err)
 		return 3
 	}
 
 	d, err := daemon.New(root, cfg, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: init daemon: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: init daemon: %v\n", err)
 		return 3
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	fmt.Fprintf(os.Stderr, "nabu: daemon starting on %s\n", cfg.Daemon.Bind)
+	fmt.Fprintf(os.Stderr, "rho: daemon starting on %s\n", cfg.Daemon.Bind)
 	return d.Run(ctx)
 }
 
-// daemonStopCmd handles the `nabu daemon stop` subcommand.
+// daemonStopCmd handles the `rho daemon stop` subcommand.
 //
-// Usage: nabu daemon stop
+// Usage: rho daemon stop
 //
 // It sends a shutdown request to the running daemon.
 func daemonStopCmd(args []string, w io.Writer) int {
 	fs := flag.NewFlagSet("daemon stop", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintf(w, "usage: nabu daemon stop\n\n")
-		fmt.Fprintf(w, "Stop the running nabu daemon.\n")
+		fmt.Fprintf(w, "usage: rho daemon stop\n\n")
+		fmt.Fprintf(w, "Stop the running rho daemon.\n")
 	}
 
 	fs.Parse(args)
@@ -9029,14 +9029,14 @@ func daemonStopCmd(args []string, w io.Writer) int {
 	workspace, _ := os.Getwd()
 	root, err := findRoot(workspace)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: %v\n", err)
 		return 3
 	}
 
 	portPath := filepath.Join(root, "daemon.port")
 	portData, err := os.ReadFile(portPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: no daemon port file at %s\n", portPath)
+		fmt.Fprintf(os.Stderr, "rho: no daemon port file at %s\n", portPath)
 		return 3
 	}
 
@@ -9044,7 +9044,7 @@ func daemonStopCmd(args []string, w io.Writer) int {
 
 	conn, err := dialWithBackoff(addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: connect: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: connect: %v\n", err)
 		return 3
 	}
 	defer conn.Close()
@@ -9053,29 +9053,29 @@ func daemonStopCmd(args []string, w io.Writer) int {
 
 	_, err = sendHello(ctx, conn)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: hello: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: hello: %v\n", err)
 		return 3
 	}
 
-	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`11`), "nabu.daemon.shutdown", map[string]any{})
+	_, err = sendRequest[map[string]any](ctx, conn, json.RawMessage(`11`), "rho.daemon.shutdown", map[string]any{})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nabu: shutdown: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rho: shutdown: %v\n", err)
 		return 3
 	}
 
-	fmt.Fprintln(w, "nabu: daemon shutdown requested")
+	fmt.Fprintln(w, "rho: daemon shutdown requested")
 	return 0
 }
 ```
 
 - [ ] **Step 24: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestDaemonHelp`
+Run: `go test ./cmd/rho/ -run TestDaemonHelp`
 Expected: compile error `undefined: daemonCmd`.
 
-- [ ] **Step 25: Rewrite `cmd/nabu/main.go` with real subcommand routing**
+- [ ] **Step 25: Rewrite `cmd/rho/main.go` with real subcommand routing**
 
-Replace the entire contents of `cmd/nabu/main.go`:
+Replace the entire contents of `cmd/rho/main.go`:
 
 ```go
 package main
@@ -9085,9 +9085,9 @@ import (
 	"os"
 )
 
-const usage = `nabu — coding-agent harness
+const usage = `rho — coding-agent harness
 
-usage: nabu <command>
+usage: rho <command>
 
   daemon    run the daemon in the foreground
   run       start a headless run in the current workspace
@@ -9120,7 +9120,7 @@ func main() {
 		}
 		os.Exit(daemonCmd(os.Args[2:], os.Stdout))
 	default:
-		fmt.Fprintf(os.Stderr, "nabu: %q is not a recognized command\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "rho: %q is not a recognized command\n", os.Args[1])
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
@@ -9129,13 +9129,13 @@ func main() {
 
 - [ ] **Step 26: Run it — it should fail with compile error**
 
-Run: `go build ./cmd/nabu/`
+Run: `go build ./cmd/rho/`
 Expected: compile error referencing `daemon.StartDetached undefined` (Task 6 not yet
 implemented). This is expected — Task 7 depends on Task 6 being done first.
 
 - [ ] **Step 27: Write the integration test for `dialDaemon` with no daemon**
 
-Append to `cmd/nabu/cli_test.go`:
+Append to `cmd/rho/cli_test.go`:
 
 ```go
 package main
@@ -9160,7 +9160,7 @@ func TestDialDaemonNoDaemon(t *testing.T) {
 }
 
 func TestFindRoot(t *testing.T) {
-	// When daemon.port doesn't exist anywhere, should fall back to ~/.nabu.
+	// When daemon.port doesn't exist anywhere, should fall back to ~/.rho.
 	home := t.TempDir()
 	oldHome := os.Getenv("HOME")
 	os.Setenv("HOME", home)
@@ -9170,7 +9170,7 @@ func TestFindRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("findRoot: %v", err)
 	}
-	expected := filepath.Join(home, ".nabu")
+	expected := filepath.Join(home, ".rho")
 	if root != expected {
 		t.Errorf("findRoot: got %q, want %q", root, expected)
 	}
@@ -9193,7 +9193,7 @@ func findSubstring(s, substr string) bool {
 
 - [ ] **Step 28: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestDialDaemonNoDaemon`
+Run: `go test ./cmd/rho/ -run TestDialDaemonNoDaemon`
 Expected: compile error `undefined: dialDaemon` (the function is in `run.go` but
 `run.go` won't compile because `daemon.StartDetached` doesn't exist yet).
 
@@ -9201,7 +9201,7 @@ Expected: compile error referencing `daemon.StartDetached undefined` or similar.
 
 - [ ] **Step 29: Write the failing test for `streamEvents` detecting state_change**
 
-Append to `cmd/nabu/cli_test.go`:
+Append to `cmd/rho/cli_test.go`:
 
 ```go
 package main
@@ -9211,7 +9211,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func TestStreamEventsDetectsStateChange(t *testing.T) {
@@ -9253,7 +9253,7 @@ func TestStreamEventsJSONLFormat(t *testing.T) {
 	// Verify that JSONL output is a valid JSON object per line.
 	notif := jsonRPCNotification{
 		JSONRPC: "2.0",
-		Method:  "nabu.session.event",
+		Method:  "rho.session.event",
 		Params:  json.RawMessage(`{"event":{"type":"message","data":{"role":"assistant","content":"Done"}}}`),
 	}
 
@@ -9275,8 +9275,8 @@ func TestStreamEventsJSONLFormat(t *testing.T) {
 		if err := json.Unmarshal([]byte(line), &parsed); err != nil {
 			t.Fatalf("line %q is not valid JSON: %v", line, err)
 		}
-		if parsed["method"] != "nabu.session.event" {
-			t.Errorf("method: got %v, want nabu.session.event", parsed["method"])
+		if parsed["method"] != "rho.session.event" {
+			t.Errorf("method: got %v, want rho.session.event", parsed["method"])
 		}
 	}
 }
@@ -9292,7 +9292,7 @@ func TestExitCodeUnknownState(t *testing.T) {
 
 - [ ] **Step 30: Run it — it should fail with compile error**
 
-Run: `go test ./cmd/nabu/ -run TestStreamEventsDetectsStateChange`
+Run: `go test ./cmd/rho/ -run TestStreamEventsDetectsStateChange`
 Expected: compile error `undefined: jsonRPCNotification` (this type is in `run.go`
 which won't compile until Task 6 symbols exist).
 
@@ -9308,7 +9308,7 @@ that means Task 6 is not yet done.)
 
 - [ ] **Step 32: Run gofmt check**
 
-Run: `gofmt -l cmd/nabu/`
+Run: `gofmt -l cmd/rho/`
 Expected: no output (files are gofmt-clean).
 
 - [ ] **Step 33: Commit**
@@ -9316,7 +9316,7 @@ Expected: no output (files are gofmt-clean).
 Stage and commit all source files:
 
 ```
-git add cmd/nabu/main.go cmd/nabu/run.go cmd/nabu/status.go cmd/nabu/attach.go cmd/nabu/stop.go cmd/nabu/resume.go cmd/nabu/daemon.go cmd/nabu/cli_test.go cmd/nabu/run_test.go cmd/nabu/status_test.go cmd/nabu/attach_test.go cmd/nabu/stop_test.go cmd/nabu/resume_test.go cmd/nabu/daemon_test.go
+git add cmd/rho/main.go cmd/rho/run.go cmd/rho/status.go cmd/rho/attach.go cmd/rho/stop.go cmd/rho/resume.go cmd/rho/daemon.go cmd/rho/cli_test.go cmd/rho/run_test.go cmd/rho/status_test.go cmd/rho/attach_test.go cmd/rho/stop_test.go cmd/rho/resume_test.go cmd/rho/daemon_test.go
 git commit -m "cli: run, status, attach, stop, resume, daemon subcommands"
 ```
 
@@ -9334,31 +9334,31 @@ git commit -m "cli: run, status, attach, stop, resume, daemon subcommands"
 - `sendHello(ctx, conn)` — hello handshake, returns capabilities
 - `sendRequest[T](ctx, conn, id, method, params)` — generic JSON-RPC request/response
 - `streamEvents(ctx, conn, w, jsonl)` — reads notifications, emits flushed JSONL when `jsonl=true`, tracks `state_change` for final state
-- `findRoot(start)` — walks up from workspace looking for `daemon.port`, falls back to `~/.nabu`
+- `findRoot(start)` — walks up from workspace looking for `daemon.port`, falls back to `~/.rho`
 - `runCmd(args, w)` — creates session, sets goal if `--done-when`, subscribes, streams
-- `statusCmd(args, w)` — queries `nabu.session.state`, prints JSON
+- `statusCmd(args, w)` — queries `rho.session.state`, prints JSON
 - `attachCmd(args, w)` — subscribes, streams JSONL
 - `stopCmd(args, w)` — subscribes, sends stop, waits for terminal
 - `resumeCmd(args, w)` — subscribes, sends resume with optional budget, streams
 - `daemonCmd(args, w)` — loads config, builds stack, runs foreground
 - `daemonStopCmd(args, w)` — dials daemon, sends shutdown request
-- One file per subcommand under `cmd/nabu/`
+- One file per subcommand under `cmd/rho/`
 - `main.go` replaces P0 scaffold with real switch routing
 - Tests call command functions directly with injected `io.Writer`, not shelling out
 - Uses `github.com/coder/websocket` (already in go.mod), no new dependency
 - Uses `flag` package from standard library, no CLI framework
 - `--json` flag emits flushed JSONL per event (fixes buffered output failure mode)
-- `--done-when` flag sets session goal via `nabu.session.set_goal` (fixes early-done failure mode)
+- `--done-when` flag sets session goal via `rho.session.set_goal` (fixes early-done failure mode)
 - Exit codes mirror session state (fixes exit-code-1-only failure mode)
 - `dialDaemon` starts detached if needed (fixes process-filtering failure mode)
-- `nabu attach <id>` resumes watching after kill (fixes detached-agent race failure mode)
-- `nabu status <id>` queries daemon for session state (fixes process-filtering failure mode)
+- `rho attach <id>` resumes watching after kill (fixes detached-agent race failure mode)
+- `rho status <id>` queries daemon for session state (fixes process-filtering failure mode)
 
 **Symbols confirmed in source:** All symbols listed above were confirmed in the source tree.
 
 **Symbols I could not fully confirm:**
-- `nabu.daemon.shutdown` method — not defined in `protocol/spec.md` §7. The daemon
-  shutdown path used by `nabu daemon stop` sends this method name; the handler in
+- `rho.daemon.shutdown` method — not defined in `protocol/spec.md` §7. The daemon
+  shutdown path used by `rho daemon stop` sends this method name; the handler in
   Task 3 must recognize it and call `Daemon.Shutdown(ctx)`. If the spec does not
   include this method, it should be added to `protocol/spec.md` §7 as a daemon-level
   method (not session-scoped). **This is the one symbol I could not confirm.**
@@ -9387,7 +9387,7 @@ git commit -m "cli: run, status, attach, stop, resume, daemon subcommands"
 - `agent.Config.NoProgressTurns` (int, default 3) → `daemon/agent/config.go:32` — confirmed
 - `agent.Config.withDefaults()` sets `MaxConsecutiveVetoes = 5`, `NoProgressTurns = 3` → `daemon/agent/config.go:49-53` — confirmed
 - `protocol.CodeAlreadyResolved = -32004` → `protocol/errors.go:16` — confirmed
-- `protocol.ErrorNames["nabu_already_resolved"]` → `protocol/errors.go:22` — confirmed
+- `protocol.ErrorNames["rho_already_resolved"]` → `protocol/errors.go:22` — confirmed
 - `protocol.BudgetData` (MaxTurns, MaxTokens, MaxUSD, Source) → `protocol/types.go:201` — confirmed
 - `protocol.StateBlocked` = `"blocked"` → `protocol/types.go:37` — confirmed
 - `protocol.StatePaused` = `"paused"` → `protocol/types.go:38` — confirmed
@@ -9398,7 +9398,7 @@ git commit -m "cli: run, status, attach, stop, resume, daemon subcommands"
 
 **Gap 1 resolution:** Adapter in `daemon/api/asker.go`. The Handler's broadcast methods (`BroadcastPermissionRequest`, `BroadcastAskRequest`) become the Asker implementation. The adapter struct satisfies the `agent.Asker` interface by delegating to the Handler's broadcast methods, converting between the `ToolCallData`/simple params and the broadcast request types.
 
-**Gap 3 mechanism for interactive vs run:** `BudgetConfig` carries `MaxTurns` as-is from config (0 = unlimited). The `nabu run` command overrides `MaxTurns = 60` at session creation time; the TUI leaves it at the config default (0). This is a simple field override in the CLI layer, not a config section.
+**Gap 3 mechanism for interactive vs run:** `BudgetConfig` carries `MaxTurns` as-is from config (0 = unlimited). The `rho run` command overrides `MaxTurns = 60` at session creation time; the TUI leaves it at the config default (0). This is a simple field override in the CLI layer, not a config section.
 
 ---
 
@@ -9418,7 +9418,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // requestTimeout is the default wait for a daemon-to-client request to be answered.
@@ -9499,7 +9499,7 @@ func (pr *pendingRequest) wait(ctx context.Context) json.RawMessage {
 
 // BroadcastPermissionRequest sends a permission request to all subscribers of
 // the session. The first response wins; later responders receive
-// nabu_already_resolved.
+// rho_already_resolved.
 func (h *Handler) BroadcastPermissionRequest(ctx context.Context, pr *permissionRequest) (*permissionResponse, error) {
 	reqID := protocol.NewULID()
 	params := map[string]any{
@@ -9512,7 +9512,7 @@ func (h *Handler) BroadcastPermissionRequest(ctx context.Context, pr *permission
 	}
 
 	pending := &pendingRequest{
-		method: "nabu.rpc.permission.response", params: paramsJSON,
+		method: "rho.rpc.permission.response", params: paramsJSON,
 		done: make(chan struct{}),
 	}
 
@@ -9536,7 +9536,7 @@ func (h *Handler) BroadcastPermissionRequest(ctx context.Context, pr *permission
 		}
 		msg := map[string]any{
 			"jsonrpc": "2.0", "id": reqID,
-			"method": "nabu.rpc.permission.request", "params": params,
+			"method": "rho.rpc.permission.request", "params": params,
 		}
 		if err := cs.conn.WriteJSON(context.Background(), msg); err != nil {
 			delete(ss.subs, id)
@@ -9572,7 +9572,7 @@ func (h *Handler) BroadcastPermissionRequest(ctx context.Context, pr *permission
 }
 
 // BroadcastAskRequest sends an ask request to all subscribers of the session.
-// The first response wins; later responders receive nabu_already_resolved.
+// The first response wins; later responders receive rho_already_resolved.
 func (h *Handler) BroadcastAskRequest(ctx context.Context, ar *askRequest) (*askResponse, error) {
 	reqID := protocol.NewULID()
 	params := map[string]any{
@@ -9588,7 +9588,7 @@ func (h *Handler) BroadcastAskRequest(ctx context.Context, ar *askRequest) (*ask
 	}
 
 	pending := &pendingRequest{
-		method: "nabu.rpc.ui.ask.response", params: paramsJSON,
+		method: "rho.rpc.ui.ask.response", params: paramsJSON,
 		done: make(chan struct{}),
 	}
 
@@ -9612,7 +9612,7 @@ func (h *Handler) BroadcastAskRequest(ctx context.Context, ar *askRequest) (*ask
 		}
 		msg := map[string]any{
 			"jsonrpc": "2.0", "id": reqID,
-			"method": "nabu.rpc.ui.ask", "params": params,
+			"method": "rho.rpc.ui.ask", "params": params,
 		}
 		if err := cs.conn.WriteJSON(context.Background(), msg); err != nil {
 			delete(ss.subs, id)
@@ -9659,7 +9659,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // askerAdapter bridges the Handler's broadcast model to the agent.Asker interface.
@@ -9726,7 +9726,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func TestAskerAdapterPermission(t *testing.T) {
@@ -9759,7 +9759,7 @@ func TestAskerAdapterPermission(t *testing.T) {
 	}
 	defer c.CloseNow()
 
-	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rho.hello"}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
 	}
@@ -9776,7 +9776,7 @@ func TestAskerAdapterPermission(t *testing.T) {
 	}
 
 	subReq := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 		"params": map[string]any{"session_id": s.ID()},
 	}
 	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -9908,7 +9908,7 @@ func TestAskerAdapterPermissionDeny(t *testing.T) {
 	}
 	defer c.CloseNow()
 
-	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rho.hello"}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
 	}
@@ -9925,7 +9925,7 @@ func TestAskerAdapterPermissionDeny(t *testing.T) {
 	}
 
 	subReq := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 		"params": map[string]any{"session_id": s.ID()},
 	}
 	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -10025,7 +10025,7 @@ func TestAskerAdapterAsk(t *testing.T) {
 	}
 	defer c.CloseNow()
 
-	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rho.hello"}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
 	}
@@ -10042,7 +10042,7 @@ func TestAskerAdapterAsk(t *testing.T) {
 	}
 
 	subReq := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 		"params": map[string]any{"session_id": s.ID()},
 	}
 	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -10111,7 +10111,7 @@ Expected: compile error `undefined: newAskerAdapter`.
 The spec (protocol/spec.md §7.15) says: "Requests time out after a configurable interval (default 10 minutes) with the session moving to blocked; a later answer is still accepted and resumes it."
 
 Two late-answer cases:
-1. Late answer to an *already answered* request → `nabu_already_resolved` (already handled by `pendingRequest.resolve()` returning false).
+1. Late answer to an *already answered* request → `rho_already_resolved` (already handled by `pendingRequest.resolve()` returning false).
 2. Late answer to a *timed-out* request → **accepted**, session **resumes** from `blocked`.
 
 Task 5 covers only case 1. This gap implements case 2.
@@ -10312,7 +10312,7 @@ func TestLateAnswerToTimedOutRequest(t *testing.T) {
 	}
 	defer c.CloseNow()
 
-	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rho.hello"}
 	if err := wsjson.Write(context.Background(), c, hello); err != nil {
 		t.Fatal(err)
 	}
@@ -10329,7 +10329,7 @@ func TestLateAnswerToTimedOutRequest(t *testing.T) {
 	}
 
 	subReq := map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 		"params": map[string]any{"session_id": s.ID()},
 	}
 	if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -10400,7 +10400,7 @@ Expected: the test fails because `timedOut` is not set on timeout (the pending r
 
 - [ ] **Step 17: Write the failing test for already_resolved (already answered)**
 
-This test verifies that case 1 from the spec still works — a late answer to an already-answered request receives `nabu_already_resolved`.
+This test verifies that case 1 from the spec still works — a late answer to an already-answered request receives `rho_already_resolved`.
 
 Append to `daemon/api/requests_test.go`:
 
@@ -10441,7 +10441,7 @@ func TestLateAnswerToAlreadyAnsweredRequest(t *testing.T) {
 	}
 	defer c2.CloseNow()
 
-	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "nabu.hello"}
+	hello := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rho.hello"}
 	for _, c := range []*websocket.Conn{c1, c2} {
 		if err := wsjson.Write(context.Background(), c, hello); err != nil {
 			t.Fatal(err)
@@ -10461,7 +10461,7 @@ func TestLateAnswerToAlreadyAnsweredRequest(t *testing.T) {
 
 	for _, c := range []*websocket.Conn{c1, c2} {
 		subReq := map[string]any{
-			"jsonrpc": "2.0", "id": 2, "method": "nabu.session.subscribe",
+			"jsonrpc": "2.0", "id": 2, "method": "rho.session.subscribe",
 			"params": map[string]any{"session_id": s.ID()},
 		}
 		if err := wsjson.Write(context.Background(), c, subReq); err != nil {
@@ -10560,7 +10560,7 @@ Expected output:
 === RUN   TestLateAnswerToAlreadyAnsweredRequest
 --- PASS: TestLateAnswerToAlreadyAnsweredRequest (0.01s)
 PASS
-ok  	github.com/corporealshift/nabu/daemon/api	0.052s
+ok  	github.com/corporealshift/rho/daemon/api	0.052s
 ```
 
 ---
@@ -10570,11 +10570,11 @@ ok  	github.com/corporealshift/nabu/daemon/api	0.052s
 The architecture spec §12 fixes defaults that `BudgetConfig` from Task 1 does not carry:
 - `max_consecutive_vetoes` default **5**
 - `no_progress_turns` default **3**
-- `max_turns` unlimited interactively, 60 under `nabu run`
+- `max_turns` unlimited interactively, 60 under `rho run`
 
 `agent.Config` already has `MaxConsecutiveVetoes` and `NoProgressTurns` fields — confirmed in `daemon/agent/config.go:29-32`. Task 1's `BudgetConfig` (in `daemon/config/config.go`) has `MaxTurns`, `MaxTokens`, `MaxUSD` but not the veto/progress fields.
 
-For `max_turns`: the mechanism is a simple field override — `nabu run` sets `MaxTurns = 60` at session creation; the TUI leaves it at the config default (0 = unlimited). No special config section needed.
+For `max_turns`: the mechanism is a simple field override — `rho run` sets `MaxTurns = 60` at session creation; the TUI leaves it at the config default (0 = unlimited). No special config section needed.
 
 - [ ] **Step 19: Extend BudgetConfig with MaxConsecutiveVetoes and NoProgressTurns**
 
@@ -10595,7 +10595,7 @@ With:
 // BudgetConfig holds the [budget] section.
 // Defaults per architecture spec §12:
 //   max_consecutive_vetoes = 5, no_progress_turns = 3,
-//   max_turns = 0 (unlimited) — overridden to 60 by `nabu run`.
+//   max_turns = 0 (unlimited) — overridden to 60 by `rho run`.
 type BudgetConfig struct {
 	MaxTurns             int     `json:"max_turns"`
 	MaxTokens            int     `json:"max_tokens"`
@@ -10745,7 +10745,7 @@ Expected: all packages pass, no vet errors.
 **Key design decisions:**
 - Gap 1: Adapter in `daemon/api/asker.go`. The `askerAdapter` struct satisfies `agent.Asker` by delegating to `Handler.BroadcastPermissionRequest` and `Handler.BroadcastAskRequest`, converting between `ToolCallData`/simple params and the broadcast request types.
 - Gap 2: `pendingRequest.timedOut` flag replaces the delete-on-timeout behavior. Late answers to timed-out requests are accepted, the pending request is resolved, and `Handler.resumeSession` callback resumes the session.
-- Gap 3: `BudgetConfig` extended with `MaxConsecutiveVetoes` and `NoProgressTurns` fields. Zero values mean "use agent.Config.withDefaults()". `max_turns` override mechanism: `nabu run` sets it to 60 at session creation; TUI leaves it at config default (0 = unlimited).
+- Gap 3: `BudgetConfig` extended with `MaxConsecutiveVetoes` and `NoProgressTurns` fields. Zero values mean "use agent.Config.withDefaults()". `max_turns` override mechanism: `rho run` sets it to 60 at session creation; TUI leaves it at config default (0 = unlimited).
 - Gap 4: `go mod tidy` generates `go.sum`; gate verification confirms everything compiles.
 
 **Symbols confirmed in source:**
@@ -10755,7 +10755,7 @@ Expected: all packages pass, no vet errors.
 - `agent.Config.MaxConsecutiveVetoes` (int, default 5) → `daemon/agent/config.go:29` — confirmed
 - `agent.Config.NoProgressTurns` (int, default 3) → `daemon/agent/config.go:32` — confirmed
 - `protocol.CodeAlreadyResolved = -32004` → `protocol/errors.go:16` — confirmed
-- `protocol.ErrorNames["nabu_already_resolved"]` → `protocol/errors.go:22` — confirmed
+- `protocol.ErrorNames["rho_already_resolved"]` → `protocol/errors.go:22` — confirmed
 - `protocol.BudgetData` (MaxTurns, MaxTokens, MaxUSD, Source) → `protocol/types.go:201` — confirmed
 - `protocol.StateBlocked` = `"blocked"` → `protocol/types.go:37` — confirmed
 - `protocol.StatePaused` = `"paused"` → `protocol/types.go:38` — confirmed
@@ -10777,12 +10777,12 @@ listed here so the reason for each is on record:
    into the agent.
 2. **A timed-out request must still accept a later answer.** `protocol/spec.md` §7.15
    requires two distinct late-answer paths, and Task 5 implemented only the first:
-   a late answer to an *answered* request gets `nabu_already_resolved`, while a late
+   a late answer to an *answered* request gets `rho_already_resolved`, while a late
    answer to a *timed-out* request is **accepted and resumes the session** from
    `blocked`.
 3. **Spec §12 budget defaults had no home in config.** Task 8 extends `BudgetConfig`
    with `max_consecutive_vetoes` (5) and `no_progress_turns` (3). The interactive
-   versus `nabu run` split for `max_turns` is handled by `nabu run` overriding to 60 at
+   versus `rho run` split for `max_turns` is handled by `rho run` overriding to 60 at
    session creation, leaving config's `0 = unlimited` as the interactive default.
 4. **Task 2 introduced the first dependency without a `go mod tidy` step.** Task 8 adds
    it, along with verification that `go.sum` exists and the gate passes.
@@ -10798,7 +10798,7 @@ Architecture spec §8, "Permission modes", says:
 
 `agent.Manager.SetOption` (shipped in P1a) validates `permission_mode` against ask /
 auto / bypass and appends an `options_change` event — but it never appends the
-`notice`. Until `nabu.session.set_option` exists (Task 4), no client can reach this
+`notice`. Until `rho.session.set_option` exists (Task 4), no client can reach this
 path, which is why P1a's tests did not catch it.
 
 The fix belongs in `daemon/agent`, not in `daemon/api`: it is core state behaviour, not
@@ -10819,14 +10819,14 @@ CI runs that gate plus `gofmt -l .` on both `ubuntu-latest` and `windows-latest`
 every pull request. **Windows is the primary target.** A task is not done until the
 full gate passes, not a single package.
 
-The live smoke test from P1a stays skipped unless `NABU_LIVE_BASE_URL` is set, so the
+The live smoke test from P1a stays skipped unless `RHO_LIVE_BASE_URL` is set, so the
 gate remains hermetic.
 
 ## Done when
 
 - Every task above is complete and its steps are checked off.
 - Task 8 exists and closes the four gaps listed above.
-- `nabu daemon` serves; every CLI subcommand auto-starts a detached daemon when none
+- `rho daemon` serves; every CLI subcommand auto-starts a detached daemon when none
   is listening.
 - Every method in `protocol/spec.md` §7 is implemented and dispatched.
 - Multi-client fan-out, ephemeral deltas, and first-responder-wins all have passing

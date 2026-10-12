@@ -3,8 +3,8 @@ package agent
 import (
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // buildRequest turns the log into a provider request (protocol spec §6).

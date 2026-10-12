@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // ToolError is a tool failure that says how it failed.

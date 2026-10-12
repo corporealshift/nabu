@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // Guard is always compiled in: spec 14.7 makes it the answer to the

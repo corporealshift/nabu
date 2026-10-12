@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/clients/goclient"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/clients/goclient"
+	"github.com/corporealshift/rho/protocol"
 )
 
 var update = flag.Bool("update", false, "rewrite testdata/status from the builders")

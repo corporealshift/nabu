@@ -1,4 +1,4 @@
-// Package goclient is the Go client for the nabu daemon: JSON-RPC 2.0 over
+// Package goclient is the Go client for the rho daemon: JSON-RPC 2.0 over
 // WebSocket, speaking the protocol in protocol/spec.md. The CLI and the TUI
 // both use it, so there is one implementation rather than two that drift.
 package goclient
@@ -13,8 +13,8 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"github.com/corporealshift/nabu/daemon/stats"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/stats"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // DialTimeout bounds a connection attempt, so a wedged daemon cannot hang a
@@ -83,7 +83,7 @@ type Client struct {
 	readErr error
 }
 
-// Dial connects to addr and completes the nabu.hello handshake. A non-empty
+// Dial connects to addr and completes the rho.hello handshake. A non-empty
 // token is presented as a bearer credential, which the daemon requires from
 // non-loopback addresses.
 func Dial(ctx context.Context, addr, token, clientName, version string) (*Client, error) {
@@ -109,7 +109,7 @@ func Dial(ctx context.Context, addr, token, clientName, version string) (*Client
 	}
 
 	if err := c.write(ctx, Message{
-		JSONRPC: "2.0", ID: 0, Method: "nabu.hello",
+		JSONRPC: "2.0", ID: 0, Method: "rho.hello",
 		Params: mustJSON(map[string]any{
 			"client":           clientName,
 			"client_version":   version,
@@ -307,7 +307,7 @@ func (c *Client) Respond(ctx context.Context, id any, result any) error {
 
 // Subscribe asks for a session's events and deltas.
 func (c *Client) Subscribe(ctx context.Context, sessionID string) error {
-	_, err := c.Call(ctx, "nabu.session.subscribe",
+	_, err := c.Call(ctx, "rho.session.subscribe",
 		map[string]any{"session_id": sessionID})
 	return err
 }
@@ -323,7 +323,7 @@ func (c *Client) EventsAfter(ctx context.Context, sessionID string, lastEventID 
 		Events []protocol.Event `json:"events"`
 		Synced bool             `json:"synced"`
 	}
-	if err := c.CallInto(ctx, "nabu.session.events_after", params, &out); err != nil {
+	if err := c.CallInto(ctx, "rho.session.events_after", params, &out); err != nil {
 		return nil, false, err
 	}
 	return out.Events, out.Synced, nil
@@ -332,12 +332,12 @@ func (c *Client) EventsAfter(ctx context.Context, sessionID string, lastEventID 
 // State fetches a session's current projection.
 func (c *Client) State(ctx context.Context, sessionID string) (protocol.State, error) {
 	var st protocol.State
-	err := c.CallInto(ctx, "nabu.session.state",
+	err := c.CallInto(ctx, "rho.session.state",
 		map[string]any{"session_id": sessionID}, &st)
 	return st, err
 }
 
-// SessionSummary is one row of nabu.session.list.
+// SessionSummary is one row of rho.session.list.
 type SessionSummary struct {
 	SessionID  string    `json:"session_id"`
 	Workspace  string    `json:"workspace"`
@@ -353,7 +353,7 @@ func (c *Client) List(ctx context.Context) ([]SessionSummary, error) {
 	var out struct {
 		Sessions []SessionSummary `json:"sessions"`
 	}
-	err := c.CallInto(ctx, "nabu.session.list", nil, &out)
+	err := c.CallInto(ctx, "rho.session.list", nil, &out)
 	return out.Sessions, err
 }
 
@@ -362,11 +362,11 @@ func (c *Client) ListArchived(ctx context.Context) ([]SessionSummary, error) {
 	var out struct {
 		Sessions []SessionSummary `json:"sessions"`
 	}
-	err := c.CallInto(ctx, "nabu.session.list", map[string]any{"archived": true}, &out)
+	err := c.CallInto(ctx, "rho.session.list", map[string]any{"archived": true}, &out)
 	return out.Sessions, err
 }
 
-// PermissionRequest is the payload of nabu.rpc.permission.request.
+// PermissionRequest is the payload of rho.rpc.permission.request.
 type PermissionRequest struct {
 	SessionID string `json:"session_id"`
 	RequestID string `json:"request_id"`
@@ -375,7 +375,7 @@ type PermissionRequest struct {
 	Risk      string `json:"risk"`
 }
 
-// AskRequest is the payload of nabu.rpc.ui.ask.
+// AskRequest is the payload of rho.rpc.ui.ask.
 type AskRequest struct {
 	SessionID string   `json:"session_id"`
 	RequestID string   `json:"request_id"`
@@ -385,7 +385,7 @@ type AskRequest struct {
 
 // ParsePermission reads a permission request out of a daemon message.
 func ParsePermission(m Message) (PermissionRequest, bool) {
-	if m.Method != "nabu.rpc.permission.request" {
+	if m.Method != "rho.rpc.permission.request" {
 		return PermissionRequest{}, false
 	}
 	var p PermissionRequest
@@ -397,7 +397,7 @@ func ParsePermission(m Message) (PermissionRequest, bool) {
 
 // ParseAsk reads a ui.ask request out of a daemon message.
 func ParseAsk(m Message) (AskRequest, bool) {
-	if m.Method != "nabu.rpc.ui.ask" {
+	if m.Method != "rho.rpc.ui.ask" {
 		return AskRequest{}, false
 	}
 	var p AskRequest
@@ -422,13 +422,13 @@ func (c *Client) AnswerAsk(ctx context.Context, id any, answer string) error {
 	return c.Respond(ctx, id, map[string]any{"answer": answer})
 }
 
-// SessionEvent is the payload of a nabu.session.event notification.
+// SessionEvent is the payload of a rho.session.event notification.
 type SessionEvent struct {
 	SessionID string         `json:"session_id"`
 	Event     protocol.Event `json:"event"`
 }
 
-// SessionDelta is the payload of a nabu.session.delta notification. Deltas are
+// SessionDelta is the payload of a rho.session.delta notification. Deltas are
 // ephemeral: never logged, never replayed.
 type SessionDelta struct {
 	SessionID string `json:"session_id"`
@@ -438,7 +438,7 @@ type SessionDelta struct {
 
 // ParseEvent reads a session event notification.
 func ParseEvent(m Message) (SessionEvent, bool) {
-	if m.Method != "nabu.session.event" {
+	if m.Method != "rho.session.event" {
 		return SessionEvent{}, false
 	}
 	var p SessionEvent
@@ -450,7 +450,7 @@ func ParseEvent(m Message) (SessionEvent, bool) {
 
 // ParseDelta reads a delta notification.
 func ParseDelta(m Message) (SessionDelta, bool) {
-	if m.Method != "nabu.session.delta" {
+	if m.Method != "rho.session.delta" {
 		return SessionDelta{}, false
 	}
 	var p SessionDelta
@@ -464,7 +464,7 @@ func ParseDelta(m Message) (SessionDelta, bool) {
 // delta because it is the same kind of thing: ephemeral, superseded by the
 // thinking event that follows it.
 func ParseThinking(m Message) (SessionDelta, bool) {
-	if m.Method != "nabu.session.thinking" {
+	if m.Method != "rho.session.thinking" {
 		return SessionDelta{}, false
 	}
 	var p SessionDelta
@@ -498,7 +498,7 @@ func mustJSON(v any) json.RawMessage {
 // Stats fetches how much work a session was (spec 7.21).
 func (c *Client) Stats(ctx context.Context, sessionID string) (stats.Session, error) {
 	var out stats.Session
-	err := c.CallInto(ctx, "nabu.session.stats", map[string]any{"session_id": sessionID}, &out)
+	err := c.CallInto(ctx, "rho.session.stats", map[string]any{"session_id": sessionID}, &out)
 	return out, err
 }
 
@@ -506,7 +506,7 @@ func (c *Client) Stats(ctx context.Context, sessionID string) (stats.Session, er
 // goal's home, its runs and their steps (spec 7.21).
 func (c *Client) StatsTree(ctx context.Context, sessionID string) (stats.TreeStats, error) {
 	var out stats.TreeStats
-	err := c.CallInto(ctx, "nabu.session.stats", map[string]any{"session_id": sessionID, "tree": true}, &out)
+	err := c.CallInto(ctx, "rho.session.stats", map[string]any{"session_id": sessionID, "tree": true}, &out)
 	return out, err
 }
 
@@ -515,6 +515,6 @@ func (c *Client) Usage(ctx context.Context, days int) ([]stats.Day, error) {
 	var out struct {
 		Days []stats.Day `json:"days"`
 	}
-	err := c.CallInto(ctx, "nabu.usage", map[string]any{"days": days}, &out)
+	err := c.CallInto(ctx, "rho.usage", map[string]any{"days": days}, &out)
 	return out.Days, err
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Notify is what the API tells the phone notifier
@@ -18,7 +18,7 @@ type Notify interface {
 	RequestClosed(sessionID, requestID string)
 }
 
-// handleDeviceRegister implements nabu.device.register (spec 7.23).
+// handleDeviceRegister implements rho.device.register (spec 7.23).
 func (h *Handler) handleDeviceRegister(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		Token string `json:"token"`
@@ -39,7 +39,7 @@ func (h *Handler) handleDeviceRegister(_ context.Context, _ *connState, params j
 	return map[string]any{}, nil
 }
 
-// handleDeviceUnregister implements nabu.device.unregister (spec 7.24).
+// handleDeviceUnregister implements rho.device.unregister (spec 7.24).
 func (h *Handler) handleDeviceUnregister(_ context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		Token string `json:"token"`

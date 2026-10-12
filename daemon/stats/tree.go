@@ -4,7 +4,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // TreeStats is a session and every session under it, by parent, at any depth:

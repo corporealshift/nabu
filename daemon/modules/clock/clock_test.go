@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // The liftoff case: 21:30 on 5 October at UTC-7 is already 6 October in UTC.

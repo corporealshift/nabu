@@ -3,7 +3,7 @@ package github
 import (
 	"context"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // GitHub is what the watcher reads from and posts to GitHub. The real one

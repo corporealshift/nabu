@@ -1,4 +1,4 @@
-// Package github is the GitHub watcher behind `nabu github`: a client that
+// Package github is the GitHub watcher behind `rho github`: a client that
 // polls GitHub with gh, does its work by starting ordinary daemon sessions in
 // git worktrees, and posts the results only after a session has finished
 // (docs/specs/2026-09-28-github-review-design.md).
@@ -146,7 +146,7 @@ func Load(root string) (Config, error) {
 
 func (c *Config) withDefaults() {
 	if c.Label == "" {
-		c.Label = "nabu"
+		c.Label = "rho"
 	}
 	if c.Poll <= 0 {
 		c.Poll = Duration(2 * time.Minute)

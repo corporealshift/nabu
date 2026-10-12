@@ -24,7 +24,7 @@ Kyle works the same way on every change:
 7. open a PR;
 8. fix CI.
 
-He wants nabu to do this from idea to green PR without bringing him back in.
+He wants rho to do this from idea to green PR without bringing him back in.
 
 Two things stop a single session from doing it:
 - **Nothing makes the model follow the order.** A skill or a prompt describes the
@@ -37,13 +37,13 @@ Two things stop a single session from doing it:
 ## Decision
 
 A **run** takes a brief to a green PR through a fixed sequence of named steps.
-`nabu runner`, a long-running client like the GitHub watcher, drives it:
+`rho runner`, a long-running client like the GitHub watcher, drives it:
 - it starts one short session for each step that needs the model;
 - it does every mechanical step itself;
 - it calls Claude at three gates.
 
-The order is the runner's code, not the model's choice. `nabu runner` does the GitHub
-watcher's jobs too, and `nabu github` stays as an alias for it.
+The order is the runner's code, not the model's choice. `rho runner` does the GitHub
+watcher's jobs too, and `rho github` stays as an alias for it.
 
 ### Where a run starts
 
@@ -64,13 +64,13 @@ clone, and committed there, in parallel with the run. A description starts nothi
 
 ### The steps
 
-Everything a step produces is committed on the run's branch, `nabu/<slug>`, under
-`.nabu/runs/<slug>/`, in a worktree beside Kyle's clone. The files are chunks of the work,
+Everything a step produces is committed on the run's branch, `rho/<slug>`, under
+`.rho/runs/<slug>/`, in a worktree beside Kyle's clone. The files are chunks of the work,
 so they belong in the PR.
 
 | Step | Who | Does | Checked by |
 |---|---|---|---|
-| `setup` | runner | Fetch; branch `nabu/<slug>` from the default branch in a new worktree | — |
+| `setup` | runner | Fetch; branch `rho/<slug>` from the default branch in a new worktree | — |
 | `brief` | runner, or model | Commit `brief.md`: the `/run` text as-is, or a session that turns the home conversation into a brief | file committed |
 | `plan` | model | Write and commit `plan.md` from the brief | file committed |
 | `plan-review` | Claude | Review the plan against the brief, once. Return the plan revised, or unchanged; the runner commits a revision | — |
@@ -83,7 +83,7 @@ so they belong in the PR.
 | `revise` | Claude | When a `fix` session says the check itself is wrong: review that reason, the failure and the script. Rewrite it, or refuse; then `check` | — |
 | `replan-review` | Claude | When a `work`, `fix` or `ci-fix` session says the plan cannot work, or Claude's automatic ask said so on its behalf (amended 2026-10-12, `2026-10-12-run-replan-design.md`): `REPLAN` appends the finding to `findings.md` and goes back to `plan`; `REFUSED` returns to the step that claimed, with advice. A verdict from the automatic ask skips the review. | — |
 | `final-review` | Claude | Review the finished work against the brief, once. Blockers become new tasks, then back to `work`; anything else goes in the PR body | — |
-| `pr` | runner | Push the branch; `gh pr create` with the `nabu` label | — |
+| `pr` | runner | Push the branch; `gh pr create` with the `rho` label | — |
 | `ci` | runner, model | Part 3 | — |
 | `merge` | runner | Only for a goal's run (amended 2026-10-06, `2026-10-06-goals-design.md`): `gh pr merge --squash` into the goal's branch, which is the run's base. Such a run's PR carries no label. | — |
 | `reflect` | model | The last step of every run that a session worked on, whether done or failed (amended 2026-10-11, `2026-10-11-run-reflection-design.md`). A session reads a digest of the whole run and saves memories with what went right first. It never changes the outcome and is never retried; the worktree is reset after it. Turn cap `reflect_turns`, default 30. | — |
@@ -136,7 +136,7 @@ point of the design, so they are never skipped.
 ### Rules that hold throughout
 
 - **No model session changes `verify.sh`.** After every `work` and `fix` session, the
-  runner checks `git diff <start>..HEAD -- .nabu/runs/<slug>/verify.sh`. A session that
+  runner checks `git diff <start>..HEAD -- .rho/runs/<slug>/verify.sh`. A session that
   touched it is reset to its starting commit (`git reset --hard <start>` in the
   worktree), and the step is retried once with the refusal in the prompt. Only the runner
   changes the script, with Claude's text.
@@ -148,7 +148,7 @@ point of the design, so they are never skipped.
   not to; the guard now makes sure.
 - **A fix session asks for a revision by writing a file, not by editing the script.** A
   fix session that concludes the check is wrong writes
-  `.nabu/runs/<slug>/verify-revision.md` with its reason, and commits it. The runner
+  `.rho/runs/<slug>/verify-revision.md` with its reason, and commits it. The runner
   sees the file and goes to `revise`, then deletes the file in its own commit.
 - **Every session runs in `auto` mode, is told not to use `ask`,** and has its own turn
   budget. By default it has no turn cap; `plan_turns` and `work_turns` set one
@@ -199,7 +199,7 @@ A run is never deleted by the runner, and neither is its worktree.
 
 ### Choosing what runs
 
-`nabu runner` finds new runs each poll by listing sessions labeled `run:requested`.
+`rho runner` finds new runs each poll by listing sessions labeled `run:requested`.
 Runs, comment jobs and reviews share `max_jobs`, in this order: comment jobs (someone is
 waiting), then runs, then reviews. A run holds one job slot while any of its sessions
 runs, and none while it only runs commands.

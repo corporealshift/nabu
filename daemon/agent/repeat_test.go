@@ -61,7 +61,7 @@ func TestOrdinaryOutputDoesNotTrip(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		fmt.Fprintf(&testLog, "=== RUN   TestCase%02d\n--- PASS: TestCase%02d (0.00s)\n", i, i)
 	}
-	testLog.WriteString("PASS\nok  \tgithub.com/corporealshift/nabu/daemon/agent\t0.412s\n")
+	testLog.WriteString("PASS\nok  \tgithub.com/corporealshift/rho/daemon/agent\t0.412s\n")
 	for _, p := range []string{"context", "encoding/json", "fmt", "os", "path/filepath", "sort", "strings", "sync", "testing", "time", "errors", "io"} {
 		fmt.Fprintf(&imports, "\t%q\n", p)
 	}

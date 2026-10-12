@@ -9,8 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/corporealshift/nabu/clients/goclient"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/clients/goclient"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Issue 106: each block stands on its own, with a blank line before it, except
@@ -194,7 +194,7 @@ func TestTheViewFillsTheTerminalExactly(t *testing.T) {
 			var sessions []goclient.SessionSummary
 			for i := 0; i < 20; i++ {
 				sessions = append(sessions, goclient.SessionSummary{
-					SessionID: fmt.Sprintf("S%02d", i), LastPrompt: long(i), Workspace: `C:\work\nabu`, State: "idle"})
+					SessionID: fmt.Sprintf("S%02d", i), LastPrompt: long(i), Workspace: `C:\work\rho`, State: "idle"})
 			}
 			m, _ = send(m, sessionsMsg{sessions: sessions})
 			return m

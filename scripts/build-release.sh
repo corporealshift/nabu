@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cross-compiles the nabu CLI for every supported platform into dist/.
+# Cross-compiles the rho CLI for every supported platform into dist/.
 #
 # The whole CLI, daemon included, is pure Go with no cgo, so this needs no
 # toolchain beyond Go itself: a Mac build can be produced from Windows and a
@@ -30,14 +30,14 @@ mkdir -p "$out"
 for target in "${targets[@]}"; do
   goos="${target%/*}"
   goarch="${target#*/}"
-  name="nabu_${goos}_${goarch}"
+  name="rho_${goos}_${goarch}"
   [ "$goos" = "windows" ] && name="$name.exe"
 
   # CGO off keeps the binary static and the cross-build honest: with it on,
   # these would silently need a C toolchain per platform.
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
     go build -trimpath -ldflags "-s -w -X main.version=$version" \
-    -o "$out/$name" ./cmd/nabu
+    -o "$out/$name" ./cmd/rho
 
   echo "built $out/$name"
 done

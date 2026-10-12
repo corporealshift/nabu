@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 const ghDescription = "Read GitHub for this repository as structured data. op is one of: " +

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // recordConn captures everything written to it and hands each message to the
@@ -95,7 +95,7 @@ func (hn *harness) attach(t *testing.T) (*connState, *recordConn) {
 func (hn *harness) subscribeVia(t *testing.T, cs *connState, sessionID string) {
 	t.Helper()
 	raw, err := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.session.subscribe",
 		"params": map[string]any{"session_id": sessionID},
 	})
 	if err != nil {
@@ -123,7 +123,7 @@ func TestEventFanOutToTwoSubscribers(t *testing.T) {
 	}
 
 	for name, rc := range map[string]*recordConn{"A": rcA, "B": rcB} {
-		got := rc.await(t, "nabu.session.event")
+		got := rc.await(t, "rho.session.event")
 		if got["session_id"] != id {
 			t.Errorf("subscriber %s: session_id %v, want %v", name, got["session_id"], id)
 		}
@@ -151,7 +151,7 @@ func TestDeltasAreBroadcastButNeverLogged(t *testing.T) {
 
 	hn.h.Deltas()(id, "turn-1", "partial text")
 
-	got := rc.await(t, "nabu.session.delta")
+	got := rc.await(t, "rho.session.delta")
 	if got["turn_id"] != "turn-1" || got["text"] != "partial text" {
 		t.Fatalf("delta payload: %#v", got)
 	}
@@ -180,7 +180,7 @@ func TestUnsubscribeStopsDelivery(t *testing.T) {
 	hn.subscribeVia(t, cs, id)
 
 	raw, err := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "nabu.session.unsubscribe",
+		"jsonrpc": "2.0", "id": 2, "method": "rho.session.unsubscribe",
 		"params": map[string]any{"session_id": id},
 	})
 	if err != nil {
@@ -233,7 +233,7 @@ func TestSubscribeUnknownSession(t *testing.T) {
 	hn := newHarness(t)
 	cs, _ := hn.attach(t)
 	raw, err := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "nabu.session.subscribe",
+		"jsonrpc": "2.0", "id": 1, "method": "rho.session.subscribe",
 		"params": map[string]any{"session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"},
 	})
 	if err != nil {
@@ -255,7 +255,7 @@ func TestGoalAndOptionMethods(t *testing.T) {
 	var out struct {
 		EventID string `json:"event_id"`
 	}
-	result(t, hn.call(t, 1, "nabu.session.set_goal",
+	result(t, hn.call(t, 1, "rho.session.set_goal",
 		map[string]any{"session_id": id, "condition": "the gate is green"}), &out)
 	if out.EventID == "" {
 		t.Fatal("set_goal returned no event_id")
@@ -265,7 +265,7 @@ func TestGoalAndOptionMethods(t *testing.T) {
 		t.Fatal("goal was not recorded")
 	}
 
-	result(t, hn.call(t, 2, "nabu.session.clear_goal",
+	result(t, hn.call(t, 2, "rho.session.clear_goal",
 		map[string]any{"session_id": id}), &out)
 	// Clearing appends a goal event with state "cleared", so the projection
 	// keeps the goal but stops reporting it active.
@@ -273,7 +273,7 @@ func TestGoalAndOptionMethods(t *testing.T) {
 		t.Error("goal should no longer be active after clear_goal")
 	}
 
-	result(t, hn.call(t, 3, "nabu.session.set_option",
+	result(t, hn.call(t, 3, "rho.session.set_option",
 		map[string]any{"session_id": id, "key": "permission_mode", "value": "auto"}), &out)
 	if got := s.State().Options.PermissionMode; got != protocol.PermissionAuto {
 		t.Errorf("permission_mode: got %q, want %q", got, protocol.PermissionAuto)
@@ -283,7 +283,7 @@ func TestGoalAndOptionMethods(t *testing.T) {
 func TestSetGoalRequiresCondition(t *testing.T) {
 	hn := newHarness(t)
 	id := hn.mustCreate(t)
-	resp := hn.call(t, 1, "nabu.session.set_goal", map[string]any{"session_id": id})
+	resp := hn.call(t, 1, "rho.session.set_goal", map[string]any{"session_id": id})
 	if resp == nil || resp.Error == nil {
 		t.Fatal("want an invalid-params error")
 	}
@@ -295,7 +295,7 @@ func TestSetGoalRequiresCondition(t *testing.T) {
 func TestSendPromptRequiresContent(t *testing.T) {
 	hn := newHarness(t)
 	id := hn.mustCreate(t)
-	resp := hn.call(t, 1, "nabu.session.send_prompt", map[string]any{"session_id": id})
+	resp := hn.call(t, 1, "rho.session.send_prompt", map[string]any{"session_id": id})
 	if resp == nil || resp.Error == nil {
 		t.Fatal("want an invalid-params error")
 	}
@@ -311,7 +311,7 @@ func TestUpdateTasks(t *testing.T) {
 	var out struct {
 		EventID string `json:"event_id"`
 	}
-	result(t, hn.call(t, 1, "nabu.session.update_tasks", map[string]any{
+	result(t, hn.call(t, 1, "rho.session.update_tasks", map[string]any{
 		"session_id": id,
 		"tasks": []map[string]any{
 			{"id": "t1", "title": "write the test", "status": "pending"},
@@ -348,7 +348,7 @@ func TestSetStatus(t *testing.T) {
 			s, _ := hn.h.getSession(id)
 			before := len(s.Events())
 
-			resp := hn.call(t, 1, "nabu.session.set_status", map[string]any{
+			resp := hn.call(t, 1, "rho.session.set_status", map[string]any{
 				"session_id": id, "kind": tc.kind, "data": tc.data})
 			if !tc.ok {
 				if resp == nil || resp.Error == nil || resp.Error.Code != protocol.CodeInvalidParams {
@@ -382,7 +382,7 @@ func TestSetStatus(t *testing.T) {
 func TestInterruptWhenIdleIsNoOp(t *testing.T) {
 	hn := newHarness(t)
 	id := hn.mustCreate(t)
-	resp := hn.call(t, 1, "nabu.session.interrupt", map[string]any{"session_id": id})
+	resp := hn.call(t, 1, "rho.session.interrupt", map[string]any{"session_id": id})
 	if resp == nil || resp.Error != nil {
 		t.Fatalf("interrupt while idle should succeed, got %+v", resp)
 	}
@@ -391,7 +391,7 @@ func TestInterruptWhenIdleIsNoOp(t *testing.T) {
 func TestStopEndsTheSession(t *testing.T) {
 	hn := newHarness(t)
 	id := hn.mustCreate(t)
-	resp := hn.call(t, 1, "nabu.session.stop", map[string]any{"session_id": id})
+	resp := hn.call(t, 1, "rho.session.stop", map[string]any{"session_id": id})
 	if resp == nil || resp.Error != nil {
 		t.Fatalf("stop failed: %+v", resp)
 	}
@@ -409,9 +409,9 @@ func TestMutatorsRejectUnknownSession(t *testing.T) {
 		"content":    "x", "condition": "x", "key": "permission_mode", "value": "ask",
 	}
 	for _, method := range []string{
-		"nabu.session.send_prompt", "nabu.session.interrupt", "nabu.session.stop",
-		"nabu.session.resume", "nabu.session.set_goal", "nabu.session.clear_goal",
-		"nabu.session.set_option", "nabu.session.update_tasks", "nabu.session.set_status",
+		"rho.session.send_prompt", "rho.session.interrupt", "rho.session.stop",
+		"rho.session.resume", "rho.session.set_goal", "rho.session.clear_goal",
+		"rho.session.set_option", "rho.session.update_tasks", "rho.session.set_status",
 	} {
 		resp := hn.call(t, 1, method, unknown)
 		if resp == nil || resp.Error == nil {
@@ -457,7 +457,7 @@ func TestAFrozenSubscriberDoesNotStallTheOthers(t *testing.T) {
 	var heard atomic.Int64
 	go func() {
 		for m := range rc.out {
-			if m.Method == "nabu.session.event" {
+			if m.Method == "rho.session.event" {
 				heard.Add(1)
 			}
 		}
@@ -482,7 +482,7 @@ func TestAFrozenSubscriberDoesNotStallTheOthers(t *testing.T) {
 	if _, err := hn.m.SetGoal(context.Background(), id, "after"); err != nil {
 		t.Fatal(err)
 	}
-	rcC.await(t, "nabu.session.event")
+	rcC.await(t, "rho.session.event")
 }
 
 // A connection that stops reading is dropped once its queue is full, rather
@@ -520,7 +520,7 @@ func TestSubscribingAfterRestoreHearsEvents(t *testing.T) {
 	csA, _ := hn.attach(t)
 	hn.subscribeVia(t, csA, id)
 
-	for _, method := range []string{"nabu.session.archive", "nabu.session.restore"} {
+	for _, method := range []string{"rho.session.archive", "rho.session.restore"} {
 		if resp := hn.call(t, 2, method, map[string]any{"session_id": id}); resp.Error != nil {
 			t.Fatalf("%s: %+v", method, resp.Error)
 		}
@@ -531,5 +531,5 @@ func TestSubscribingAfterRestoreHearsEvents(t *testing.T) {
 	if _, err := hn.m.SetGoal(context.Background(), id, "after restore"); err != nil {
 		t.Fatal(err)
 	}
-	rcB.await(t, "nabu.session.event")
+	rcB.await(t, "rho.session.event")
 }

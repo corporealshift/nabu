@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // AsksOnly reports whether a person's message asks a question and asks for

@@ -6,7 +6,7 @@ calls between repeats and no user message inside. It is "watching" if its
 result changed at some point during the run, "stuck" if every result was the
 same.
 
-Usage: python watching.py   (reads ~/.nabu/sessions)
+Usage: python watching.py   (reads ~/.rho/sessions)
 """
 import collections
 import glob
@@ -51,7 +51,7 @@ def runs_in(evs):
 
 tally = collections.Counter()
 examples = collections.defaultdict(list)
-for f in glob.glob(os.path.expanduser('~/.nabu/sessions/*.jsonl')):
+for f in glob.glob(os.path.expanduser('~/.rho/sessions/*.jsonl')):
     evs = [json.loads(l) for l in open(f, encoding='utf-8') if l.strip()]
     sid = os.path.basename(f)[:10]
     for r in runs_in(evs):

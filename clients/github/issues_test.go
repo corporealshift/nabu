@@ -46,11 +46,11 @@ func TestAFailedIssueRunIsAskedForAgainWhenTheIssueChanges(t *testing.T) {
 	h := r.d.homes["H1"]
 	h.labels = []string{"issue:kyle/breezeway/12", "run:failed"}
 
-	// nabu's own report of the failure changes nothing.
+	// rho's own report of the failure changes nothing.
 	r.gh.issueComments[12] = append(r.gh.issueComments[12], Comment{Kind: CommentIssue, ID: 2, Body: Signature + " stopped working on this issue\n\n" + Marker})
 	r.poll(t)
 	if r.d.reruns != 0 {
-		t.Fatal("nabu's own comment asked for the run again")
+		t.Fatal("rho's own comment asked for the run again")
 	}
 
 	r.gh.issueComments[12] = append(r.gh.issueComments[12], Comment{Kind: CommentIssue, ID: 3, Author: "kyle", Body: "Use sort.Ints."})
@@ -59,7 +59,7 @@ func TestAFailedIssueRunIsAskedForAgainWhenTheIssueChanges(t *testing.T) {
 		t.Errorf("reruns %d, home %+v", r.d.reruns, h)
 	}
 	if strings.Contains(h.description, "stopped working") {
-		t.Error("nabu's own comment is in the brief")
+		t.Error("rho's own comment is in the brief")
 	}
 	h.labels = []string{"issue:kyle/breezeway/12", "run:failed"}
 	r.poll(t)

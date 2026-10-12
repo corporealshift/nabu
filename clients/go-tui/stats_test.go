@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/corporealshift/nabu/daemon/stats"
+	"github.com/corporealshift/rho/daemon/stats"
 )
 
 func TestSparklineKeepsPeaks(t *testing.T) {

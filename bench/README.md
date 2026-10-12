@@ -1,15 +1,15 @@
 # bench
 
-Compares how well nabu, pi and Claude Code complete the same tasks.
+Compares how well rho, pi and Claude Code complete the same tasks.
 
 Run by hand, never in CI. The exit code says whether the suite ran, not whether
 any harness did well: there is no score to fail.
 
 ```bash
-go run ./cmd/nabubench                        # nabu vs pi, the whole suite
-go run ./cmd/nabubench --task 07-needle --repeat 1
-go run ./cmd/nabubench --claude               # add the reference, spends Claude quota
-go run ./cmd/nabubench --compare bench/results/bench-20260917-020000.json
+go run ./cmd/rhobench                        # rho vs pi, the whole suite
+go run ./cmd/rhobench --task 07-needle --repeat 1
+go run ./cmd/rhobench --claude               # add the reference, spends Claude quota
+go run ./cmd/rhobench --compare bench/results/bench-20260917-020000.json
 ```
 
 Claude is opt-in. It is the reference the suite trusts, and the judge that scores
@@ -17,8 +17,8 @@ craft, but a routine comparison of the two local harnesses needs neither and a
 full run of both costs several dollars. Without it there is no reference, so no
 task is checked for being broken, and the report says so.
 
-`--nabu <path>` measures a particular build rather than whatever is on PATH,
-which is what you want when comparing a change to nabu against its predecessor.
+`--rho <path>` measures a particular build rather than whatever is on PATH,
+which is what you want when comparing a change to rho against its predecessor.
 
 ## What it measures
 

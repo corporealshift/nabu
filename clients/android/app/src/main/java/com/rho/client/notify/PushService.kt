@@ -1,0 +1,132 @@
+package com.rho.client.notify
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import com.google.firebase.FirebaseApp
+import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.FirebaseMessagingService
+import com.google.firebase.messaging.RemoteMessage
+import com.rho.client.MainActivity
+import com.rho.client.R
+import com.rho.client.data.MirrorDb
+import com.rho.client.data.SessionRepository
+import com.rho.client.ui.SessionCard
+import com.rho.client.ui.projectName
+import com.rho.client.net.DaemonClient
+import com.rho.client.settings.SettingsStore
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.tasks.await
+
+/** The extra a tapped notification opens the app with. */
+const val EXTRA_SESSION_ID = "com.rho.client.SESSION_ID"
+
+/** Receives the daemon's pushes and shows them. */
+class PushService : FirebaseMessagingService() {
+
+    // A new token is registered on the next connect, which registers every
+    // time; there is no connection here to send it on.
+    override fun onNewToken(token: String) = Unit
+
+    override fun onMessageReceived(message: RemoteMessage) {
+        val push = Push.parse(message.data) ?: return
+        val manager = NotificationManagerCompat.from(this)
+        if (push.kind == Push.RESOLVED) {
+            manager.cancel(notificationId(push))
+            return
+        }
+        if (OnScreen.showing(push.sessionId)) return
+        ensureChannels(this)
+
+        // A data message is handled off the main thread, and briefly: the
+        // mirror is local, so reading it here is quick.
+        val (project, title) = runBlocking { describe(this@PushService, push.sessionId) }
+        val words = wording(push, project, title)
+        val open = PendingIntent.getActivity(
+            this,
+            push.sessionId.hashCode(),
+            Intent(this, MainActivity::class.java)
+                .putExtra(EXTRA_SESSION_ID, push.sessionId)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = NotificationCompat.Builder(this, words.channel)
+            .setSmallIcon(R.drawable.ic_notify)
+            .setContentTitle(words.title)
+            .setContentText(words.text)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .setPriority(
+                if (words.channel == Channels.QUESTIONS) NotificationCompat.PRIORITY_HIGH
+                else NotificationCompat.PRIORITY_DEFAULT,
+            )
+            .build()
+        runCatching { manager.notify(notificationId(push), notification) } // refused without the permission
+    }
+}
+
+/**
+ * The session's project and its title, from the mirror. A session the phone
+ * has not seen, which is any made while the app was put away, is fetched from
+ * the daemon first: straight over the private network, so the words still
+ * never pass through Google. If that takes too long, the words are generic.
+ */
+private suspend fun describe(context: Context, sessionId: String): Pair<String, String> {
+    val db = MirrorDb.get(context)
+    val repo = SessionRepository(db)
+    suspend fun read(): Pair<String, String>? {
+        val row = db.sessions().get(sessionId) ?: return null
+        val card = SessionCard(row, repo.latestPrompt(sessionId), repo.latestOptions(sessionId))
+        return if (card.title.isBlank()) null else projectName(row.workspace) to card.title
+    }
+    read()?.let { return it }
+    withTimeoutOrNull(FETCH_TIMEOUT_MS) { fetch(context, repo, sessionId) }
+    return read() ?: (db.sessions().get(sessionId)?.let { projectName(it.workspace) to "" } ?: ("" to ""))
+}
+
+/** How long a notification waits on the daemon for its words. */
+private const val FETCH_TIMEOUT_MS = 6_000L
+
+/** Mirrors one session from the daemon, as the app does on connecting. */
+private suspend fun fetch(context: Context, repo: SessionRepository, sessionId: String) {
+    val s = SettingsStore(context).settings.first()
+    if (s.host.isBlank()) return
+    val c = DaemonClient(baseUrl = "http://${s.host}:${s.port}/", token = s.token)
+    try {
+        c.connect()
+        repo.recordSessions(repo.listSessions(c).filter { it.sessionId == sessionId })
+        repo.sync(c, sessionId)
+    } catch (_: Exception) {
+        // Unreachable, or refused: the generic words will do.
+    } finally {
+        runCatching { c.close() }
+    }
+}
+
+/** Makes the two channels; Android keeps the first creation's settings. */
+fun ensureChannels(context: Context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    val manager = context.getSystemService(NotificationManager::class.java)
+    manager.createNotificationChannel(
+        NotificationChannel(Channels.QUESTIONS, "Questions", NotificationManager.IMPORTANCE_HIGH)
+            .apply { description = "A session is waiting for your answer" },
+    )
+    manager.createNotificationChannel(
+        NotificationChannel(Channels.RUNS, "Runs and sessions", NotificationManager.IMPORTANCE_DEFAULT)
+            .apply { description = "A run or goal finished or stopped, or a long turn ended" },
+    )
+}
+
+/** Whether this build can be pushed to: it was built with google-services.json. */
+fun pushAvailable(context: Context): Boolean = FirebaseApp.getApps(context).isNotEmpty()
+
+/** This phone's push token, or null when the build cannot be pushed to. */
+suspend fun pushToken(context: Context): String? =
+    if (!pushAvailable(context)) null else runCatching { FirebaseMessaging.getInstance().token.await() }.getOrNull()

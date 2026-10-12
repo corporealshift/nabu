@@ -1,4 +1,4 @@
-# nabu P4 — Android Client Implementation Plan
+# rho P4 — Android Client Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
@@ -197,7 +197,7 @@ phone would be worse, not better.
 
 **Contract**
 
-Connect with a bearer token, complete `nabu.hello`, make calls that suspend until their
+Connect with a bearer token, complete `rho.hello`, make calls that suspend until their
 response, and deliver notifications to a flow. Reconnect with backoff.
 
 **Behaviours that must hold:**

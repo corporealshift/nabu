@@ -13,13 +13,13 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"github.com/corporealshift/nabu/daemon/agent"
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/daemon/tools"
-	"github.com/corporealshift/nabu/daemon/workspace"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/agent"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/daemon/tools"
+	"github.com/corporealshift/rho/daemon/workspace"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // harness wires a Handler over a temp dir and a scripted provider.
@@ -99,7 +99,7 @@ func result(t *testing.T, resp *jsonrpcResponse, v any) {
 
 func (hn *harness) mustCreate(t *testing.T) string {
 	t.Helper()
-	resp := hn.call(t, 1, "nabu.session.create", map[string]any{"workspace": hn.dir})
+	resp := hn.call(t, 1, "rho.session.create", map[string]any{"workspace": hn.dir})
 	var out struct {
 		SessionID string         `json:"session_id"`
 		Event     protocol.Event `json:"event"`
@@ -125,7 +125,7 @@ func TestMalformedJSONReturnsParseError(t *testing.T) {
 func TestRejectsWrongJSONRPCVersion(t *testing.T) {
 	hn := newHarness(t)
 	resp := hn.h.dispatch(context.Background(), hn.cs,
-		json.RawMessage(`{"jsonrpc":"1.0","id":1,"method":"nabu.session.list"}`))
+		json.RawMessage(`{"jsonrpc":"1.0","id":1,"method":"rho.session.list"}`))
 	if resp == nil || resp.Error == nil {
 		t.Fatal("want an invalid-request response")
 	}
@@ -136,7 +136,7 @@ func TestRejectsWrongJSONRPCVersion(t *testing.T) {
 
 func TestUnknownMethod(t *testing.T) {
 	hn := newHarness(t)
-	resp := hn.call(t, 9, "nabu.session.teleport", nil)
+	resp := hn.call(t, 9, "rho.session.teleport", nil)
 	if resp == nil || resp.Error == nil {
 		t.Fatal("want a method-not-found response")
 	}
@@ -148,7 +148,7 @@ func TestUnknownMethod(t *testing.T) {
 func TestIDEchoing(t *testing.T) {
 	hn := newHarness(t)
 	for _, id := range []any{float64(42), "abc"} {
-		resp := hn.call(t, id, "nabu.session.list", nil)
+		resp := hn.call(t, id, "rho.session.list", nil)
 		if resp == nil {
 			t.Fatalf("id %v: no response", id)
 		}
@@ -164,7 +164,7 @@ func TestIDEchoing(t *testing.T) {
 // A request with no id is a notification and gets no reply.
 func TestNotificationGetsNoResponse(t *testing.T) {
 	hn := newHarness(t)
-	if resp := hn.call(t, nil, "nabu.session.list", nil); resp != nil {
+	if resp := hn.call(t, nil, "rho.session.list", nil); resp != nil {
 		t.Fatalf("notification must not be answered, got %+v", resp)
 	}
 }
@@ -174,7 +174,7 @@ func TestSessionListEmpty(t *testing.T) {
 	var out struct {
 		Sessions []session.Summary `json:"sessions"`
 	}
-	result(t, hn.call(t, 1, "nabu.session.list", nil), &out)
+	result(t, hn.call(t, 1, "rho.session.list", nil), &out)
 	if out.Sessions == nil {
 		t.Fatal("sessions must be an empty array, not null")
 	}
@@ -191,7 +191,7 @@ func TestSessionListWithSessions(t *testing.T) {
 	var out struct {
 		Sessions []session.Summary `json:"sessions"`
 	}
-	result(t, hn.call(t, 2, "nabu.session.list", nil), &out)
+	result(t, hn.call(t, 2, "rho.session.list", nil), &out)
 	if len(out.Sessions) != 2 {
 		t.Fatalf("sessions: got %d, want 2", len(out.Sessions))
 	}
@@ -206,7 +206,7 @@ func TestSessionListWithSessions(t *testing.T) {
 
 func TestSessionCreate(t *testing.T) {
 	hn := newHarness(t)
-	resp := hn.call(t, 1, "nabu.session.create", map[string]any{
+	resp := hn.call(t, 1, "rho.session.create", map[string]any{
 		"workspace": hn.dir,
 		"options":   map[string]any{"permission_mode": "bypass"},
 	})
@@ -237,7 +237,7 @@ func TestSessionCreateMissingWorkspace(t *testing.T) {
 		map[string]any{},
 		map[string]any{"workspace": "   "},
 	} {
-		resp := hn.call(t, 1, "nabu.session.create", params)
+		resp := hn.call(t, 1, "rho.session.create", params)
 		if resp == nil || resp.Error == nil {
 			t.Fatalf("params %v: want an invalid-params error", params)
 		}
@@ -249,7 +249,7 @@ func TestSessionCreateMissingWorkspace(t *testing.T) {
 
 func TestSessionNotFound(t *testing.T) {
 	hn := newHarness(t)
-	for _, method := range []string{"nabu.session.state", "nabu.session.events_after", "nabu.session.compact"} {
+	for _, method := range []string{"rho.session.state", "rho.session.events_after", "rho.session.compact"} {
 		resp := hn.call(t, 1, method, map[string]any{"session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
 		if resp == nil || resp.Error == nil {
 			t.Fatalf("%s: want a session-not-found error", method)
@@ -262,7 +262,7 @@ func TestSessionNotFound(t *testing.T) {
 
 func TestSessionIDRequired(t *testing.T) {
 	hn := newHarness(t)
-	for _, method := range []string{"nabu.session.state", "nabu.session.events_after", "nabu.session.compact"} {
+	for _, method := range []string{"rho.session.state", "rho.session.events_after", "rho.session.compact"} {
 		resp := hn.call(t, 1, method, map[string]any{})
 		if resp == nil || resp.Error == nil {
 			t.Fatalf("%s: want an invalid-params error", method)
@@ -281,7 +281,7 @@ func TestEventsAfter(t *testing.T) {
 		Events []protocol.Event `json:"events"`
 		Synced bool             `json:"synced"`
 	}
-	result(t, hn.call(t, 1, "nabu.session.events_after",
+	result(t, hn.call(t, 1, "rho.session.events_after",
 		map[string]any{"session_id": id}), &all)
 	if len(all.Events) == 0 {
 		t.Fatal("a nil cursor must return the whole log")
@@ -295,7 +295,7 @@ func TestEventsAfter(t *testing.T) {
 		Events []protocol.Event `json:"events"`
 		Synced bool             `json:"synced"`
 	}
-	result(t, hn.call(t, 2, "nabu.session.events_after",
+	result(t, hn.call(t, 2, "rho.session.events_after",
 		map[string]any{"session_id": id, "last_event_id": last}), &tail)
 	if tail.Events == nil {
 		t.Fatal("events must be an empty array, not null")
@@ -308,7 +308,7 @@ func TestEventsAfter(t *testing.T) {
 func TestEventsAfterUnknownCursor(t *testing.T) {
 	hn := newHarness(t)
 	id := hn.mustCreate(t)
-	resp := hn.call(t, 1, "nabu.session.events_after", map[string]any{
+	resp := hn.call(t, 1, "rho.session.events_after", map[string]any{
 		"session_id":    id,
 		"last_event_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
 	})
@@ -325,7 +325,7 @@ func TestSessionState(t *testing.T) {
 	id := hn.mustCreate(t)
 
 	var st protocol.State
-	result(t, hn.call(t, 1, "nabu.session.state", map[string]any{"session_id": id}), &st)
+	result(t, hn.call(t, 1, "rho.session.state", map[string]any{"session_id": id}), &st)
 	if st.State != protocol.StateIdle {
 		t.Errorf("state: got %q, want %q", st.State, protocol.StateIdle)
 	}
@@ -341,8 +341,8 @@ func TestSessionState(t *testing.T) {
 func TestServeConnLoop(t *testing.T) {
 	hn := newHarness(t)
 	c := &scriptedConn{in: []string{
-		`{"jsonrpc":"2.0","id":1,"method":"nabu.session.list"}`,
-		`{"jsonrpc":"2.0","id":2,"method":"nabu.session.list"}`,
+		`{"jsonrpc":"2.0","id":1,"method":"rho.session.list"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"rho.session.list"}`,
 	}}
 	if err := hn.h.ServeConn(context.Background(), c); err != io.EOF {
 		t.Fatalf("ServeConn should end with the read error, got %v", err)
@@ -399,7 +399,7 @@ func TestWorkspaceBrowseOverRPC(t *testing.T) {
 
 	t.Run("no path lists the roots", func(t *testing.T) {
 		var out workspace.Listing
-		result(t, hn.call(t, 1, "nabu.workspace.browse", map[string]any{}), &out)
+		result(t, hn.call(t, 1, "rho.workspace.browse", map[string]any{}), &out)
 		if len(out.Entries) != 1 || out.Entries[0].Path != filepath.ToSlash(root) {
 			t.Fatalf("entries = %+v, want the one root", out.Entries)
 		}
@@ -410,7 +410,7 @@ func TestWorkspaceBrowseOverRPC(t *testing.T) {
 
 	t.Run("a path lists its directories and marks repos", func(t *testing.T) {
 		var out workspace.Listing
-		result(t, hn.call(t, 2, "nabu.workspace.browse", map[string]any{"path": root}), &out)
+		result(t, hn.call(t, 2, "rho.workspace.browse", map[string]any{"path": root}), &out)
 		if len(out.Entries) != 1 {
 			t.Fatalf("entries = %+v, want just proj (node_modules is noise)", out.Entries)
 		}
@@ -420,7 +420,7 @@ func TestWorkspaceBrowseOverRPC(t *testing.T) {
 	})
 
 	t.Run("outside the roots is invalid params", func(t *testing.T) {
-		resp := hn.call(t, 3, "nabu.workspace.browse", map[string]any{"path": t.TempDir()})
+		resp := hn.call(t, 3, "rho.workspace.browse", map[string]any{"path": t.TempDir()})
 		if resp == nil || resp.Error == nil {
 			t.Fatalf("browsing outside the roots should fail, got %+v", resp)
 		}
@@ -442,14 +442,14 @@ func TestBrowseThenCreateSessionThere(t *testing.T) {
 	hn.h.SetBrowseRoots([]string{root})
 
 	var listing workspace.Listing
-	result(t, hn.call(t, 1, "nabu.workspace.browse", map[string]any{"path": root}), &listing)
+	result(t, hn.call(t, 1, "rho.workspace.browse", map[string]any{"path": root}), &listing)
 	if len(listing.Entries) != 1 {
 		t.Fatalf("entries = %+v", listing.Entries)
 	}
 
 	// The path the listing gave is handed straight back to create, with no
 	// massaging: a client should not have to rewrite it.
-	resp := hn.call(t, 2, "nabu.session.create", map[string]any{"workspace": listing.Entries[0].Path})
+	resp := hn.call(t, 2, "rho.session.create", map[string]any{"workspace": listing.Entries[0].Path})
 	if resp == nil || resp.Error != nil {
 		t.Fatalf("create with a browsed path failed: %+v", resp)
 	}
@@ -468,7 +468,7 @@ func TestWorkspaceCreateDirectoryOverRPC(t *testing.T) {
 
 	t.Run("creates and returns the new directory", func(t *testing.T) {
 		var out workspace.Listing
-		result(t, hn.call(t, 1, "nabu.workspace.create_directory",
+		result(t, hn.call(t, 1, "rho.workspace.create_directory",
 			map[string]any{"parent": parent, "name": "fresh"}), &out)
 
 		want := filepath.ToSlash(filepath.Join(parent, "fresh"))
@@ -484,10 +484,10 @@ func TestWorkspaceCreateDirectoryOverRPC(t *testing.T) {
 	// the whole flow: make a directory, start work in it.
 	t.Run("a session starts in what was just created", func(t *testing.T) {
 		var out workspace.Listing
-		result(t, hn.call(t, 2, "nabu.workspace.create_directory",
+		result(t, hn.call(t, 2, "rho.workspace.create_directory",
 			map[string]any{"parent": parent, "name": "brand-new"}), &out)
 
-		resp := hn.call(t, 3, "nabu.session.create", map[string]any{"workspace": out.Path})
+		resp := hn.call(t, 3, "rho.session.create", map[string]any{"workspace": out.Path})
 		if resp == nil || resp.Error != nil {
 			t.Fatalf("create in the new directory failed: %+v", resp)
 		}
@@ -495,7 +495,7 @@ func TestWorkspaceCreateDirectoryOverRPC(t *testing.T) {
 
 	t.Run("a name that is a path is refused", func(t *testing.T) {
 		for _, name := range []string{"a/b", "../escape", "..", ".hidden", ""} {
-			resp := hn.call(t, 4, "nabu.workspace.create_directory",
+			resp := hn.call(t, 4, "rho.workspace.create_directory",
 				map[string]any{"parent": parent, "name": name})
 			if resp == nil || resp.Error == nil {
 				t.Fatalf("name %q should have been refused", name)
@@ -511,7 +511,7 @@ func TestWorkspaceCreateDirectoryOverRPC(t *testing.T) {
 
 	t.Run("a parent outside the roots is refused", func(t *testing.T) {
 		outside := t.TempDir()
-		resp := hn.call(t, 5, "nabu.workspace.create_directory",
+		resp := hn.call(t, 5, "rho.workspace.create_directory",
 			map[string]any{"parent": outside, "name": "nope"})
 		if resp == nil || resp.Error == nil {
 			t.Fatal("a parent outside the roots should be refused")
@@ -522,7 +522,7 @@ func TestWorkspaceCreateDirectoryOverRPC(t *testing.T) {
 	})
 
 	t.Run("a missing parent is refused", func(t *testing.T) {
-		resp := hn.call(t, 6, "nabu.workspace.create_directory", map[string]any{"name": "x"})
+		resp := hn.call(t, 6, "rho.workspace.create_directory", map[string]any{"name": "x"})
 		if resp == nil || resp.Error == nil {
 			t.Fatal("no parent should be refused")
 		}
@@ -543,7 +543,7 @@ func TestCompactReturnsTheEventIDAndTheModeThatRan(t *testing.T) {
 	}
 	hn.m.WaitIdle(id)
 
-	resp := hn.call(t, 2, "nabu.session.compact", map[string]any{"session_id": id})
+	resp := hn.call(t, 2, "rho.session.compact", map[string]any{"session_id": id})
 	var out struct {
 		EventID string `json:"event_id"`
 		Mode    string `json:"mode"`
@@ -593,7 +593,7 @@ func TestCompactIsRefusedWhileTheSessionIsRunning(t *testing.T) {
 		time.Sleep(2 * time.Millisecond)
 	}
 
-	resp := hn.call(t, 2, "nabu.session.compact", map[string]any{"session_id": id})
+	resp := hn.call(t, 2, "rho.session.compact", map[string]any{"session_id": id})
 	if resp == nil || resp.Error == nil {
 		t.Fatal("want a refusal")
 	}
@@ -622,7 +622,7 @@ func TestStatsTreeOverRPC(t *testing.T) {
 		if parent != "" {
 			params["options"] = map[string]any{"parent": parent}
 		}
-		result(t, hn.call(t, 1, "nabu.session.create", params), &out)
+		result(t, hn.call(t, 1, "rho.session.create", params), &out)
 		return out.SessionID
 	}
 	prompt := func(id string) {
@@ -638,7 +638,7 @@ func TestStatsTreeOverRPC(t *testing.T) {
 	prompt(step)
 	prompt(deeper)
 	prompt(beside)
-	result(t, hn.call(t, 2, "nabu.session.archive", map[string]any{"session_id": deeper}), &struct{}{})
+	result(t, hn.call(t, 2, "rho.session.archive", map[string]any{"session_id": deeper}), &struct{}{})
 
 	var tree struct {
 		Sessions int `json:"sessions"`
@@ -654,7 +654,7 @@ func TestStatsTreeOverRPC(t *testing.T) {
 		} `json:"members"`
 		Skipped int `json:"skipped"`
 	}
-	result(t, hn.call(t, 3, "nabu.session.stats", map[string]any{"session_id": home, "tree": true}), &tree)
+	result(t, hn.call(t, 3, "rho.session.stats", map[string]any{"session_id": home, "tree": true}), &tree)
 	if tree.Sessions != 3 || tree.Turns != 2 || tree.Tokens.Input != 300 || len(tree.Members) != 3 || tree.Skipped != 0 {
 		t.Fatalf("tree = %+v", tree)
 	}
@@ -663,7 +663,7 @@ func TestStatsTreeOverRPC(t *testing.T) {
 	}
 
 	var plain map[string]any
-	result(t, hn.call(t, 4, "nabu.session.stats", map[string]any{"session_id": home}), &plain)
+	result(t, hn.call(t, 4, "rho.session.stats", map[string]any{"session_id": home}), &plain)
 	if _, ok := plain["members"]; ok || plain["turns"] != float64(0) || plain["per_turn"] == nil {
 		t.Errorf("without tree, the session's own stats: %v", plain)
 	}
@@ -674,7 +674,7 @@ func TestArchiveAndRestoreOverRPC(t *testing.T) {
 	hn := newHarness(t)
 	id := hn.mustCreate(t)
 
-	result(t, hn.call(t, 2, "nabu.session.archive", map[string]any{"session_id": id}), &struct{}{})
+	result(t, hn.call(t, 2, "rho.session.archive", map[string]any{"session_id": id}), &struct{}{})
 
 	var active, archived struct {
 		Sessions []struct {
@@ -682,22 +682,22 @@ func TestArchiveAndRestoreOverRPC(t *testing.T) {
 			Archived  bool   `json:"archived"`
 		} `json:"sessions"`
 	}
-	result(t, hn.call(t, 3, "nabu.session.list", nil), &active)
+	result(t, hn.call(t, 3, "rho.session.list", nil), &active)
 	if len(active.Sessions) != 0 {
 		t.Fatalf("an archived session is still listed: %+v", active.Sessions)
 	}
-	result(t, hn.call(t, 4, "nabu.session.list", map[string]any{"archived": true}), &archived)
+	result(t, hn.call(t, 4, "rho.session.list", map[string]any{"archived": true}), &archived)
 	if len(archived.Sessions) != 1 || archived.Sessions[0].SessionID != id || !archived.Sessions[0].Archived {
 		t.Fatalf("archived list = %+v", archived.Sessions)
 	}
 
-	result(t, hn.call(t, 5, "nabu.session.restore", map[string]any{"session_id": id}), &struct{}{})
-	result(t, hn.call(t, 6, "nabu.session.list", nil), &active)
+	result(t, hn.call(t, 5, "rho.session.restore", map[string]any{"session_id": id}), &struct{}{})
+	result(t, hn.call(t, 6, "rho.session.list", nil), &active)
 	if len(active.Sessions) != 1 {
 		t.Fatalf("a restored session should list again: %+v", active.Sessions)
 	}
 
-	resp := hn.call(t, 7, "nabu.session.restore", map[string]any{"session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
+	resp := hn.call(t, 7, "rho.session.restore", map[string]any{"session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
 	if resp == nil || resp.Error == nil || resp.Error.Code != protocol.CodeSessionNotFound {
 		t.Fatalf("restoring an unknown session: %+v", resp)
 	}
@@ -717,7 +717,7 @@ func dialHello(t *testing.T, hn *harness) (*websocket.Conn, <-chan map[string]an
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.CloseNow() })
-	hello := map[string]any{"jsonrpc": "2.0", "id": 0, "method": "nabu.hello", "params": map[string]any{
+	hello := map[string]any{"jsonrpc": "2.0", "id": 0, "method": "rho.hello", "params": map[string]any{
 		"client": "test", "client_version": "0", "protocol_version": protocol.Version}}
 	if err := wsjson.Write(ctx, c, hello); err != nil {
 		t.Fatal(err)
@@ -785,7 +785,7 @@ func TestTheConnectionStaysAnsweredWhileACompactionRuns(t *testing.T) {
 	rs := &replies{in: in, got: map[float64]map[string]any{}}
 	ctx := context.Background()
 	if err := wsjson.Write(ctx, c, map[string]any{"jsonrpc": "2.0", "id": 1,
-		"method": "nabu.session.compact", "params": map[string]any{"session_id": id}}); err != nil {
+		"method": "rho.session.compact", "params": map[string]any{"session_id": id}}); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; hn.fake.CallCount() == summariser; i++ {
@@ -804,7 +804,7 @@ func TestTheConnectionStaysAnsweredWhileACompactionRuns(t *testing.T) {
 	// Interrupt is how a person gets out of a compaction, so it is answered
 	// now rather than queued behind the call it exists to end.
 	if err := wsjson.Write(ctx, c, map[string]any{"jsonrpc": "2.0", "id": 2,
-		"method": "nabu.session.interrupt", "params": map[string]any{"session_id": id}}); err != nil {
+		"method": "rho.session.interrupt", "params": map[string]any{"session_id": id}}); err != nil {
 		t.Fatal(err)
 	}
 	if r := rs.of(t, 2); r["error"] != nil {
@@ -836,7 +836,7 @@ func TestStatsAndUsageOverRPC(t *testing.T) {
 		} `json:"tokens"`
 		PerTurn []any `json:"per_turn"`
 	}
-	result(t, hn.call(t, 2, "nabu.session.stats", map[string]any{"session_id": id}), &s)
+	result(t, hn.call(t, 2, "rho.session.stats", map[string]any{"session_id": id}), &s)
 	if s.Turns != 1 || s.Prompts != 1 || s.Tokens.Input != 120 || s.Tokens.Output != 7 || len(s.PerTurn) != 1 {
 		t.Fatalf("stats = %+v", s)
 	}
@@ -848,7 +848,7 @@ func TestStatsAndUsageOverRPC(t *testing.T) {
 			Input int    `json:"input"`
 		} `json:"days"`
 	}
-	result(t, hn.call(t, 3, "nabu.usage", map[string]any{"days": 3}), &u)
+	result(t, hn.call(t, 3, "rho.usage", map[string]any{"days": 3}), &u)
 	if len(u.Days) != 3 {
 		t.Fatalf("want 3 days, got %+v", u.Days)
 	}
@@ -856,7 +856,7 @@ func TestStatsAndUsageOverRPC(t *testing.T) {
 		t.Errorf("today = %+v", today)
 	}
 
-	resp := hn.call(t, 4, "nabu.session.stats", map[string]any{"session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
+	resp := hn.call(t, 4, "rho.session.stats", map[string]any{"session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
 	if resp == nil || resp.Error == nil || resp.Error.Code != protocol.CodeSessionNotFound {
 		t.Fatalf("stats for an unknown session: %+v", resp)
 	}
@@ -871,7 +871,7 @@ func TestUsageCountsArchivedSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	hn.m.WaitIdle(id)
-	result(t, hn.call(t, 2, "nabu.session.archive", map[string]any{"session_id": id}), &struct{}{})
+	result(t, hn.call(t, 2, "rho.session.archive", map[string]any{"session_id": id}), &struct{}{})
 
 	var u struct {
 		Days []struct {
@@ -879,7 +879,7 @@ func TestUsageCountsArchivedSessions(t *testing.T) {
 			Input int `json:"input"`
 		} `json:"days"`
 	}
-	result(t, hn.call(t, 3, "nabu.usage", map[string]any{"days": 1}), &u)
+	result(t, hn.call(t, 3, "rho.usage", map[string]any{"days": 1}), &u)
 	if len(u.Days) != 1 || u.Days[0].Turns != 1 || u.Days[0].Input != 120 {
 		t.Fatalf("an archived session's turn is missing from today: %+v", u.Days)
 	}
@@ -893,7 +893,7 @@ func TestStatsAcrossSessions(t *testing.T) {
 	var created struct {
 		SessionID string `json:"session_id"`
 	}
-	result(t, hn.call(t, 2, "nabu.session.create", map[string]any{"workspace": hn.dir,
+	result(t, hn.call(t, 2, "rho.session.create", map[string]any{"workspace": hn.dir,
 		"options": map[string]any{"labels": []string{protocol.LabelUnattended}, "description": "Room DAOs"}}), &created)
 	run := created.SessionID
 
@@ -913,7 +913,7 @@ func TestStatsAcrossSessions(t *testing.T) {
 	}
 	search(interactive, "c1", "createFromFile", "it copies")
 	search(run, "r1", "room 2.6.1", "yes")
-	result(t, hn.call(t, 3, "nabu.session.archive", map[string]any{"session_id": run}), &struct{}{})
+	result(t, hn.call(t, 3, "rho.session.archive", map[string]any{"session_id": run}), &struct{}{})
 
 	type totals struct {
 		Days     int    `json:"days"`
@@ -928,7 +928,7 @@ func TestStatsAcrossSessions(t *testing.T) {
 		Skipped int   `json:"skipped"`
 	}
 	var all totals
-	result(t, hn.call(t, 4, "nabu.stats", map[string]any{}), &all)
+	result(t, hn.call(t, 4, "rho.stats", map[string]any{}), &all)
 	if all.Days != 7 || all.Kind != "all" || all.Sessions != 2 || len(all.PerDay) != 7 || all.Skipped != 0 {
 		t.Fatalf("stats = %+v", all)
 	}
@@ -936,7 +936,7 @@ func TestStatsAcrossSessions(t *testing.T) {
 		t.Errorf("tools = %+v", all.Tools)
 	}
 	var runs totals
-	result(t, hn.call(t, 5, "nabu.stats", map[string]any{"days": 1, "kind": "unattended"}), &runs)
+	result(t, hn.call(t, 5, "rho.stats", map[string]any{"days": 1, "kind": "unattended"}), &runs)
 	if runs.Sessions != 1 || runs.Days != 1 || len(runs.Tools) != 1 || runs.Tools[0].Calls != 1 {
 		t.Errorf("runs only = %+v", runs)
 	}
@@ -953,12 +953,12 @@ func TestStatsAcrossSessions(t *testing.T) {
 		Truncated bool `json:"truncated"`
 	}
 	var every calls
-	result(t, hn.call(t, 6, "nabu.stats.calls", map[string]any{"tool": "web.search"}), &every)
+	result(t, hn.call(t, 6, "rho.stats.calls", map[string]any{"tool": "web.search"}), &every)
 	if len(every.Calls) != 2 || every.Truncated {
 		t.Fatalf("calls = %+v", every)
 	}
 	var one calls
-	result(t, hn.call(t, 7, "nabu.stats.calls", map[string]any{"tool": "web.search", "session_id": run, "limit": 5}), &one)
+	result(t, hn.call(t, 7, "rho.stats.calls", map[string]any{"tool": "web.search", "session_id": run, "limit": 5}), &one)
 	if len(one.Calls) != 1 {
 		t.Fatalf("one session's calls = %+v", one)
 	}
@@ -967,7 +967,7 @@ func TestStatsAcrossSessions(t *testing.T) {
 		t.Errorf("call = %+v", c)
 	}
 	var limited calls
-	result(t, hn.call(t, 8, "nabu.stats.calls", map[string]any{"tool": "web.search", "limit": 1}), &limited)
+	result(t, hn.call(t, 8, "rho.stats.calls", map[string]any{"tool": "web.search", "limit": 1}), &limited)
 	if len(limited.Calls) != 1 || !limited.Truncated {
 		t.Errorf("limited = %+v", limited)
 	}
@@ -979,9 +979,9 @@ func TestStatsRefusesWhatItCannotAnswer(t *testing.T) {
 		method string
 		params map[string]any
 	}{
-		{"nabu.stats", map[string]any{"kind": "goals"}},
-		{"nabu.stats.calls", map[string]any{"kind": "unattended"}},
-		{"nabu.stats.calls", map[string]any{"tool": "read", "kind": "goals"}},
+		{"rho.stats", map[string]any{"kind": "goals"}},
+		{"rho.stats.calls", map[string]any{"kind": "unattended"}},
+		{"rho.stats.calls", map[string]any{"tool": "read", "kind": "goals"}},
 	} {
 		resp := hn.call(t, i+1, c.method, c.params)
 		if resp == nil || resp.Error == nil || resp.Error.Code != protocol.CodeInvalidParams {

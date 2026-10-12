@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/corporealshift/nabu/clients/github"
+	"github.com/corporealshift/rho/clients/github"
 )
 
 // ClaudeConfig is how the runner asks Claude.
@@ -72,7 +72,7 @@ func (c *Config) withDefaults() {
 		c.MaxJobs = 1
 	}
 	if c.Label == "" {
-		c.Label = "nabu"
+		c.Label = "rho"
 	}
 	if c.VerifyTimeout <= 0 {
 		c.VerifyTimeout = github.Duration(30 * time.Minute)

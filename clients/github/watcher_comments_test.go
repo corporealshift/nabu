@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
-var labeledPR = PR{Number: 9, HeadSHA: "headsha1234", HeadRef: "feat/x", BaseRef: "main", Title: "Parse cursors", Labels: []string{"nabu"}}
+var labeledPR = PR{Number: 9, HeadSHA: "headsha1234", HeadRef: "feat/x", BaseRef: "main", Title: "Parse cursors", Labels: []string{"rho"}}
 
 const repliesFinal = "Done.\n```json\n{\"replies\":[{\"id\":10,\"body\":\"Renamed in a1b2c3d.\"},{\"id\":900,\"body\":\"README updated.\"}]}\n```"
 
@@ -75,13 +75,13 @@ func TestWatcherPushesAndReplies(t *testing.T) {
 		t.Errorf("handled %+v, running %+v, calls %q", rs.Handled, rs.Running, r.git.calls)
 	}
 
-	// nabu's own replies come back as comments; they start nothing.
+	// rho's own replies come back as comments; they start nothing.
 	r.gh.comments[9] = append(r.gh.comments[9],
 		Comment{Kind: CommentLine, ID: 11, Body: r.gh.replies[0][4:], InReplyTo: 10, Created: r.now},
 		Comment{Kind: CommentIssue, ID: 901, Body: r.gh.convo[0], Created: r.now})
 	r.now = r.now.Add(time.Hour)
 	if n := r.poll(t); n != 0 {
-		t.Error("nabu's own replies started a job")
+		t.Error("rho's own replies started a job")
 	}
 }
 
@@ -297,14 +297,14 @@ func TestRunsShareTheSlots(t *testing.T) {
 
 // A review after a comments job is shown what the comments asked, so it can
 // check the new commits did it. Only comments answered since the last review
-// count: not older ones, not nabu's own, not ones no job has answered yet.
+// count: not older ones, not rho's own, not ones no job has answered yet.
 func TestWatcherShowsTheNextReviewWhatWasAsked(t *testing.T) {
 	r := newRig(t, pr7)
 	r.poll(t)
 	rs := r.repo()
 	rs.Reviewed[7] = Reviewed{SHA: "0ld5ha0000", Summary: "Missing a test.", Handled: Marks{Line: 10}}
 	rs.Handled[7] = Marks{Line: 20}
-	r.gh.comments = map[int][]Comment{7: {root, nabuAns, followUp, fresh, rev}}
+	r.gh.comments = map[int][]Comment{7: {root, rhoAns, followUp, fresh, rev}}
 	r.now = r.now.Add(6 * time.Minute)
 	if n := r.poll(t); n != 1 {
 		t.Fatalf("started %d jobs, want 1", n)
@@ -340,7 +340,7 @@ func TestWatcherShowsNothingAskedWhenNothingWasAnswered(t *testing.T) {
 	r.gh.comments = map[int][]Comment{7: {fresh}}
 	r.now = r.now.Add(6 * time.Minute)
 	r.poll(t)
-	if p := r.d.sessions["S1"].prompts[0]; strings.Contains(p, "nabu answered these comments") {
+	if p := r.d.sessions["S1"].prompts[0]; strings.Contains(p, "rho answered these comments") {
 		t.Errorf("prompt shows answered comments:\n%s", p)
 	}
 }

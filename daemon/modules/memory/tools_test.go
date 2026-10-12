@@ -201,7 +201,7 @@ func TestSaveRejectsBadInput(t *testing.T) {
 	}
 }
 
-func TestSaveOverAnImportWritesToNabu(t *testing.T) {
+func TestSaveOverAnImportWritesToRho(t *testing.T) {
 	importDir := t.TempDir()
 	content := "---\nname: shadowed\ndescription: \"imported\"\nmetadata:\n  type: project\n---\n\nthe imported version\n"
 	if err := os.WriteFile(filepath.Join(importDir, "shadowed.md"), []byte(content), 0o644); err != nil {
@@ -212,7 +212,7 @@ func TestSaveOverAnImportWritesToNabu(t *testing.T) {
 
 	if _, err := run(t, m, s, "memory.save", `{
 		"scope":"global","name":"shadowed","type":"project",
-		"description":"the nabu version","body":"the nabu version of the fact"
+		"description":"the rho version","body":"the rho version of the fact"
 	}`); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestSaveOverAnImportWritesToNabu(t *testing.T) {
 		t.Error("the save wrote into the import directory")
 	}
 	if _, err := os.Stat(m.GlobalStore().Path("shadowed")); err != nil {
-		t.Errorf("the nabu copy was not written: %v", err)
+		t.Errorf("the rho copy was not written: %v", err)
 	}
 }
 

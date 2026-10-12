@@ -1,4 +1,4 @@
-# nabu P3 — Memory: Store and Recall Implementation Plan
+# rho P3 — Memory: Store and Recall Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
@@ -6,9 +6,9 @@
 > from the stated behaviour, then the implementation. If a requirement is ambiguous or
 > contradicts the real code, STOP and report rather than guessing.
 
-**Goal:** Give nabu a memory the model can read and write, so a session on a repository starts already knowing what earlier sessions learned.
+**Goal:** Give rho a memory the model can read and write, so a session on a repository starts already knowing what earlier sessions learned.
 
-**Architecture:** The `memory` module: markdown files under the nabu root, global and per workspace, with a one-line-per-memory index injected as a prefix context block. Recall is BM25 over the corpus, which needs no model and no embeddings. Nothing in the agent, the session or the protocol knows memory exists.
+**Architecture:** The `memory` module: markdown files under the rho root, global and per workspace, with a one-line-per-memory index injected as a prefix context block. Recall is BM25 over the corpus, which needs no model and no embeddings. Nothing in the agent, the session or the protocol knows memory exists.
 
 **Tech Stack:** Go 1.26, standard library only. Git is invoked as a subprocess. No new dependencies.
 
@@ -42,7 +42,7 @@ Two things follow from the real files rather than from the spec's summary. `type
 A parser that expects flat top-level keys will read every existing memory as typeless,
 so this is worth a test of its own against a fixture copied from the real shape.
 
-Unknown frontmatter keys are preserved on read and written back on save. nabu is not
+Unknown frontmatter keys are preserved on read and written back on save. rho is not
 the only writer of these files.
 
 ### The index
@@ -107,10 +107,10 @@ merged: the model was asked for the current state of the fact.
 and loadable, and appear in the index marked as imported.
 
 **They are never written.** A save naming an imported memory writes a new file in
-nabu's own store and the nabu copy shadows the import from then on. Deleting one
-removes nabu's copy and the import reappears. Refusing the save would leave the model
+rho's own store and the rho copy shadows the import from then on. Deleting one
+removes rho's copy and the import reappears. Refusing the save would leave the model
 unable to correct anything it imported, and writing into Claude Code's directory would
-be nabu editing another tool's state.
+be rho editing another tool's state.
 
 ### Git
 
@@ -268,7 +268,7 @@ Ranking takes a query and a corpus and returns matches ordered by score. `k1 = 1
 
 **Contract**
 
-`Init` resolves the global and workspace roots under the nabu root, loads both stores
+`Init` resolves the global and workspace roots under the rho root, loads both stores
 plus any import directories, and reads config for `import_dirs` and `enabled`.
 `SessionStart` returns the index and the save instructions as one prefix block.
 `AfterCompaction` returns the same.
@@ -281,7 +281,7 @@ plus any import directories, and reads config for `import_dirs` and `enabled`.
 - [ ] The workspace store is keyed by the session's workspace key, so two repositories do not share memory
 - [ ] Imported memories appear in the index marked as imported
 - [ ] An import directory that does not exist is skipped without error
-- [ ] A nabu memory shadows an imported one of the same name
+- [ ] A rho memory shadows an imported one of the same name
 - [ ] The module satisfies `SessionStarter`, `ToolProvider` and `CompactionHook`
 - [ ] It is registered in `all.go` and the import-boundary test still passes
 
@@ -317,7 +317,7 @@ scope. `memory.save {scope, name, type, description, body}` writes one. `memory.
 - [ ] `save` writes a file that `recall` then finds
 - [ ] `save` with an invalid type is an error naming the valid ones
 - [ ] `save` with an empty name or body is an error
-- [ ] `save` naming an imported memory writes to nabu's store, leaving the import untouched
+- [ ] `save` naming an imported memory writes to rho's store, leaving the import untouched
 - [ ] `forget` removes a memory and `recall` no longer finds it
 - [ ] `forget` on an unknown name is an error naming it
 - [ ] Every tool declares a schema that is valid JSON

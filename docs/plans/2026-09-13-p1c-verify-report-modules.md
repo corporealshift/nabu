@@ -1,4 +1,4 @@
-# nabu P1c — `verify` and `report` Modules Implementation Plan
+# rho P1c — `verify` and `report` Modules Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
@@ -223,7 +223,7 @@ Expected: all packages pass, no vet errors.
 **Files:**
 - Modify: `daemon/modules/verify/verify.go` (add `GateTool` method)
 
-**Goal:** A `task.update` introducing a task without `done_when` is denied through the tool gate when `require_done_when` is enabled (under `nabu run` or when a goal is set).
+**Goal:** A `task.update` introducing a task without `done_when` is denied through the tool gate when `require_done_when` is enabled (under `rho run` or when a goal is set).
 
 - [ ] **Step 1: Write the failing test for `require_done_when` enabled**
 
@@ -249,12 +249,12 @@ Add to `daemon/modules/verify/verify.go`:
   3. If any new task (one not in the previous snapshot, or one being created for the first time) lacks `done_when`, returns `Deny` with the reason from the spec
   4. If all tasks have `done_when`, returns `Allow`
 
-**Config-driven vs context-driven `require_done_when`.** The spec says: "on under `nabu run` and whenever a goal is set; off for a plain interactive session unless configured on." Since the module does not know whether it is running under `nabu run` (that is a CLI concern), the implementation uses this logic:
+**Config-driven vs context-driven `require_done_when`.** The spec says: "on under `rho run` and whenever a goal is set; off for a plain interactive session unless configured on." Since the module does not know whether it is running under `rho run` (that is a CLI concern), the implementation uses this logic:
 - If `verify.require_done_when` is explicitly set in config, use that value (the owner can force it on or off).
 - If a goal is set (`protocol.State.Goal != nil`), `require_done_when` is **on**.
 - If no goal is set and config is absent, `require_done_when` is **off** (interactive sessions are not nagged).
 
-This means: `nabu run` sets a goal → `require_done_when` activates automatically. A plain interactive session without a goal → `require_done_when` is off. The owner can override with config.
+This means: `rho run` sets a goal → `require_done_when` activates automatically. A plain interactive session without a goal → `require_done_when` is off. The owner can override with config.
 
 - [ ] **Step 4: Write the failing test for `require_done_when` off**
 

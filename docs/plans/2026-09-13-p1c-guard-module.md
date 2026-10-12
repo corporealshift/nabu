@@ -1,4 +1,4 @@
-# nabu P1c — `guard` Module Implementation Plan
+# rho P1c — `guard` Module Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
@@ -6,7 +6,7 @@
 > from the stated behaviour, then the implementation. If a requirement is ambiguous or
 > contradicts the real code, STOP and report rather than guessing.
 
-**Goal:** Give nabu a tool gate, so an agent is guarded from its first run instead of approving everything by default.
+**Goal:** Give rho a tool gate, so an agent is guarded from its first run instead of approving everything by default.
 
 **Architecture:** `guard` is an in-process module implementing the `ToolGate` hook. The agent already asks the module registry to gate every tool call, so this slots into an existing seam and changes nothing in core. It decides allow, deny or ask from the session's permission mode plus rules over command patterns, paths and risk tiers.
 

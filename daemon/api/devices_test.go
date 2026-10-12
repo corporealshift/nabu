@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // fakeNotify records what the API tells the notifier.
@@ -51,7 +51,7 @@ func (f *fakeNotify) seen() []string {
 
 func TestDeviceRegisterAndUnregister(t *testing.T) {
 	hn := newHarness(t)
-	if resp := hn.call(t, 1, "nabu.device.register", map[string]any{"token": "T1"}); resp.Error == nil ||
+	if resp := hn.call(t, 1, "rho.device.register", map[string]any{"token": "T1"}); resp.Error == nil ||
 		resp.Error.Code != protocol.CodeInternalError {
 		t.Errorf("a daemon with no notifier: %+v", resp.Error)
 	}
@@ -59,15 +59,15 @@ func TestDeviceRegisterAndUnregister(t *testing.T) {
 	f := &fakeNotify{}
 	hn.h.Notify = f
 	var out map[string]any
-	result(t, hn.call(t, 2, "nabu.device.register", map[string]any{"token": "T1", "name": "Pixel"}), &out)
-	if resp := hn.call(t, 3, "nabu.device.register", map[string]any{"name": "Pixel"}); resp.Error == nil ||
+	result(t, hn.call(t, 2, "rho.device.register", map[string]any{"token": "T1", "name": "Pixel"}), &out)
+	if resp := hn.call(t, 3, "rho.device.register", map[string]any{"name": "Pixel"}); resp.Error == nil ||
 		resp.Error.Code != protocol.CodeInvalidParams {
 		t.Errorf("no token: %+v", resp.Error)
 	}
 	if !slices.Equal(f.devices, []string{"T1/Pixel"}) {
 		t.Errorf("devices = %q", f.devices)
 	}
-	result(t, hn.call(t, 4, "nabu.device.unregister", map[string]any{"token": "T1"}), &out)
+	result(t, hn.call(t, 4, "rho.device.unregister", map[string]any{"token": "T1"}), &out)
 	if len(f.devices) != 0 {
 		t.Errorf("after unregister: %q", f.devices)
 	}
@@ -94,7 +94,7 @@ func TestARequestOpeningAndClosingReachesTheNotifier(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Ask never returned")
 	}
-	if got := f.seen(); !slices.Equal(got, []string{"open nabu.rpc.ui.ask", "closed"}) {
+	if got := f.seen(); !slices.Equal(got, []string{"open rho.rpc.ui.ask", "closed"}) {
 		t.Errorf("notifier heard %q", got)
 	}
 }

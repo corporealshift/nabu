@@ -7,13 +7,13 @@
 ## 1. Purpose
 
 A tool the owner runs by hand to compare how well three coding-agent harnesses
-complete the same tasks: **nabu** (the harness being built), **pi** (the incumbent),
+complete the same tasks: **rho** (the harness being built), **pi** (the incumbent),
 and **Claude Code** (an outside reference point).
 
-The expected ordering at the start is Claude > pi > nabu. The point of the tool is
+The expected ordering at the start is Claude > pi > rho. The point of the tool is
 not an absolute score. It is **the size of the gap and whether it is closing** as
-nabu is tuned. A run that says "nabu 4/6" is useless without "pi 5/6, and last week
-nabu was 2/6".
+rho is tuned. A run that says "rho 4/6" is useless without "pi 5/6, and last week
+rho was 2/6".
 
 ### Non-goals
 
@@ -25,8 +25,8 @@ nabu was 2/6".
 
 ## 2. The model confound, and why it is not one here
 
-nabu and pi both run on the same llama-server at `http://localhost:8033/v1` with the
-same Qwen3.6-35B model. nabu vs pi is therefore a harness-only comparison: same model,
+rho and pi both run on the same llama-server at `http://localhost:8033/v1` with the
+same Qwen3.6-35B model. rho vs pi is therefore a harness-only comparison: same model,
 same machine, same endpoint. Claude Code runs on Claude and is understood to be a
 different stack entirely — it is a reference ceiling, not a like-for-like competitor.
 
@@ -35,8 +35,8 @@ sequential**. The tool never runs two harnesses concurrently.
 
 ## 3. Where it lives
 
-A Go program inside the nabu repository: package code under `bench/`, entry point
-under `cmd/nabubench/`. It is covered by the repository's existing gate
+A Go program inside the rho repository: package code under `bench/`, entry point
+under `cmd/rhobench/`. It is covered by the repository's existing gate
 (`go build ./... && go vet ./... && go test ./...`).
 
 Rejected: a separate repository (neutral ground, but a second repo to maintain
@@ -45,7 +45,7 @@ outside the gate for a tool one person runs). Rejected: shell or Python scripts
 untested glue driving three CLIs with process-orphan hazards on Windows would
 quietly produce wrong results).
 
-Living inside nabu does not privilege nabu: the tool shells out to the `nabu` CLI
+Living inside rho does not privilege rho: the tool shells out to the `rho` CLI
 exactly as it shells out to `pi` and `claude`, through the same interface.
 
 ## 4. Fixtures
@@ -101,7 +101,7 @@ for each of the three CLIs — which would mean the three were not given the sam
 
 The three invocations, all confirmed to exist on the owner's machine:
 
-- **nabu** — `nabu run --root <isolated root> --workspace <ws> --max-turns N
+- **rho** — `rho run --root <isolated root> --workspace <ws> --max-turns N
   --json "<prompt>"`. The `--json` stream carries the report event, which already
   gives exit status, tasks done/total, checks, files touched, commits and
   tree-dirty.
@@ -121,8 +121,8 @@ The three invocations, all confirmed to exist on the owner's machine:
 
 - A fresh copy of `repo/` per run, into a temporary workspace. Never the fixture
   itself.
-- nabu runs against an **isolated `--root`**, so the benchmark never touches the
-  owner's real `~/.nabu` sessions or config.
+- rho runs against an **isolated `--root`**, so the benchmark never touches the
+  owner's real `~/.rho` sessions or config.
 - The `web` module is **disabled** for benchmark runs. Otherwise results move with
   the internet and are not comparable between runs.
 - **pi survives its launcher.** A pi process continues running detached after the
@@ -186,7 +186,7 @@ fixture quietly drag all three harnesses down and read as a harness problem.
 
 The local model is non-deterministic, so a single run proves little. `--repeat`
 defaults to 3; the report gives pass rate and median duration across repeats.
-`--repeat 1` exists for a quick loop after changing something in nabu.
+`--repeat 1` exists for a quick loop after changing something in rho.
 
 The cost is worth stating plainly: six tasks times three harnesses times three
 repeats is 54 sequential local-model runs, likely a few hours. The suite is meant
@@ -226,9 +226,9 @@ by its exit status.
 
 | # | Decision | Chosen | Rejected and why |
 |---|---|---|---|
-| 1 | Location | Inside nabu repo, `bench/` + `cmd/nabubench/` | Separate repo (neutral ground, but a second repo to maintain); shell or Python (fast, but untested glue driving three CLIs with process-orphan hazards on Windows would quietly produce wrong results) |
+| 1 | Location | Inside rho repo, `bench/` + `cmd/rhobench/` | Separate repo (neutral ground, but a second repo to maintain); shell or Python (fast, but untested glue driving three CLIs with process-orphan hazards on Windows would quietly produce wrong results) |
 | 2 | Fixture source | Purpose-built tasks in `repo/` directories | Real-repo snapshots (expensive to author, slow to run); SWE-bench-style public tasks (Python-heavy, tuned to frontier models, 35B local model scores near zero on all three) |
-| 3 | Model for nabu vs pi | Same llama-server at `localhost:8033/v1`, same Qwen3.6-35B | Different models (would confound harness differences with model differences) |
+| 3 | Model for rho vs pi | Same llama-server at `localhost:8033/v1`, same Qwen3.6-35B | Different models (would confound harness differences with model differences) |
 | 4 | Scoring composite | Three separate dimensions (completed, cost, craft) | Single weighted score (hides which of the three moved) |
 | 5 | Judge | Claude via `claude -p`, one call per run | Local Qwen (35B judging its own diffs is a weak referee); dual judges (informative once, too expensive every run) |
 | 6 | Concurrency | Strictly sequential, never two harnesses at once | Parallel runs (faster, but `max_in_flight: 1` on the local provider means they would queue anyway, and workspace contamination risk) |

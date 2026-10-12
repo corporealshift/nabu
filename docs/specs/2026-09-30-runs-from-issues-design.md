@@ -15,7 +15,7 @@ TUI.
 
 ## Decision
 
-The watcher starts a run for each open issue carrying the `label` from config (`nabu`)
+The watcher starts a run for each open issue carrying the `label` from config (`rho`)
 that has no run yet.
 
 ### Starting a run
@@ -31,11 +31,11 @@ that has no run yet.
    exactly as a `/run <text>` brief is. The text is cut at 16,000 characters, with a note
    where it was cut.
 3. **The run's slug** is `issue-<n>-<title, lower-case, dashes, at most 40 characters>`,
-   so the branch is `nabu/issue-<n>-…`.
+   so the branch is `rho/issue-<n>-…`.
 
 From then on it is an ordinary run: the plan, the Claude gates, the tasks and the fix
 loop. It follows the `issue:` label only at two points:
-- **At `pr`:** the PR body starts with `Closes #<n>`, and the PR carries the `nabu` label.
+- **At `pr`:** the PR body starts with `Closes #<n>`, and the PR carries the `rho` label.
 - **At the end:** the runner comments on the issue once. The runner is what sees the run
   end, so it posts; the watcher would have to poll every run to find out. At `done` the comment links the
   PR. At `failed` it says which step the run stopped at, and that editing the issue or
@@ -58,7 +58,7 @@ state, gets no second run, except:
 | What | Then |
 |---|---|
 | The issue is too vague to plan | The `plan` session says so. The run fails at `plan`, and the watcher's comment on the issue says the plan step could not proceed and quotes the session's last message. |
-| The label is removed while the run is going | The run continues. Removing the label stops new runs, not this one. `nabu stop <home>` is how a run is stopped. |
+| The label is removed while the run is going | The run continues. Removing the label stops new runs, not this one. `rho stop <home>` is how a run is stopped. |
 | The issue is closed while the run is going | The run continues to `pr`, whose `Closes #<n>` does nothing. Stopping a run because an issue closed is a policy nobody has asked for. |
 
 ## Not doing

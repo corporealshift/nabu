@@ -1,4 +1,4 @@
-# nabu protocol — normative specification
+# rho protocol — normative specification
 
 **Protocol version:** 1.0
 **Status:** P0, authoritative. The Go `protocol` package and the Kotlin client both
@@ -11,25 +11,25 @@ Words in **bold capitals** (MUST, MUST NOT, SHOULD) carry their RFC 2119 meaning
 JSON-RPC 2.0 over WebSocket. The daemon binds loopback plus the Tailscale interface.
 Connections from non-loopback addresses MUST present a bearer token
 (`Authorization: Bearer <token>`) during the WebSocket upgrade; a missing or wrong
-token is refused with `nabu_unauthorized`.
+token is refused with `rho_unauthorized`.
 
 Every message is one JSON-RPC object per WebSocket text frame. Batches are not
 supported.
 
 The daemon answers a connection's calls in the order they arrive, with one exception:
-`nabu.session.interrupt` and `nabu.session.stop` are answered at once, because each
+`rho.session.interrupt` and `rho.session.stop` are answered at once, because each
 exists to end whatever is ahead of it. A slow call does not stop the daemon reading the
 connection, so pings and replies to the daemon's own requests (§7.18) keep flowing
 while one runs.
 
 ### 1.1 Handshake
 
-The first request on a connection MUST be `nabu.hello`. Any other method before a
-successful hello is refused with `nabu_protocol_mismatch`.
+The first request on a connection MUST be `rho.hello`. Any other method before a
+successful hello is refused with `rho_protocol_mismatch`.
 
 ```jsonc
 // client → daemon
-{"jsonrpc":"2.0","id":1,"method":"nabu.hello","params":{
+{"jsonrpc":"2.0","id":1,"method":"rho.hello","params":{
   "client":"go-tui","client_version":"0.1.0","protocol_version":"1.0"}}
 // daemon → client
 {"jsonrpc":"2.0","id":1,"result":{
@@ -37,7 +37,7 @@ successful hello is refused with `nabu_protocol_mismatch`.
 ```
 
 Versions are `MAJOR.MINOR`. A client whose MAJOR differs from the daemon's is refused
-with `nabu_protocol_mismatch`. A differing MINOR is accepted; the client MUST ignore
+with `rho_protocol_mismatch`. A differing MINOR is accepted; the client MUST ignore
 fields and capabilities it does not know.
 
 ## 2. Identifiers and time
@@ -110,7 +110,7 @@ a parent, or acting on a label, is for clients and modules. An absent `parent` o
 means none. Two labels are read by modules compiled into the daemon:
 - `guard:no-push`: the guard refuses the session anything that publishes.
 - `unattended`: no person watches the session. A client that starts a session for itself
-  (a run's step, a GitHub job, `nabu run`) sets it. Tools that need a person, such as
+  (a run's step, a GitHub job, `rho run`) sets it. Tools that need a person, such as
   `ask`, are not offered to the session. The label says what the session is, not which
   tools it gets: each module decides that for its own tools.
 
@@ -132,7 +132,7 @@ say nothing rather than guess. It is the model's window whatever the session's
 
 `role` ∈ `user | assistant`. `usage` and `interrupted` appear only on assistant
 messages; `usage` SHOULD be present when the provider reported it; `interrupted` is
-`true` when `nabu.session.interrupt` cut the response short.
+`true` when `rho.session.interrupt` cut the response short.
 
 #### `thinking`
 
@@ -333,7 +333,7 @@ A cursor is `{"session_id": string, "last_event_id": string | null}`.
 
 - `last_event_id: null` → every event, in order.
 - `last_event_id` = an id in the log → every event after it, in order (possibly none).
-- `last_event_id` not in the log → error `nabu_cursor_unknown`. The client MUST reset
+- `last_event_id` not in the log → error `rho_cursor_unknown`. The client MUST reset
   its cursor to `null` and refetch. (Returning an empty set here was considered and
   rejected: a client with a corrupt cursor would silently stop syncing forever.)
 
@@ -430,9 +430,9 @@ it exists only in the assembled request.
 All client → daemon methods take `params` as an object. `session_id` is required
 wherever shown.
 
-### 7.1 `nabu.hello` — §1.1.
+### 7.1 `rho.hello` — §1.1.
 
-### 7.2 `nabu.session.list {archived?}` → `{sessions: [SessionSummary]}`
+### 7.2 `rho.session.list {archived?}` → `{sessions: [SessionSummary]}`
 
 `SessionSummary = {session_id, workspace, workspace_key, state, event_count,
 created_at, updated_at, goal?: {condition, state}, tasks?: {total, done}, last_prompt?,
@@ -449,19 +449,19 @@ Lists the sessions in use. With `archived: true` it lists the archive instead (�
 and each summary carries `archived: true`. A client that mirrors sessions SHOULD drop
 any it holds that a full listing leaves out: they were archived.
 
-### 7.3 `nabu.session.create {workspace, options?}` → `{session_id, event}`
+### 7.3 `rho.session.create {workspace, options?}` → `{session_id, event}`
 
 `options` defaults: model from config, `compaction_enabled: true`,
 `permission_mode: "ask"`, no `parent`, no `labels`, no `description`, `context: "normal"`. The returned `event` is the
 `session` event.
 
-A `parent` that names no session, live or archived, is `nabu_invalid_params`, and so are
+A `parent` that names no session, live or archived, is `rho_invalid_params`, and so are
 labels outside the rules in §3.1 and a `context` other than `normal` or `large`. In both cases no session is created.
 
-### 7.4 `nabu.session.send_prompt {session_id, content, client_id?}` → `{event_id}`
+### 7.4 `rho.session.send_prompt {session_id, content, client_id?}` → `{event_id}`
 
 Appends a `user` `message` immediately, in every state except `completed`, `error`,
-and `paused` (those return `nabu_invalid_transition`; use `resume` for `paused`). If
+and `paused` (those return `rho_invalid_transition`; use `resume` for `paused`). If
 the session is `idle` or `blocked`, the loop starts. If it is `running`, the message is
 picked up at the next request assembly.
 
@@ -480,21 +480,21 @@ own deduplication table and a retry is still recognised after a daemon restart.
 Omitting `client_id` deduplicates nothing: a person typing the same thing twice means
 it twice.
 
-### 7.5 `nabu.session.events_after {session_id, last_event_id}` → `{events, synced}` — §4.
+### 7.5 `rho.session.events_after {session_id, last_event_id}` → `{events, synced}` — §4.
 
-### 7.6 `nabu.session.subscribe {session_id}` → `{subscribed: true}`
+### 7.6 `rho.session.subscribe {session_id}` → `{subscribed: true}`
 
 Thereafter the daemon sends notifications (no `id`):
 
-- `nabu.session.event {session_id, event}` for every appended event.
-- `nabu.session.delta {session_id, turn_id, text}` while an assistant message
+- `rho.session.event {session_id, event}` for every appended event.
+- `rho.session.delta {session_id, turn_id, text}` while an assistant message
   streams. Deltas are ephemeral: never logged, never replayed. The final `message`
   event carries the full text and supersedes every delta of that `turn_id`.
-- `nabu.session.thinking {session_id, turn_id, text}` while the model reasons,
+- `rho.session.thinking {session_id, turn_id, text}` while the model reasons,
   for providers that report it. Ephemeral in the same way, and superseded by the
   `thinking` event (§3.1), which is what persists.
 
-`nabu.session.unsubscribe {session_id}` → `{subscribed: false}`.
+`rho.session.unsubscribe {session_id}` → `{subscribed: false}`.
 
 One client never holds up another. A connection that stops reading — a phone frozen in
 the background keeps its socket open but takes nothing — is **closed** once it falls
@@ -502,45 +502,45 @@ too far behind or a write to it stalls, rather than delaying what the daemon sen
 anyone else. Nothing is lost by this: a client reconnects and resumes from its cursor
 with §7.5.
 
-### 7.7 `nabu.session.interrupt {session_id}` → `{}`
+### 7.7 `rho.session.interrupt {session_id}` → `{}`
 
 Cancels the in-flight turn. The daemon appends the partial assistant `message` with
 `interrupted: true`, then `state_change → idle (interrupted)`. No-op when not
 `running`.
 
-### 7.8 `nabu.session.stop {session_id}` → `{}`
+### 7.8 `rho.session.stop {session_id}` → `{}`
 
 Ends the session: `state_change → completed (stopped)` plus a `report`. Allowed from
 any non-terminal state.
 
-### 7.9 `nabu.session.resume {session_id, budget?}` → `{}`
+### 7.9 `rho.session.resume {session_id, budget?}` → `{}`
 
-Only from `paused`; otherwise `nabu_invalid_transition`. Appends a `budget` event if
+Only from `paused`; otherwise `rho_invalid_transition`. Appends a `budget` event if
 one is given, then `state_change → running (resumed)`.
 
-### 7.10 `nabu.session.state {session_id}` → the §5 projection.
+### 7.10 `rho.session.state {session_id}` → the §5 projection.
 
-### 7.11 `nabu.session.set_goal {session_id, condition}` → `{event_id}`
+### 7.11 `rho.session.set_goal {session_id, condition}` → `{event_id}`
 
 Appends `goal {state: set, source: client}`. If the session is `idle`, starts the loop
 with the condition as the directive. Replaces any active goal.
 
-### 7.12 `nabu.session.clear_goal {session_id}` → `{event_id}`
+### 7.12 `rho.session.clear_goal {session_id}` → `{event_id}`
 
-Appends `goal {state: cleared}`; `nabu_invalid_transition` if no goal is active.
+Appends `goal {state: cleared}`; `rho_invalid_transition` if no goal is active.
 
-### 7.13 `nabu.session.set_option {session_id, key, value}` → `{event_id}`
+### 7.13 `rho.session.set_option {session_id, key, value}` → `{event_id}`
 
 Appends `options_change`. `key` ∈ `model | compaction_enabled | permission_mode | labels |
 description | context`. Setting any option starts nothing: a description is not a goal.
-For `labels`, `value` is the whole new list. `parent` is `nabu_invalid_params`, because it
+For `labels`, `value` is the whole new list. `parent` is `rho_invalid_params`, because it
 is set at creation. An invalid value appends nothing.
 
-### 7.14 `nabu.session.update_tasks {session_id, tasks}` → `{event_id}`
+### 7.14 `rho.session.update_tasks {session_id, tasks}` → `{event_id}`
 
 Appends a `tasks` snapshot with `source: client`. Same shape as the tool's argument.
 
-### 7.15 `nabu.session.compact {session_id}` → `{event_id, mode}`
+### 7.15 `rho.session.compact {session_id}` → `{event_id, mode}`
 
 Summarises the session's history now, rather than waiting for it to cross the automatic
 threshold. Appends a `compaction` event and returns its id.
@@ -549,12 +549,12 @@ threshold. Appends a `compaction` event and returns its id.
 the daemon falls back to stubbing old tool results rather than leaving the context
 untouched, and says which happened instead of reporting the one that was asked for.
 
-**Refused while the session is `running`**, with `nabu_invalid_transition`. Compaction
+**Refused while the session is `running`**, with `rho_invalid_transition`. Compaction
 rewrites what the next request is assembled from, and doing that under a turn already in
 flight would change the ground beneath it. Interrupt first (§7.7), then compact. A
 `completed` or `error` session is refused for the same reason it cannot be prompted.
 
-**Refused when there is too little history to summarise**, with `nabu_invalid_params`.
+**Refused when there is too little history to summarise**, with `rho_invalid_params`.
 The automatic pass treats that as "not yet" and says nothing, which is right for something
 that runs on its own; a client that asked deserves an answer rather than a success that
 did nothing.
@@ -568,18 +568,18 @@ that it is quick. The daemon appends an `info` `notice` when it starts, so every
 can show that one is under way.
 
 It is not tied to the connection that asked for it: a client that drops meanwhile loses
-the reply, not the summary. `nabu.session.interrupt` and `nabu.session.stop` end it; the
-call then fails with `nabu_invalid_transition` and the history is unchanged, rather than
+the reply, not the summary. `rho.session.interrupt` and `rho.session.stop` end it; the
+call then fails with `rho_invalid_transition` and the history is unchanged, rather than
 falling back to `clear_results`.
 
-### 7.16 `nabu.workspace.browse {path?}` → `{path, parent, entries, is_repo}`
+### 7.16 `rho.workspace.browse {path?}` → `{path, parent, entries, is_repo}`
 
 Lists the directories a client may start a session in. `path` absent returns the
 configured roots; otherwise it returns the directories inside `path`.
 
 ```jsonc
 {"path":"C:/Users/kyle/projects","parent":"C:/Users/kyle","is_repo":false,
- "entries":[{"name":"nabu","path":"C:/Users/kyle/projects/nabu","is_repo":true}]}
+ "entries":[{"name":"rho","path":"C:/Users/kyle/projects/rho","is_repo":true}]}
 ```
 
 `entries` holds directories only, sorted case-insensitively by name. Dotted directories
@@ -592,13 +592,13 @@ repository; it is `false` when `path` is absent, since the roots are not one dir
 `parent` is `null` at a root, so a client knows where climbing stops rather than
 learning it from a refusal one level later.
 
-A path outside the configured roots is `nabu_invalid_params`. The roots bound **listing**,
+A path outside the configured roots is `rho_invalid_params`. The roots bound **listing**,
 not access: an authenticated client may already create a session at any path with §7.3.
 They exist so that a client cannot enumerate the machine for the asking.
 
 Roots come from `daemon.browse_roots`, defaulting to the user's home directory.
 
-### 7.17 `nabu.workspace.create_directory {parent, name}` → `{path, parent, entries}`
+### 7.17 `rho.workspace.create_directory {parent, name}` → `{path, parent, entries}`
 
 Creates one directory inside `parent` and returns **the new directory's listing**, in the
 same shape as §7.16, so a client can move into what it just made rather than asking again.
@@ -606,7 +606,7 @@ same shape as §7.16, so a client can move into what it just made rather than as
 `parent` must be inside the configured roots, checked exactly as §7.16 checks it. `name`
 is **one directory name, never a path**: separators, `.`, `..`, a leading dot, a leading
 or trailing space, the characters `: * ? " < > |`, and anything over 64 characters are all
-`nabu_invalid_params`. A name that already exists is `nabu_invalid_params` too — a client
+`rho_invalid_params`. A name that already exists is `rho_invalid_params` too — a client
 listing the directory has already been shown what is there.
 
 This is the only method by which a client causes the daemon to write to its filesystem. It
@@ -617,25 +617,25 @@ client's word rather than a model's.
 ### 7.18 Daemon → client requests
 
 Sent as JSON-RPC requests (with `id`) to every subscriber of the session. The first
-response wins; later responders receive `nabu_already_resolved`.
+response wins; later responders receive `rho_already_resolved`.
 
 A request is also sent to a connection that **subscribes while it is still open**, oldest
 first, as part of §7.6. A phone that wakes from the background and resubscribes is shown
 the question it slept through; a client may be sent a request it already holds, and
 recognises it by `request_id`.
 
-With nobody subscribed, `nabu.rpc.ui.ask` **waits** for someone to subscribe, up to the
-timeout below. `nabu.rpc.permission.request` does not: the gated call is refused at once.
+With nobody subscribed, `rho.rpc.ui.ask` **waits** for someone to subscribe, up to the
+timeout below. `rho.rpc.permission.request` does not: the gated call is refused at once.
 
-`nabu.rpc.permission.request {session_id, request_id, tool, summary, risk}` →
+`rho.rpc.permission.request {session_id, request_id, tool, summary, risk}` →
 `{verdict: "approve" | "deny", reason?}`. `risk` ∈ `low | medium | high`.
 
-`nabu.rpc.ui.ask {session_id, request_id, question, choices?}` → `{answer}`.
+`rho.rpc.ui.ask {session_id, request_id, question, choices?}` → `{answer}`.
 
 Requests time out after a configurable interval (default 10 minutes) with the
 session moving to `blocked`; a later answer is still accepted and resumes it.
 
-### 7.19 `nabu.session.archive {session_id}` → `{}`
+### 7.19 `rho.session.archive {session_id}` → `{}`
 
 Puts a session away: it leaves the list, is not loaded when the daemon starts, and is
 no longer mirrored. Its log is kept whole, and an `info` `notice` saying why is appended
@@ -646,7 +646,7 @@ before it moves. Every subscription to it ends.
 <why>`.
 
 **Refused while the session, or any session descended from it, is `running`**, with
-`nabu_invalid_transition` naming the running session: archiving closes the log under a
+`rho_invalid_transition` naming the running session: archiving closes the log under a
 turn still writing to it. Nothing is archived. Archiving an archived session does
 nothing.
 
@@ -656,15 +656,15 @@ them is older than `daemon.archive_after_days` (default 3; 0 turns this off).
 
 An archived session is not found by any other method until it is restored.
 
-### 7.20 `nabu.session.restore {session_id}` → `{}`
+### 7.20 `rho.session.restore {session_id}` → `{}`
 
 Brings an archived session back, appending an `info` `notice`, which also restarts its
 idle clock. Every session archived with it, whose last event is the notice
 `archived with <session_id>: …`, comes back too. A session archived on its own earlier
-stays archived. An unknown id is `nabu_session_not_found`; restoring a session that is
+stays archived. An unknown id is `rho_session_not_found`; restoring a session that is
 not archived does nothing.
 
-### 7.21 `nabu.session.stats {session_id, tree?}` → `SessionStats`
+### 7.21 `rho.session.stats {session_id, tree?}` → `SessionStats`
 
 How much work a session was, derived from its log alone:
 
@@ -705,20 +705,20 @@ any depth (a goal's home, its runs' homes and their steps), archived ones includ
  "skipped": 0}
 ```
 
-The totals are summed as `nabu.stats` sums sessions (§7.25), over each member's whole
+The totals are summed as `rho.stats` sums sessions (§7.25), over each member's whole
 log. `per_day` covers the days from the earliest `started_at` to the latest
 `last_event_at`. `members` is each session's own numbers, the root first and the rest in
 the order they were made. `skipped` counts logs that could not be read.
 
 Not normative in the way §5 is: clients ask for it rather than computing it.
 
-### 7.22 `nabu.usage {days?}` → `{days: [{date, turns, input, output}]}`
+### 7.22 `rho.usage {days?}` → `{days: [{date, turns, input, output}]}`
 
 Turns and tokens per calendar day in the daemon's time zone, across every session,
 archived ones included (§7.19), oldest day first. Every day in the range is present, a quiet
 one as zeros. `days` defaults to 14 and is capped at 90.
 
-### 7.23 `nabu.device.register {token, name?}` → `{}`
+### 7.23 `rho.device.register {token, name?}` → `{}`
 
 Asks the daemon to notify a phone (`docs/specs/2026-10-06-phone-notifications-design.md`).
 `token` is the phone's push token and is required; `name` says which phone it is. A token
@@ -730,11 +730,11 @@ Notifications carry identifiers, states, labels and counts, never text from a lo
 events notify is the daemon's configuration, not the protocol's: a client builds the words
 from its own mirror.
 
-### 7.24 `nabu.device.unregister {token}` → `{}`
+### 7.24 `rho.device.unregister {token}` → `{}`
 
 Stops notifying a phone. An unknown token does nothing.
 
-### 7.25 `nabu.stats {days?, kind?}` → `Window`
+### 7.25 `rho.stats {days?, kind?}` → `Window`
 
 The work done across sessions over the last `days`, archived sessions included
 (`docs/specs/2026-10-07-stats-across-sessions-design.md`):
@@ -766,7 +766,7 @@ present, possibly empty.
 
 Not normative in the way §5 is: clients ask for it rather than computing it.
 
-### 7.26 `nabu.stats.calls {tool, days?, kind?, session_id?, limit?}` → `{calls, truncated, skipped}`
+### 7.26 `rho.stats.calls {tool, days?, kind?, session_id?, limit?}` → `{calls, truncated, skipped}`
 
 One tool's calls and what came back, newest first:
 
@@ -791,7 +791,7 @@ the parent's label, since a step's own prompt is the same for every step; else t
 line of its first prompt. `archived` says the session is archived
 (§7.19).
 
-### 7.27 `nabu.session.set_status {session_id, kind, data}` → `{event_id}`
+### 7.27 `rho.session.set_status {session_id, kind, data}` → `{event_id}`
 
 Appends a `status` event (§3.1) with `source: client`. `invalid_params` when `kind` is
 not `run` or `goal`, or `data` is not a JSON object or is over 65536 bytes encoded;
@@ -806,14 +806,14 @@ nothing is appended then. Allowed in any session state, and starts nothing.
 | -32601 | `method_not_found` | |
 | -32602 | `invalid_params` | |
 | -32603 | `internal_error` | |
-| -32001 | `nabu_session_not_found` | |
-| -32002 | `nabu_invalid_transition` | Method not allowed in the session's current state |
-| -32003 | `nabu_permission_denied` | Caller may not perform this action |
-| -32004 | `nabu_already_resolved` | Another client answered first |
-| -32005 | `nabu_cursor_unknown` | `last_event_id` not in the log |
-| -32006 | `nabu_protocol_mismatch` | Hello missing or incompatible MAJOR |
-| -32007 | `nabu_unauthorized` | Missing or wrong bearer token |
-| -32008 | `nabu_workspace_untrusted` | Workspace requires trust before use |
+| -32001 | `rho_session_not_found` | |
+| -32002 | `rho_invalid_transition` | Method not allowed in the session's current state |
+| -32003 | `rho_permission_denied` | Caller may not perform this action |
+| -32004 | `rho_already_resolved` | Another client answered first |
+| -32005 | `rho_cursor_unknown` | `last_event_id` not in the log |
+| -32006 | `rho_protocol_mismatch` | Hello missing or incompatible MAJOR |
+| -32007 | `rho_unauthorized` | Missing or wrong bearer token |
+| -32008 | `rho_workspace_untrusted` | Workspace requires trust before use |
 
 Error objects carry `{code, message, data?}`; `data.name` is the name above.
 
@@ -836,7 +836,7 @@ Operations and their `expect` shapes:
 | `op` | `operation` fields | `expect` |
 |---|---|---|
 | `validate` | — | `{"valid": true}` or `{"valid": false, "error": "<substring of the error>"}` |
-| `events_after` | `last_event_id` | `{"event_ids": [...], "synced": bool}` or `{"error": "nabu_cursor_unknown"}` |
+| `events_after` | `last_event_id` | `{"event_ids": [...], "synced": bool}` or `{"error": "rho_cursor_unknown"}` |
 | `project` | — | a JSON object; every field present MUST equal the projection's field (fields absent from `expect` are not checked) |
 | `render_state` | — | `{"text": "..."}` — exact match of §6.3 |
 | `render_vetoes` | — | `{"text": "..."}` — exact match of §6.4, or `{"text": ""}` when none outstanding |

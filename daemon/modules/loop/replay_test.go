@@ -11,25 +11,25 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // TestReplayRealLogs runs session logs through the module and reports what it
 // would have done: where it would have refused, and what it would have said.
 // It is how the thresholds are checked against real loops and real checks.
-// Skipped unless NABU_LOOP_REPLAY names a directory of session logs, which
+// Skipped unless RHO_LOOP_REPLAY names a directory of session logs, which
 // is searched with its subdirectories, so archived sessions count too:
 //
-//	NABU_LOOP_REPLAY=~/.nabu/sessions go test ./daemon/modules/loop/ -run Replay -v
+//	RHO_LOOP_REPLAY=~/.rho/sessions go test ./daemon/modules/loop/ -run Replay -v
 //
 // The logs have no refusals in them, so a loop the module would have refused
 // carries on in the replay; each refusal after the first in a run is one the
 // real session would not have reached.
 func TestReplayRealLogs(t *testing.T) {
-	dir := os.Getenv("NABU_LOOP_REPLAY")
+	dir := os.Getenv("RHO_LOOP_REPLAY")
 	if dir == "" {
-		t.Skip("set NABU_LOOP_REPLAY to a directory of session logs")
+		t.Skip("set RHO_LOOP_REPLAY to a directory of session logs")
 	}
 	var files []string
 	filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
@@ -61,7 +61,7 @@ func TestReplayRealLogs(t *testing.T) {
 				}
 				blocks, _ := m.BeforeRequest(context.Background(), s)
 				for _, b := range blocks {
-					kind := strings.SplitN(strings.TrimPrefix(b.Content, "[nabu loop notice] "), " has ", 2)
+					kind := strings.SplitN(strings.TrimPrefix(b.Content, "[rho loop notice] "), " has ", 2)
 					switch {
 					case strings.Contains(b.Content, "has now run"):
 						counts["notice: identical change"]++

@@ -1,12 +1,12 @@
 # Configuration
 
-Everything lives under `~/.nabu` (or `--root`, or `$NABU_ROOT`). There are three files:
+Everything lives under `~/.rho` (or `--root`, or `$RHO_ROOT`). There are three files:
 
 | File | Read by | Needed |
 |---|---|---|
 | `config.json` | the daemon | yes |
-| `runner/config.json` | `nabu runner` | no; every field has a default |
-| `github/config.json` | `nabu github`, and `nabu runner` when it exists | only for the GitHub jobs |
+| `runner/config.json` | `rho runner` | no; every field has a default |
+| `github/config.json` | `rho github`, and `rho runner` when it exists | only for the GitHub jobs |
 
 The daemon rejects unknown fields in `config.json`, so a typo fails at startup instead
 of doing nothing. The daemon and the runner read their files once, when they start, so
@@ -34,10 +34,10 @@ local model. This page lists every setting.
 
 - **`default_model`** is `provider/model`. The part before the first slash picks the
   provider block, and the rest is sent to the endpoint as the model name.
-- **`context_window`**: set it. Without it nabu can't tell how full the context is, so it
+- **`context_window`**: set it. Without it rho can't tell how full the context is, so it
   never compacts, and a long session grows until the server refuses the request. The
   clients also use it to show how full the window is.
-- **`max_in_flight`**: how many requests nabu sends the endpoint at once. Default 1, which
+- **`max_in_flight`**: how many requests rho sends the endpoint at once. Default 1, which
   suits a local server running one slot.
 - **`max_tokens`**: caps one reply. The default is 16384, and never more than the context
   has room for. The room is estimated from the last request, the reply to it, and what
@@ -87,7 +87,7 @@ context short instead, and a local model is fastest with a short context.
 ```
 
 - **`max_turns`**: the turn cap for a session that sets none itself. 0 means no cap. A
-  session that uses up its budget pauses, and `nabu resume <id>` continues it. The runner
+  session that uses up its budget pauses, and `rho resume <id>` continues it. The runner
   sets its own caps (see [The runner](#the-runner)).
 - **`max_consecutive_vetoes`**: how many times in a row the stop gates may refuse to let
   a session finish before it blocks.
@@ -138,7 +138,7 @@ Each module has a block under `modules`. All of them are optional.
 - **`command_timeout`** is in seconds, default 300. Raise it for a slow build.
 
 How strictly the gate is enforced depends on whether anyone is watching:
-- **In an ordinary session**, when a turn changed files, nabu reminds the agent once. The
+- **In an ordinary session**, when a turn changed files, rho reminds the agent once. The
   reminder says what is uncommitted or unpushed, whether there is a pull request, which
   tasks are open, and what the gate said. Then it lets the agent stop.
 - **In a session with a goal**, which every runner work session has, nobody is there to
@@ -148,7 +148,7 @@ How strictly the gate is enforced depends on whether anyone is watching:
 ### `claude`: a second opinion from Claude
 
 `claude.ask` runs the `claude` CLI in the session's workspace, so Claude reads the same
-repository nabu is working in. The tool appears only when `claude` is on PATH. It uses
+repository rho is working in. The tool appears only when `claude` is on PATH. It uses
 the machine's Claude Code login, and each call spends your allowance.
 
 ```json
@@ -169,7 +169,7 @@ the machine's Claude Code login, and each call spends your allowance.
   one becomes a `Bash(<command> *)` and a `PowerShell(<command> *)` rule. Claude can run
   those and nothing else, and still can't change a file. A command that would allow
   anything, such as a bare `bash`, is refused and logged.
-- **`auto_ask_after`**: nabu asks Claude on the session's behalf after this many turns
+- **`auto_ask_after`**: rho asks Claude on the session's behalf after this many turns
   since anyone last sent the session a message. It asks again at each multiple, up to
   `auto_ask_max` times. The question carries the task, what the model has been saying,
   what keeps failing and the files it keeps changing. The model keeps working while Claude
@@ -186,7 +186,7 @@ name the repositories it may read:
 
 ```json
 { "modules": { "builtins": { "workspaces": {
-  "nabu": "C:/Users/you/projects/nabu",
+  "rho": "C:/Users/you/projects/rho",
   "web": "C:/Users/you/projects/web"
 } } } }
 ```
@@ -199,7 +199,7 @@ isn't offered at all.
 ### `memory`
 
 On by default. After a session ends, a curator writes anything worth keeping as markdown
-under `~/.nabu/memory`, which is a git repository you can read, diff and revert. To seed
+under `~/.rho/memory`, which is a git repository you can read, diff and revert. To seed
 it read-only from a Claude Code memory directory:
 
 ```json
@@ -219,17 +219,17 @@ it for `expire_days`, so notes don't turn into a second memory.
 { "modules": { "notes": { "enabled": true, "expire_days": 14, "max_bytes": 4096 } } }
 ```
 
-Notes are plain markdown at `~/.nabu/notes/ws/<workspace-key>/<name>.md`. `nabu notes`
-prints this repository's notes, and `nabu notes --all` prints every repository's. The key
+Notes are plain markdown at `~/.rho/notes/ws/<workspace-key>/<name>.md`. `rho notes`
+prints this repository's notes, and `rho notes --all` prints every repository's. The key
 is per repository, so worktrees and subdirectories of one repo share their notes.
 
 ### `skills`
 
 These are markdown instructions the agent loads on demand. It reads `~/.claude/skills` and
-`~/.nabu/skills` by default:
+`~/.rho/skills` by default:
 
 ```json
-{ "modules": { "skills": { "paths": ["~/.nabu/skills"] } } }
+{ "modules": { "skills": { "paths": ["~/.rho/skills"] } } }
 ```
 
 A skill can name the files it covers with a `paths:` line in its frontmatter, such as
@@ -277,7 +277,7 @@ reach the network. To turn this off, use `{ "modules": { "artifact": { "enabled"
 
 ## The runner
 
-`nabu runner` takes work to pull requests. `/run` and `/goal`, from the terminal UI or the
+`rho runner` takes work to pull requests. `/run` and `/goal`, from the terminal UI or the
 phone, hand work to it. With `github/config.json` present, it does the GitHub jobs too.
 It needs `git`, `gh`, and the `claude` CLI. A run never skips its reviews, so without
 `claude` the runner won't start a run or a goal.
@@ -300,7 +300,7 @@ It needs `git`, `gh`, and the `claude` CLI. A run never skips its reviews, so wi
 {
   "poll": "2m",
   "max_jobs": 1,
-  "label": "nabu",
+  "label": "rho",
   "verify_timeout": "30m",
   "claude": { "path": "", "model": "", "timeout": "15m" },
   "plan_turns": 0,
@@ -328,7 +328,7 @@ the jobs fetch into and add worktrees beside, but never check anything out in:
 ```json
 {
   "repos": [{ "name": "owner/repo", "clone": "C:/src/repo" }],
-  "label": "nabu",
+  "label": "rho",
   "poll": "2m",
   "quiet": "5m",
   "max_jobs": 1,
@@ -344,12 +344,12 @@ the jobs fetch into and add worktrees beside, but never check anything out in:
 - **issues**: starts a run for each open issue that carries `label`. The run's PR closes
   the issue.
 
-`nabu github --once` polls once and exits. `--dry-run` prints instead of posting.
+`rho github --once` polls once and exits. `--dry-run` prints instead of posting.
 
 ## Where things live
 
 ```
-~/.nabu/
+~/.rho/
   config.json
   sessions/     one append-only .jsonl per session
   memory/       markdown, and a git repository
@@ -362,5 +362,5 @@ the jobs fetch into and add worktrees beside, but never check anything out in:
   devices.json  the phones that asked to be notified
 ```
 
-Session logs are plain JSON lines, readable with `cat`. `nabu runner` and `nabu github`
+Session logs are plain JSON lines, readable with `cat`. `rho runner` and `rho github`
 log to stderr.

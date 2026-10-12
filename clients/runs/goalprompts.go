@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/corporealshift/nabu/clients/github"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/clients/github"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // planner is what Claude is told it is doing for a goal.

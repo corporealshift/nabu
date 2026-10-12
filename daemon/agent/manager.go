@@ -12,12 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/daemon/tools"
-	"github.com/corporealshift/nabu/daemon/workspace"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/daemon/tools"
+	"github.com/corporealshift/rho/daemon/workspace"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Asker answers questions that need a human: permission for a gated tool call
@@ -47,7 +47,7 @@ type Deps struct {
 	Providers *provider.Registry
 	Modules   *module.Registry
 	Builtins  *tools.Builtins
-	Root      string // ~/.nabu
+	Root      string // ~/.rho
 	Log       *slog.Logger
 	Asker     Asker
 	Deltas    DeltaSink
@@ -537,7 +537,7 @@ func (m *Manager) UpdateTasks(ctx context.Context, s module.Session, incoming []
 	return next, nil
 }
 
-// UpdateTasksByID is the client-facing entry point (nabu.session.update_tasks).
+// UpdateTasksByID is the client-facing entry point (rho.session.update_tasks).
 func (m *Manager) UpdateTasksByID(ctx context.Context, id string, incoming []protocol.Task) (protocol.TasksData, error) {
 	h, err := m.handle(id)
 	if err != nil {
@@ -774,7 +774,7 @@ func (m *Manager) emitReport(ctx context.Context, h *sessionHandle, exit protoco
 // ---------------------------------------------------------------- core impl
 
 // invokeTool logs the call, gates it, runs it, logs the result, and notifies
-// observers. Every tool call in nabu goes through here, model or module.
+// observers. Every tool call in rho goes through here, model or module.
 func (m *Manager) invokeTool(ctx context.Context, h *sessionHandle, call protocol.ToolCallData) protocol.ToolResultData {
 	if len(call.Arguments) == 0 {
 		call.Arguments = json.RawMessage(`{}`)
@@ -901,12 +901,12 @@ func (m *Manager) ask(ctx context.Context, h *sessionHandle, question string, ch
 	return m.deps.Asker.Ask(ctx, h.ID(), question, choices)
 }
 
-// reservedDirs are directories of the nabu root that core owns. A module
+// reservedDirs are directories of the rho root that core owns. A module
 // handed one of these would be writing over the daemon's own state.
 var reservedDirs = map[string]bool{"sessions": true, "modules": true}
 
-// dataDir is a module's directory, at the top level of the nabu root and named
-// for the module. Nabu's data is organised by what it is, not buried a level
+// dataDir is a module's directory, at the top level of the rho root and named
+// for the module. Rho's data is organised by what it is, not buried a level
 // down under the module that happens to write it.
 func (m *Manager) dataDir(name string) (string, error) {
 	if name == "" || reservedDirs[name] || strings.ContainsAny(name, `/\.`) {

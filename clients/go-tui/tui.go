@@ -1,4 +1,4 @@
-// Package tui renders a nabu session live and answers the daemon's permission
+// Package tui renders a rho session live and answers the daemon's permission
 // prompts. It holds no session state: the daemon owns the log, and closing the
 // TUI does not stop the run.
 package tui
@@ -10,9 +10,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/corporealshift/nabu/clients/goclient"
-	"github.com/corporealshift/nabu/daemon"
-	"github.com/corporealshift/nabu/daemon/config"
+	"github.com/corporealshift/rho/clients/goclient"
+	"github.com/corporealshift/rho/daemon"
+	"github.com/corporealshift/rho/daemon/config"
 )
 
 const version = "0.0.0"
@@ -136,7 +136,7 @@ func (r *retry) connected() { r.next = 0 }
 // switch to, if the human picked a different one, and the reason it ended.
 func attach(ctx context.Context, p sender, addr, token, sessionID string, cursor *string, actions chan action, onConnected func()) (string, error) {
 	dctx, cancel := context.WithTimeout(ctx, goclient.DialTimeout)
-	c, err := goclient.Dial(dctx, addr, token, "nabu-tui", version)
+	c, err := goclient.Dial(dctx, addr, token, "rho-tui", version)
 	cancel()
 	if err != nil {
 		return "", err
@@ -189,24 +189,24 @@ func attach(ctx context.Context, p sender, addr, token, sessionID string, cursor
 
 	err = c.Stream(connCtx, func(msg goclient.Message) bool {
 		switch msg.Method {
-		case "nabu.session.event":
+		case "rho.session.event":
 			if ev, ok := goclient.ParseEvent(msg); ok {
 				*cursor = ev.Event.ID
 				p.Send(eventMsg{ev: ev.Event})
 			}
-		case "nabu.session.delta":
+		case "rho.session.delta":
 			if d, ok := goclient.ParseDelta(msg); ok {
 				p.Send(deltaMsg{d: d})
 			}
-		case "nabu.session.thinking":
+		case "rho.session.thinking":
 			if d, ok := goclient.ParseThinking(msg); ok {
 				p.Send(thinkingMsg{d: d})
 			}
-		case "nabu.rpc.ui.ask":
+		case "rho.rpc.ui.ask":
 			if req, ok := goclient.ParseAsk(msg); ok {
 				p.Send(askMsg{q: question{id: msg.ID, req: req}})
 			}
-		case "nabu.rpc.permission.request":
+		case "rho.rpc.permission.request":
 			if req, ok := goclient.ParsePermission(msg); ok {
 				p.Send(promptMsg{p: prompt{id: msg.ID, req: req}})
 			}
@@ -232,14 +232,14 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 	case actAnswerAsk:
 		err = c.AnswerAsk(ctx, a.id, a.text)
 	case actPrompt:
-		_, err = c.Call(ctx, "nabu.session.send_prompt",
+		_, err = c.Call(ctx, "rho.session.send_prompt",
 			map[string]any{"session_id": a.sessionID, "content": a.text})
 	case actInterrupt, actStop:
 		// Off the action queue: these exist to end something slow, and would
 		// be useless waiting behind it (a prompt held until a summary lands).
-		method := "nabu.session.interrupt"
+		method := "rho.session.interrupt"
 		if a.kind == actStop {
-			method = "nabu.session.stop"
+			method = "rho.session.stop"
 		}
 		go func() {
 			if _, err := c.Call(ctx, method, map[string]any{"session_id": a.sessionID}); err != nil {
@@ -253,7 +253,7 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 			var out struct {
 				Mode string `json:"mode"`
 			}
-			err := c.CallInto(ctx, "nabu.session.compact",
+			err := c.CallInto(ctx, "rho.session.compact",
 				map[string]any{"session_id": a.sessionID}, &out)
 			done := compactedMsg{mode: out.Mode}
 			if err != nil {
@@ -266,11 +266,11 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 		// without it. It is the description, never the goal: a goal starts
 		// the loop, and this session would begin the work in the checkout.
 		if a.text != "" {
-			_, err = c.Call(ctx, "nabu.session.set_option",
+			_, err = c.Call(ctx, "rho.session.set_option",
 				map[string]any{"session_id": a.sessionID, "key": "description", "value": a.text})
 		}
 		if err == nil {
-			_, err = c.Call(ctx, "nabu.session.set_option",
+			_, err = c.Call(ctx, "rho.session.set_option",
 				map[string]any{"session_id": a.sessionID, "key": "labels", "value": a.labels})
 		}
 		if err == nil {
@@ -280,11 +280,11 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 		// As for /run: the text is the description, never a session goal,
 		// which would start this session working in the checkout.
 		if a.text != "" {
-			_, err = c.Call(ctx, "nabu.session.set_option",
+			_, err = c.Call(ctx, "rho.session.set_option",
 				map[string]any{"session_id": a.sessionID, "key": "description", "value": a.text})
 		}
 		if err == nil {
-			_, err = c.Call(ctx, "nabu.session.set_option",
+			_, err = c.Call(ctx, "rho.session.set_option",
 				map[string]any{"session_id": a.sessionID, "key": "labels", "value": a.labels})
 		}
 		if err == nil {
@@ -301,7 +301,7 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 			p.Send(sessionsMsg{sessions: sessions, archived: true})
 		}
 	case actArchive:
-		if _, err = c.Call(ctx, "nabu.session.archive", map[string]any{"session_id": a.sessionID}); err == nil {
+		if _, err = c.Call(ctx, "rho.session.archive", map[string]any{"session_id": a.sessionID}); err == nil {
 			p.Send(noteMsg{text: "archived " + shortID(a.sessionID) + " — tab in the picker shows the archive"})
 			var sessions []goclient.SessionSummary
 			if sessions, err = c.List(ctx); err == nil {
@@ -309,7 +309,7 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 			}
 		}
 	case actRestore:
-		if _, err = c.Call(ctx, "nabu.session.restore", map[string]any{"session_id": a.sessionID}); err == nil {
+		if _, err = c.Call(ctx, "rho.session.restore", map[string]any{"session_id": a.sessionID}); err == nil {
 			return a.sessionID
 		}
 	case actStats:
@@ -321,7 +321,7 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 			p.Send(statsMsg{view: v})
 		}
 	case actContext:
-		if _, err = c.Call(ctx, "nabu.session.set_option",
+		if _, err = c.Call(ctx, "rho.session.set_option",
 			map[string]any{"session_id": a.sessionID, "key": "context", "value": a.text}); err == nil {
 			p.Send(noteMsg{text: contextWords(a.text)})
 		}

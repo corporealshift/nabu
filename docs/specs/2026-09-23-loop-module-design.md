@@ -110,7 +110,7 @@ treats it the same way.
 
 ## 5. Checked against the logs
 
-`NABU_LOOP_REPLAY=~/.nabu/sessions go test ./daemon/modules/loop/ -run Replay -v` replays
+`RHO_LOOP_REPLAY=~/.rho/sessions go test ./daemon/modules/loop/ -run Replay -v` replays
 every session log, archived ones included, through the module. On 2026-09-23 it covered
 42 sessions and 2,589 tool calls:
 

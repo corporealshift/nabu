@@ -24,12 +24,12 @@ Nothing in it is rewritten or deleted. Restoring moves it back.
 - An `info` `notice` is appended before it moves ("archived: by request", "archived:
   untouched for 3 days") and another on restore. The log still tells the whole story, and
   the restore notice restarts the idle clock so the sweep does not put it straight back.
-- `nabu.session.archive` / `nabu.session.restore` (spec §7.19–7.20), and
-  `nabu.session.list {archived: true}` for the archive.
+- `rho.session.archive` / `rho.session.restore` (spec §7.19–7.20), and
+  `rho.session.list {archived: true}` for the archive.
 - **Refused while running.** Archiving closes the log under a turn still appending to it.
 - **The sweep:** at start and hourly, every session not running whose last event is older
   than `daemon.archive_after_days` (default **3**; 0 turns it off) is archived.
-- Clients: `nabu archive|restore <id>`; the TUI's `/archive`, and in the picker `a`
+- Clients: `rho archive|restore <id>`; the TUI's `/archive`, and in the picker `a`
   archives and `tab` shows the archive, where `enter` restores and attaches; on the phone a
   long press archives (after confirming), and Archived in the top bar restores. The phone
   drops from its mirror any session a full listing leaves out, which is how it learns about

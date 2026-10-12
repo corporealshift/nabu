@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 var opts = protocol.Options{Model: "local/qwen", CompactionEnabled: true, PermissionMode: protocol.PermissionAsk}

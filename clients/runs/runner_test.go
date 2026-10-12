@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // ---- fakes -------------------------------------------------------------
@@ -649,8 +649,8 @@ func TestAWholeRun(t *testing.T) {
 	if !slices.Equal(g.claude.asked, []string{"plan", "verify", "final"}) {
 		t.Errorf("claude was asked %q", g.claude.asked)
 	}
-	if len(g.gh.prs) != 1 || !strings.HasPrefix(g.gh.prs[0], "main|nabu/"+r.Slug+"|Add a Median function to stats|nabu|") ||
-		!strings.Contains(g.gh.prs[0], "consider generics") || !strings.Contains(g.gh.prs[0], "<!-- nabu -->") {
+	if len(g.gh.prs) != 1 || !strings.HasPrefix(g.gh.prs[0], "main|rho/"+r.Slug+"|Add a Median function to stats|rho|") ||
+		!strings.Contains(g.gh.prs[0], "consider generics") || !strings.Contains(g.gh.prs[0], "<!-- rho -->") {
 		t.Errorf("pr = %q", g.gh.prs)
 	}
 	if !slices.Equal(g.git.pushed, []string{r.Branch}) {
@@ -1233,7 +1233,7 @@ func TestARejectedPushFollowsTheMovedBranch(t *testing.T) {
 	g := newRig(t)
 	g.shell.results = []bool{false}
 	g.gh.polls = []poll{failing}
-	g.git.pushErrs = []error{nil, errors.New("! [rejected] nabu/x -> nabu/x (fetch first)")}
+	g.git.pushErrs = []error{nil, errors.New("! [rejected] rho/x -> rho/x (fetch first)")}
 	r := g.opened("H1")
 	g.finish(map[string]string{"stats.go": "fixed"})
 	g.tick()
@@ -1289,11 +1289,11 @@ func TestAnIssueRun(t *testing.T) {
 	if r.Step != StepDone {
 		t.Fatalf("run = %+v\nlog:\n%s", r, g.log.String())
 	}
-	if !strings.Contains(g.gh.prs[0], "|nabu|Closes #12\n\n") {
+	if !strings.Contains(g.gh.prs[0], "|rho|Closes #12\n\n") {
 		t.Errorf("pr body does not close the issue: %q", g.gh.prs[0])
 	}
 	if len(g.gh.issueComments) != 1 || !strings.HasPrefix(g.gh.issueComments[0], "#12: ") ||
-		!strings.Contains(g.gh.issueComments[0], r.PRURL) || !strings.HasSuffix(g.gh.issueComments[0], "<!-- nabu -->") {
+		!strings.Contains(g.gh.issueComments[0], r.PRURL) || !strings.HasSuffix(g.gh.issueComments[0], "<!-- rho -->") {
 		t.Errorf("issue comments = %q", g.gh.issueComments)
 	}
 	g.tick()
@@ -1363,8 +1363,8 @@ func TestAnOpenPRForTheBranchIsTakenOver(t *testing.T) {
 	if len(g.gh.prs) != 0 {
 		t.Errorf("a second PR was opened: %q", g.gh.prs)
 	}
-	if len(g.gh.edits) != 1 || !strings.HasPrefix(g.gh.edits[0], "5|Add a Median function to stats|nabu|") ||
-		!strings.Contains(g.gh.edits[0], "<!-- nabu -->") {
+	if len(g.gh.edits) != 1 || !strings.HasPrefix(g.gh.edits[0], "5|Add a Median function to stats|rho|") ||
+		!strings.Contains(g.gh.edits[0], "<!-- rho -->") {
 		t.Errorf("edits = %q", g.gh.edits)
 	}
 	if r.PR != 5 || r.PRURL != "https://github.com/kyle/x/pull/5" || r.Step != StepDone {
@@ -1385,7 +1385,7 @@ func TestAGoalsRunIsMergedIntoTheGoalBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := &Run{Home: "H1", Workspace: g.d.homes["H1"].workspace, Brief: "Add a Median function to stats", Slug: "median",
-		Branch: "nabu/median", Base: "nabu/goal-stats", Goal: "G1", Worktree: filepath.Join(g.rn.Root, "runner", "worktrees", "median"),
+		Branch: "rho/median", Base: "rho/goal-stats", Goal: "G1", Worktree: filepath.Join(g.rn.Root, "runner", "worktrees", "median"),
 		Step: StepSetup, Started: g.now}
 	g.rn.runs["H1"] = r
 	g.tick()
@@ -1403,10 +1403,10 @@ func TestAGoalsRunIsMergedIntoTheGoalBranch(t *testing.T) {
 	if r.Step != StepDone {
 		t.Fatalf("run ended at %q (%s)\nlog:\n%s", r.Step, r.Why, g.log.String())
 	}
-	if !slices.Equal(g.git.from, []string{"nabu/goal-stats"}) {
+	if !slices.Equal(g.git.from, []string{"rho/goal-stats"}) {
 		t.Errorf("worktree from %q, want the goal branch", g.git.from)
 	}
-	if len(g.gh.prs) != 1 || !strings.HasPrefix(g.gh.prs[0], "nabu/goal-stats|nabu/median|Add a Median function to stats||") {
+	if len(g.gh.prs) != 1 || !strings.HasPrefix(g.gh.prs[0], "rho/goal-stats|rho/median|Add a Median function to stats||") {
 		t.Errorf("pr = %q, want against the goal branch with no label", g.gh.prs)
 	}
 	if !slices.Equal(g.gh.merged, []int{7}) {

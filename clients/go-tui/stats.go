@@ -8,7 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/corporealshift/nabu/daemon/stats"
+	"github.com/corporealshift/rho/daemon/stats"
 )
 
 // statsView is what /stats shows: one session's numbers and the days around it

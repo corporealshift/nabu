@@ -1,4 +1,4 @@
-# nabu github: reviewing pull requests — plan
+# rho github: reviewing pull requests — plan
 
 Spec: `docs/specs/2026-09-28-github-review-design.md`. One branch, `github-review`, one PR.
 Every step leaves `go build ./... && go vet ./... && go test ./...` green and is its own
@@ -23,7 +23,7 @@ it does.
     `Review{Enabled, Pushes, MaxTurns}`. Durations are strings (`"2m"`) parsed with
     `time.ParseDuration`.
   - `Load(root string) (Config, error)` reads `<root>/github/config.json`.
-  - Defaults: `label` `nabu`, `poll` 2m, `quiet` 5m, `max_jobs` 1, `review.enabled` true,
+  - Defaults: `label` `rho`, `poll` 2m, `quiet` 5m, `max_jobs` 1, `review.enabled` true,
     `review.pushes` true, `review.max_turns` 30.
   - A missing file is an error saying where the file should be and what goes in it,
     because the watcher has nothing to do without repos.
@@ -80,8 +80,8 @@ it does.
     - the rest are appended to the body as `path:line — body`;
     - when `ok` is false, the body is `final`;
     - `event` is `COMMENT`, `commit_id` is `sha`, and the body ends with
-      `\n\n<!-- nabu -->`.
-  - `const Marker = "<!-- nabu -->"`.
+      `\n\n<!-- rho -->`.
+  - `const Marker = "<!-- rho -->"`.
 - `docs/specs/2026-09-28-github-review-design.md`: the diff used for splitting is
   `git diff origin/<base>...<sha>`, computed in the worktree before it is removed, rather
   than `gh pr diff`. `gh pr diff` shows the PR's current head, and that may no longer be
@@ -163,7 +163,7 @@ it does.
   - `Run(ctx)` calls `Poll` every `cfg.Poll` until `ctx` is done.
     `RunOnce(ctx)` polls, then keeps polling every 10 s until nothing is running.
 - `clients/github/boundary_test.go` fails if any file in `clients/github` imports
-  `github.com/corporealshift/nabu/daemon/…`.
+  `github.com/corporealshift/rho/daemon/…`.
 
 **Proves it:**
 - `TestWatcher*` in `watcher_test.go`, using in-memory fakes of the three ports and a
@@ -189,19 +189,19 @@ it does.
   SHA.
 - `TestBoundary`.
 
-## 4. `nabu github`
+## 4. `rho github`
 
 **Depends on:** step 3.
 
 **Changes:**
-- `cmd/nabu/github.go`: `cmdGitHub(args, stdout, stderr) int` with `--once`, `--dry-run`
+- `cmd/rho/github.go`: `cmdGitHub(args, stdout, stderr) int` with `--once`, `--dry-run`
   and `--root`.
   - It loads the config, builds the real ports with an `exec`-backed `Runner`, and dials
     through `connect`, so a stopped daemon is started as it is for `run`.
   - It runs until Ctrl-C (`signal.NotifyContext`), or runs `RunOnce` under `--once`.
   - Every job start, finish, failure and post goes to stderr as one line with the repo,
     PR number, SHA and session ID.
-- `cmd/nabu/main.go`: `case "github"` and a usage line.
+- `cmd/rho/main.go`: `case "github"` and a usage line.
 - `ARCHITECTURE.md`: `clients/` in the layout gains `github/`, described as the GitHub
   watcher: it polls, runs sessions, and posts reviews.
 
@@ -217,14 +217,14 @@ it does.
 description.
 
 1. Create a scratch repository on GitHub with one open PR that has a deliberate bug. Add
-   it to `config.json`, run `nabu github --once --dry-run`, and read the printed review.
-2. Run `nabu github --once` on the same repository. Check on GitHub that there is one
+   it to `config.json`, run `rho github --once --dry-run`, and read the printed review.
+2. Run `rho github --once` on the same repository. Check on GitHub that there is one
    `COMMENT` review, that its line comments are on the right lines, and that the marker is
    in the source. Run it again and check that nothing is posted, because the SHA is
    recorded.
 3. Push a commit to the PR, wait out the quiet period, and run again. Check that the
    second review refers to the first review.
-4. Run `nabu github --once --dry-run` against breezeway, and read the printed reviews for
+4. Run `rho github --once --dry-run` against breezeway, and read the printed reviews for
    its open PRs.
 
 ## Not doing in this plan

@@ -1,6 +1,6 @@
 {
   "name": "unknown cursor is an error",
-  "description": "An id not in the log is nabu_cursor_unknown, never a silent empty set.",
+  "description": "An id not in the log is rho_cursor_unknown, never a silent empty set.",
   "input": [
     {
       "id": "01JEVENT000000000000000001",
@@ -132,6 +132,6 @@
     "last_event_id": "01JEVENT000000000000000077"
   },
   "expect": {
-    "error": "nabu_cursor_unknown"
+    "error": "rho_cursor_unknown"
   }
 }
