@@ -6,10 +6,10 @@
 
 ## Problem
 
-Kyle keeps asking Claude to grep `~/.nabu/sessions` for which sessions used
+Kyle keeps asking Claude to grep `~/.rho/sessions` for which sessions used
 `web.search`, `web.fetch` or `claude.ask`, what they asked and what came back. The
-phone shows one session's tool counts (`nabu.session.stats`) and turns and tokens per
-day (`nabu.usage`), but nothing answers "what happened last week, across everything",
+phone shows one session's tool counts (`rho.session.stats`) and turns and tokens per
+day (`rho.usage`), but nothing answers "what happened last week, across everything",
 and nothing shows the calls themselves.
 
 Everything needed is already in the logs: `tool_call` carries the arguments and
@@ -23,7 +23,7 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
   period and many sessions.
   - Filters: period (today, 7 days, 30 days; default 7) and kind (all, interactive,
     unattended). An unattended session is one labelled `unattended`
-    (`protocol.LabelUnattended`): runs' and goals' steps, GitHub jobs, `nabu run`.
+    (`protocol.LabelUnattended`): runs' and goals' steps, GitHub jobs, `rho run`.
     Logs from before that label (2026-10-07), and run and goal homes, which never carry
     it, are known by a `parent`, a `run:` or `goal:` label, or `guard:no-push`.
     (Changed while building: the first draft called this kind `runs` and used the label
@@ -44,7 +44,7 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
 
 ### Methods (daemon)
 
-- **`nabu.stats {days?, kind?}`** → totals over the period:
+- **`rho.stats {days?, kind?}`** → totals over the period:
 
   ```jsonc
   {"days": 7, "kind": "all", "sessions": 23, "turns": 812, "prompts": 40,
@@ -56,7 +56,7 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
    "skipped": 0}
   ```
 
-  - `days` defaults to 7 and is capped at 90, as `nabu.usage` is. The period is whole
+  - `days` defaults to 7 and is capped at 90, as `rho.usage` is. The period is whole
     calendar days in the daemon's time zone, ending today.
   - `kind` is `all` (default), `interactive` or `unattended`. Anything else is
     `invalid_params`.
@@ -65,11 +65,11 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
     `stats.Of`, and the results are added up. The numbers therefore count exactly as
     they do per session.
   - `sessions` per tool is how many sessions called it at least once.
-  - `per_day` is the same series `nabu.usage` returns for the period.
+  - `per_day` is the same series `rho.usage` returns for the period.
   - Archived sessions are included. Their work happened.
   - `skipped` is how many logs could not be read. They are left out rather than failing
     the call, and the count keeps the totals from being silently short.
-- **`nabu.stats.calls {tool, days?, kind?, session_id?, limit?}`** → one tool's calls:
+- **`rho.stats.calls {tool, days?, kind?, session_id?, limit?}`** → one tool's calls:
 
   ```jsonc
   {"calls": [{"session_id": "…", "label": "Room database and DAOs", "at": "…",
@@ -90,10 +90,10 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
     run"; else the first line of its first prompt.
   - `archived` says the session is archived, so the phone offers to open only the ones
     it can.
-- `nabu.usage` and `nabu.session.stats` are unchanged.
+- `rho.usage` and `rho.session.stats` are unchanged.
 - Both methods get a section in `protocol/spec.md` and their names in the JSON schema.
   They get no conformance vector: the vectors cover what every client computes for
-  itself, and like `nabu.session.stats` and `nabu.usage` these are asked of the daemon
+  itself, and like `rho.session.stats` and `rho.usage` these are asked of the daemon
   instead. (Corrected while planning; the first draft said they would get one.)
 
 ## Rejected
@@ -107,11 +107,11 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
 - **The phone fetching events and counting them.** Megabytes over the phone's link, and
   the counting rules written twice.
 - **A stored index.** The log is the state (invariant 1). Scanning a few hundred logs
-  per request is fine at this volume, as `nabu.usage` already shows.
+  per request is fine at this volume, as `rho.usage` already shows.
 - **A generated HTML report.** Not on the phone, and stale as soon as it is written.
 - **For now: jumping to the call inside the transcript.** The transcript only scrolls to
   its end today. Opening the session is enough to start with.
-- **For now: the TUI.** Kyle drives nabu from the phone. The methods are there if the
+- **For now: the TUI.** Kyle drives rho from the phone. The methods are there if the
   TUI wants them later.
 
 ## What proves it works
@@ -128,4 +128,4 @@ Everything needed is already in the logs: `tool_call` carries the arguments and
   `kind` and a missing `tool`, and archived sessions being counted.
 - `go build ./... && go vet ./... && go test ./...`.
 - The app built and installed on Kyle's phone, showing last week's numbers. The
-  `web.search` count is checked against a grep of `~/.nabu/sessions`.
+  `web.search` count is checked against a grep of `~/.rho/sessions`.

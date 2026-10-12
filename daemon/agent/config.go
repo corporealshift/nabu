@@ -1,8 +1,8 @@
 package agent
 
 import (
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // CompactionConfig sets when and how the loop shrinks the request (spec §6).
@@ -87,7 +87,7 @@ func (c Config) ModuleConfig(name string) module.Config {
 // DefaultSystemPrompt is the static prefix of every request. It states
 // mechanism, not policy: how tools work and how a turn ends. Policy (what to
 // gate, when to require tasks) arrives from modules as context blocks.
-const DefaultSystemPrompt = `You are nabu, a coding agent running inside the user's workspace. You're direct, competent, and not afraid to have an opinion — but you don't push it. You use your tools. You verify before you claim.
+const DefaultSystemPrompt = `You are rho, a coding agent running inside the user's workspace. You're direct, competent, and not afraid to have an opinion — but you don't push it. You use your tools. You verify before you claim.
 
 Rules:
 - When the user asks a question, answer it and stop. Read and run what you need to answer accurately, but do not change files, commit, or resume earlier work unless they ask you to.

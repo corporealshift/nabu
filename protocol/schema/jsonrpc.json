@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://nabu.dev/schema/jsonrpc.json",
-  "title": "nabu JSON-RPC 2.0 message",
+  "$id": "https://rho.dev/schema/jsonrpc.json",
+  "title": "rho JSON-RPC 2.0 message",
   "oneOf": [
     { "$ref": "#/$defs/request" },
     { "$ref": "#/$defs/notification" },
@@ -13,38 +13,38 @@
     "method": {
       "type": "string",
       "enum": [
-        "nabu.hello",
-        "nabu.session.list",
-        "nabu.workspace.browse",
-        "nabu.workspace.create_directory",
-        "nabu.session.create",
-        "nabu.session.send_prompt",
-        "nabu.session.events_after",
-        "nabu.session.subscribe",
-        "nabu.session.unsubscribe",
-        "nabu.session.interrupt",
-        "nabu.session.stop",
-        "nabu.session.resume",
-        "nabu.session.state",
-        "nabu.session.set_goal",
-        "nabu.session.clear_goal",
-        "nabu.session.set_option",
-        "nabu.session.update_tasks",
-        "nabu.session.compact",
-        "nabu.session.archive",
-        "nabu.session.restore",
-        "nabu.session.stats",
-        "nabu.usage",
-        "nabu.stats",
-        "nabu.stats.calls",
-        "nabu.device.register",
-        "nabu.device.unregister",
-        "nabu.session.set_status",
-        "nabu.session.event",
-        "nabu.session.delta",
-        "nabu.session.thinking",
-        "nabu.rpc.permission.request",
-        "nabu.rpc.ui.ask"
+        "rho.hello",
+        "rho.session.list",
+        "rho.workspace.browse",
+        "rho.workspace.create_directory",
+        "rho.session.create",
+        "rho.session.send_prompt",
+        "rho.session.events_after",
+        "rho.session.subscribe",
+        "rho.session.unsubscribe",
+        "rho.session.interrupt",
+        "rho.session.stop",
+        "rho.session.resume",
+        "rho.session.state",
+        "rho.session.set_goal",
+        "rho.session.clear_goal",
+        "rho.session.set_option",
+        "rho.session.update_tasks",
+        "rho.session.compact",
+        "rho.session.archive",
+        "rho.session.restore",
+        "rho.session.stats",
+        "rho.usage",
+        "rho.stats",
+        "rho.stats.calls",
+        "rho.device.register",
+        "rho.device.unregister",
+        "rho.session.set_status",
+        "rho.session.event",
+        "rho.session.delta",
+        "rho.session.thinking",
+        "rho.rpc.permission.request",
+        "rho.rpc.ui.ask"
       ]
     },
     "request": {
@@ -63,7 +63,7 @@
       "not": { "required": ["id"] },
       "properties": {
         "jsonrpc": { "const": "2.0" },
-        "method": { "type": "string", "enum": ["nabu.session.event", "nabu.session.delta", "nabu.session.thinking"] },
+        "method": { "type": "string", "enum": ["rho.session.event", "rho.session.delta", "rho.session.thinking"] },
         "params": { "type": "object" }
       }
     },
@@ -98,9 +98,9 @@
                   "type": "string",
                   "enum": [
                     "parse_error", "invalid_request", "method_not_found", "invalid_params", "internal_error",
-                    "nabu_session_not_found", "nabu_invalid_transition", "nabu_permission_denied",
-                    "nabu_already_resolved", "nabu_cursor_unknown", "nabu_protocol_mismatch",
-                    "nabu_unauthorized", "nabu_workspace_untrusted"
+                    "rho_session_not_found", "rho_invalid_transition", "rho_permission_denied",
+                    "rho_already_resolved", "rho_cursor_unknown", "rho_protocol_mismatch",
+                    "rho_unauthorized", "rho_workspace_untrusted"
                   ]
                 }
               }

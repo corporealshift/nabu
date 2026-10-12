@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/clients/github"
+	"github.com/corporealshift/rho/clients/github"
 )
 
 // GitCLI is Git over the git program.
@@ -339,7 +339,7 @@ func (g GHCLI) EditPR(ctx context.Context, dir string, n int, title, body, label
 // Making it is harmless when it does, and gh says so, which is not a failure
 // worth stopping on.
 func (g GHCLI) ensureLabel(ctx context.Context, dir, label string) {
-	_, _ = g.Run(ctx, dir, nil, "gh", "label", "create", label, "--color", "5319e7", "--description", "nabu works on this")
+	_, _ = g.Run(ctx, dir, nil, "gh", "label", "create", label, "--color", "5319e7", "--description", "rho works on this")
 }
 
 func (g GHCLI) MergePR(ctx context.Context, dir string, n int) error {

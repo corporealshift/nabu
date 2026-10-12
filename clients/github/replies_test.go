@@ -9,7 +9,7 @@ import (
 var (
 	t0       = time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
 	root     = Comment{Kind: CommentLine, ID: 10, Author: "kyle", Body: "Why a map here?", Path: "a.go", Line: 4, DiffHunk: "@@ -1,3 +1,4 @@\n+m := map[string]int{}", Created: t0, URL: "u10"}
-	nabuAns  = Comment{Kind: CommentLine, ID: 11, Author: "kyle", Body: Signature + ": For lookups.\n\n" + Marker, InReplyTo: 10, Created: t0.Add(time.Minute)}
+	rhoAns   = Comment{Kind: CommentLine, ID: 11, Author: "kyle", Body: Signature + ": For lookups.\n\n" + Marker, InReplyTo: 10, Created: t0.Add(time.Minute)}
 	followUp = Comment{Kind: CommentLine, ID: 12, Author: "kyle", Body: "Use a slice, it's three items.", InReplyTo: 10, Created: t0.Add(2 * time.Minute), URL: "u12"}
 	fresh    = Comment{Kind: CommentLine, ID: 20, Author: "kyle", Body: "Rename to parseCursor.", Path: "b.go", Line: 9, Created: t0.Add(3 * time.Minute), URL: "u20"}
 	rev      = Comment{Kind: CommentReview, ID: 5, Author: "kyle", Body: "Mostly good.\nTwo things.", Created: t0.Add(4 * time.Minute), URL: "u5"}
@@ -18,7 +18,7 @@ var (
 
 func TestCommentsPrompt(t *testing.T) {
 	pr := PR{Number: 7, Title: "Cursor", HeadSHA: "abc", HeadRef: "feat", BaseRef: "main"}
-	all := []Comment{root, nabuAns, followUp, fresh, rev, conv}
+	all := []Comment{root, rhoAns, followUp, fresh, rev, conv}
 	due := []Comment{followUp, fresh, rev, conv}
 	p := CommentsPrompt("kyle/bw", pr, due, all)
 
@@ -26,7 +26,7 @@ func TestCommentsPrompt(t *testing.T) {
 		`"Cursor"`, "branch feat",
 		"### a.go:4", "+m := map[string]int{}",
 		"**earlier comment, id 10, by kyle:**\n\nWhy a map here?",
-		"**earlier comment, id 11, by nabu:**", // nabu's own reply is shown, attributed to nabu
+		"**earlier comment, id 11, by rho:**", // rho's own reply is shown, attributed to rho
 		"**new comment, id 12, by kyle:**",
 		"### b.go:9", "**new comment, id 20, by kyle:**",
 		"## Comments on the whole PR", "**new review, id 5, by kyle:**", "**new comment, id 900, by kyle:**",

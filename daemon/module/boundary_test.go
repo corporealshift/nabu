@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-const repoModule = "github.com/corporealshift/nabu"
+const repoModule = "github.com/corporealshift/rho"
 
 // allowedRepoImports are the only in-repo packages a module may import.
 var allowedRepoImports = map[string]bool{

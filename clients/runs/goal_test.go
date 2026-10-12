@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func fence(body string) string { return "Here it is.\n```json\n" + body + "\n```\n" }
@@ -75,7 +75,7 @@ func TestParseCheck(t *testing.T) {
 // run failed and its second dropped.
 func aGoal() Goal {
 	return Goal{
-		Home: "G1", Slug: "offline-sync-g1", Branch: "nabu/goal-offline-sync-g1", Base: "main",
+		Home: "G1", Slug: "offline-sync-g1", Branch: "rho/goal-offline-sync-g1", Base: "main",
 		Text: "Add offline sync", DoneWhen: []string{"edits made offline reach the daemon"},
 		Round: 2, RoundsFrom: 1, Failures: 1,
 		Briefs: []GoalBrief{
@@ -101,7 +101,7 @@ func TestCheckPrompt(t *testing.T) {
 	g.CIFailure = "### build\n\ngofmt found sync.go"
 	p := CheckPrompt(g, []string{"sync.go"})
 	for _, s := range []string{
-		"Add offline sync", "edits made offline reach the daemon", "nabu/goal-offline-sync-g1", "- sync.go",
+		"Add offline sync", "edits made offline reach the daemon", "rho/goal-offline-sync-g1", "- sync.go",
 		"### Round 1", "**Queue**: done, merged from https://github.com/kyle/x/pull/3", "review note: consider batching",
 		"The check said it was not met: nothing replays the queue",
 		"**Replay**: the run failed at its fix step: verify.sh still fails after 10 fixes",
@@ -148,7 +148,7 @@ func TestRoadmapAndPRBody(t *testing.T) {
 		}
 	}
 	body := GoalPRBody(g)
-	for _, s := range []string{"worked as 2 runs", "Add offline sync", "it all syncs", "pull/3", ".nabu/goals/offline-sync-g1/roadmap.md", "<!-- nabu -->"} {
+	for _, s := range []string{"worked as 2 runs", "Add offline sync", "it all syncs", "pull/3", ".rho/goals/offline-sync-g1/roadmap.md", "<!-- rho -->"} {
 		if !strings.Contains(body, s) {
 			t.Errorf("body lacks %q:\n%s", s, body)
 		}

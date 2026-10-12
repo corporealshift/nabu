@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 var t0 = time.Date(2026, 9, 20, 10, 0, 0, 0, time.UTC)

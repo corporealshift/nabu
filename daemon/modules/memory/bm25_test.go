@@ -11,7 +11,7 @@ func corpus() []Memory {
 			Body: "Launch the Rancher daemon before running compose. Port 8080 is taken."},
 		{Name: "farthing-shared-checkout", Description: "the farthing checkout is shared",
 			Body: "Other terminals use the same working tree, so re-check the branch before you commit."},
-		{Name: "nabu-project", Description: "the owner's Go agent harness",
+		{Name: "rho-project", Description: "the owner's Go agent harness",
 			Body: "Read the spec before changing anything. The microkernel boundary is a constraint."},
 	}
 }
@@ -27,7 +27,7 @@ func TestNameMatchOutranksBodyMatch(t *testing.T) {
 	}
 
 	got = Rank("microkernel", corpus(), 5)
-	if len(got) != 1 || got[0].Name != "nabu-project" {
+	if len(got) != 1 || got[0].Name != "rho-project" {
 		t.Fatalf("a body-only term did not match: %+v", got)
 	}
 }

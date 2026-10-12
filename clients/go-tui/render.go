@@ -7,8 +7,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/corporealshift/nabu/daemon/modules/artifact"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/modules/artifact"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Styles. Colours are the terminal's own 0-15 palette, so the TUI inherits

@@ -78,7 +78,7 @@ func TestRoundTripPreservesUnknownKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
-	// node_type is Claude Code's and must survive nabu rewriting the file.
+	// node_type is Claude Code's and must survive rho rewriting the file.
 	if !strings.Contains(string(raw), "node_type: memory") {
 		t.Errorf("unknown key was dropped:\n%s", raw)
 	}
@@ -254,8 +254,8 @@ func TestSlug(t *testing.T) {
 // Neither may stop the block being recognised as nested.
 func TestParseMetadataWithTrailingSpace(t *testing.T) {
 	const content = "---\n" +
-		"name: nabu-project\n" +
-		"description: \"what nabu is\"\n" +
+		"name: rho-project\n" +
+		"description: \"what rho is\"\n" +
 		"metadata: \n" +
 		"  node_type: memory\n" +
 		"  type: project\n" +

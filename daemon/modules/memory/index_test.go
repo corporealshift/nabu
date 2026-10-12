@@ -14,7 +14,7 @@ func sample(name, desc, body string) Memory {
 func TestFormatIndexOneLinePerMemory(t *testing.T) {
 	mems := []Memory{
 		sample("rancher-desktop-docker", "Rancher Desktop, not Docker Desktop; 8080 taken by lopress", "launch the daemon before compose"),
-		sample("nabu-project", "nabu is the owner's Go agent harness", "read the spec first"),
+		sample("rho-project", "rho is the owner's Go agent harness", "read the spec first"),
 	}
 	got := FormatIndex(mems)
 
@@ -53,7 +53,7 @@ func TestFormatIndexEmpty(t *testing.T) {
 }
 
 func TestIndexMarksImported(t *testing.T) {
-	m := sample("from-claude", "a fact nabu imported", "x")
+	m := sample("from-claude", "a fact rho imported", "x")
 	m.Imported = true
 	got := FormatIndex([]Memory{m})
 	if !strings.Contains(strings.ToLower(got), "imported") {

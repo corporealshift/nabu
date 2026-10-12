@@ -14,7 +14,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // DaemonVersion is reported to clients in the hello handshake.
@@ -51,7 +51,7 @@ type helloRequest struct {
 	Params  map[string]any `json:"params,omitempty"`
 }
 
-// helloResponse is the daemon's reply to nabu.hello.
+// helloResponse is the daemon's reply to rho.hello.
 type helloResponse struct {
 	JSONRPC string         `json:"jsonrpc"`
 	ID      any            `json:"id"`
@@ -154,7 +154,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// enforceHello requires the first message to be nabu.hello with a compatible
+// enforceHello requires the first message to be rho.hello with a compatible
 // protocol version. Only the MAJOR component must match; a differing MINOR is
 // accepted because clients ignore unknown fields.
 func enforceHello(ctx context.Context, c *websocket.Conn) error {
@@ -175,8 +175,8 @@ func enforceHello(ctx context.Context, c *websocket.Conn) error {
 		return fmt.Errorf("%s", msg)
 	}
 
-	if req.Method != "nabu.hello" {
-		return refuse("first message must be nabu.hello, got " + req.Method)
+	if req.Method != "rho.hello" {
+		return refuse("first message must be rho.hello, got " + req.Method)
 	}
 
 	clientVer, _ := req.Params["protocol_version"].(string)

@@ -1,4 +1,4 @@
-// Package runs is the runner behind `nabu runner`: it takes a brief to a green
+// Package runs is the runner behind `rho runner`: it takes a brief to a green
 // pull request through a fixed sequence of named steps, starting one short
 // session for each step that needs the model, doing the mechanical steps
 // itself, and asking Claude at three gates
@@ -213,7 +213,7 @@ func (rec Record) cut() Record {
 
 // Dir is where the run files are committed on the branch, relative to the
 // worktree.
-func (r Run) Dir() string { return filepath.ToSlash(filepath.Join(".nabu", "runs", r.Slug)) }
+func (r Run) Dir() string { return filepath.ToSlash(filepath.Join(".rho", "runs", r.Slug)) }
 
 // File is one of the run's files, relative to the worktree.
 func (r Run) File(name string) string { return r.Dir() + "/" + name }

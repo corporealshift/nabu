@@ -1,0 +1,146 @@
+package com.rho.client.net
+
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+/** A stand-in daemon: answers any call, and pushes notifications on demand. */
+class FakeDaemon {
+    val server = MockWebServer()
+    val received = ConcurrentLinkedQueue<String>()
+    @Volatile var socket: WebSocket? = null
+    val opened = CountDownLatch(1)
+
+    /** Set to refuse the handshake, for the failure path. */
+    @Volatile var refuseHandshake = false
+
+    /**
+     * What a compaction reports having done. The daemon falls back to clearing
+     * tool results when the summariser fails, and says so rather than claiming
+     * the summary it was asked for (spec 7.15).
+     */
+    @Volatile var compactMode = "summarize"
+
+    /** Prompts accepted, so a returned event id is unique per send. */
+    val sent = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
+     * Sessions whose prompts are refused, and the code to refuse with. This
+     * is how a real daemon answers a prompt aimed at a session that has
+     * ended: an error the same request will always get.
+     */
+    val refuseSession = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    /**
+     * Methods this daemon turns down, and what it says, keyed by method name.
+     * A refusal is half of several contracts — compacting a running session,
+     * for one — and a fake that only ever succeeds cannot test them.
+     */
+    val refuseMethod = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, String>>()
+
+    /** What rho.session.list answers: session ids, each in C:/proj and idle. */
+    @Volatile var listed: List<String> = emptyList()
+
+    /** Canned results by method name, as raw JSON, for calls whose answer a test reads. */
+    val results = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** Held open to prove a notification arrives while a call is in flight. */
+    @Volatile var holdCall: CountDownLatch? = null
+
+    fun start() {
+        val listener = object : WebSocketListener() {
+            override fun onOpen(ws: WebSocket, response: Response) {
+                socket = ws
+                opened.countDown()
+            }
+
+            override fun onMessage(ws: WebSocket, text: String) {
+                received.add(text)
+                val msg = com.rho.client.protocol.RhoJson
+                    .decodeFromString(Rpc.serializer(), text)
+                val id = msg.id ?: return
+                if (msg.method == "rho.hello" && refuseHandshake) {
+                    ws.send(errorFor(id, "protocol version mismatch"))
+                    return
+                }
+                if (msg.method == "rho.session.send_prompt") {
+                    val session = msg.params?.let {
+                        runCatching {
+                            it.jsonObject["session_id"]?.jsonPrimitive?.content
+                        }.getOrNull()
+                    }
+                    refuseSession[session]?.let { code ->
+                        ws.send(errorFor(id, "session is completed; refused", code))
+                        return
+                    }
+                }
+                refuseMethod[msg.method]?.let { (code, text) ->
+                    ws.send(errorFor(id, text, code))
+                    return
+                }
+                holdCall?.let {
+                    // Answer only when the test says so.
+                    Thread {
+                        it.await(10, TimeUnit.SECONDS)
+                        ws.send(resultFor(id, msg.method ?: ""))
+                    }.start()
+                    return
+                }
+                ws.send(resultFor(id, msg.method ?: ""))
+            }
+        }
+
+        // A dispatcher rather than one enqueued response, so every connection is
+        // upgraded and not just the first. Reconnecting is what the outbox does
+        // after a failure, and with a single enqueued upgrade the second connect
+        // waits forever for a handshake nothing will answer — which is a hung
+        // test suite, not a failing one.
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                MockResponse().withWebSocketUpgrade(listener)
+        }
+        server.start()
+    }
+
+    fun url(): String = server.url("/").toString()
+
+    fun push(text: String) {
+        requireNotNull(socket) { "no client connected" }.send(text)
+    }
+
+    fun stop() {
+        socket?.close(1000, null)
+        socket = null
+        server.shutdown()
+    }
+
+    private fun resultFor(id: kotlinx.serialization.json.JsonElement, method: String) = results[method]
+        ?.let { """{"jsonrpc":"2.0","id":${id},"result":$it}""" } ?: when (method) {
+        "rho.session.send_prompt" ->
+            """{"jsonrpc":"2.0","id":${id},"result":{"event_id":"01SENT${sent.incrementAndGet()}"}}"""
+        "rho.session.create" ->
+            """{"jsonrpc":"2.0","id":${id},"result":{"session_id":"01NEWSESSION"}}"""
+        "rho.session.compact" ->
+            """{"jsonrpc":"2.0","id":${id},"result":{"event_id":"01COMPACTED","mode":"$compactMode"}}"""
+        "rho.session.list" -> {
+            val sessions = listed.joinToString(",") { """{"session_id":"$it","workspace":"C:/proj","state":"idle"}""" }
+            """{"jsonrpc":"2.0","id":${id},"result":{"sessions":[$sessions],"ok":true,"method":"$method"}}"""
+        }
+        else -> """{"jsonrpc":"2.0","id":${id},"result":{"ok":true,"method":"$method"}}"""
+    }
+
+    private fun errorFor(
+        id: kotlinx.serialization.json.JsonElement,
+        message: String,
+        code: Int = -32000,
+    ) = """{"jsonrpc":"2.0","id":${id},"error":{"code":$code,"message":"$message"}}"""
+}

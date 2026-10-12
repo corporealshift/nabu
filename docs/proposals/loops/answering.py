@@ -1,6 +1,6 @@
 """Thoughts that say "the user is right", tallied by what came just before them.
 
-Usage: python answering.py   (reads ~/.nabu/sessions)
+Usage: python answering.py   (reads ~/.rho/sessions)
 """
 import collections
 import glob
@@ -10,7 +10,7 @@ import re
 
 pat = re.compile(r"(you're right|user is right|kyle is right|the user is pointing|user called me)", re.I)
 c = collections.Counter()
-for f in glob.glob(os.path.expanduser('~/.nabu/sessions/*.jsonl')):
+for f in glob.glob(os.path.expanduser('~/.rho/sessions/*.jsonl')):
     evs = [json.loads(l) for l in open(f, encoding='utf-8') if l.strip()]
     last = None
     for e in evs:

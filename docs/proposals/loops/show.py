@@ -1,7 +1,7 @@
 import json, os, sys
 sid, lo, hi = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 width = int(sys.argv[4]) if len(sys.argv) > 4 else 260
-evs = [json.loads(l) for l in open(os.path.expanduser(f'~/.nabu/sessions/{sid}.jsonl'), encoding='utf-8') if l.strip()]
+evs = [json.loads(l) for l in open(os.path.expanduser(f'~/.rho/sessions/{sid}.jsonl'), encoding='utf-8') if l.strip()]
 for i in range(lo, min(hi, len(evs))):
     e = evs[i]; d = e['data']; t = e['type']
     ts = e['timestamp'][11:19]

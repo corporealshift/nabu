@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // maxRecall is how many memories one recall returns. A few hundred lines is
@@ -99,7 +99,7 @@ func (m *Module) runRecall(_ context.Context, s module.Session, args json.RawMes
 			fmt.Fprintf(&b, "type: %s\n", hit.Type)
 		}
 		if hit.Imported {
-			b.WriteString("imported: yes (saving this name writes a nabu copy instead)\n")
+			b.WriteString("imported: yes (saving this name writes a rho copy instead)\n")
 		}
 		if hit.Description != "" {
 			fmt.Fprintf(&b, "description: %s\n", hit.Description)
@@ -173,7 +173,7 @@ func (m *Module) runForget(_ context.Context, s module.Session, args json.RawMes
 			return fmt.Sprintf("Forgot %s memory %q.", store.scope, Slug(name)), nil
 		}
 	}
-	return "", fmt.Errorf("memory.forget: no memory named %q that nabu can delete "+
+	return "", fmt.Errorf("memory.forget: no memory named %q that rho can delete "+
 		"(imported memories belong to another tool; save over the name instead)", name)
 }
 

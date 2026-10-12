@@ -17,7 +17,7 @@ const maxAsked = 8000
 func Answered(from, to Marks, all []Comment) []Comment {
 	var out []Comment
 	for _, c := range all {
-		if fromNabu(c) || strings.TrimSpace(c.Body) == "" {
+		if fromRho(c) || strings.TrimSpace(c.Body) == "" {
 			continue
 		}
 		if c.ID > from.Of(c.Kind) && c.ID <= to.Of(c.Kind) {
@@ -29,7 +29,7 @@ func Answered(from, to Marks, all []Comment) []Comment {
 }
 
 // ReviewPrompt is the one message a review session gets. prev is the review
-// nabu last posted on this PR, if any, so a later review says what is new
+// rho last posted on this PR, if any, so a later review says what is new
 // rather than repeating itself. asked is the comments answered since prev,
 // so the review can check the new commits against what they asked for.
 func ReviewPrompt(repo string, pr PR, prev *Reviewed, asked []Comment) string {
@@ -52,7 +52,7 @@ func ReviewPrompt(repo string, pr PR, prev *Reviewed, asked []Comment) string {
 		fmt.Fprintf(&b, "What changed since is `git diff %s..%s`. Say what is new, and what the new commits did or did not fix. Do not repeat points that were dealt with.\n\n", prev.SHA, pr.HeadSHA)
 	}
 	if len(asked) > 0 {
-		b.WriteString("Since then, nabu answered these comments on the PR, and the new commits are its answer:\n\n")
+		b.WriteString("Since then, rho answered these comments on the PR, and the new commits are its answer:\n\n")
 		n := 0
 		for _, c := range asked {
 			text := describeAsked(c)

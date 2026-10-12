@@ -12,7 +12,7 @@ func results(runs ...Run) Results {
 		Started: "2026-09-16T23:00:00Z",
 		Repeat:  1,
 		Judge:   "claude/sonnet",
-		Harness: []string{"nabu", "pi", "claude"},
+		Harness: []string{"rho", "pi", "claude"},
 		Runs:    runs,
 	}
 	r.Suspects = suspectTasks(r.Runs, "claude")
@@ -63,12 +63,12 @@ func fail(task, harness string) Run {
 func TestReportShowsEveryHarnessPerTask(t *testing.T) {
 	var buf bytes.Buffer
 	Report(&buf, results(
-		pass("alpha", "nabu", 30), pass("alpha", "pi", 20), pass("alpha", "claude", 5),
-		fail("beta", "nabu"), pass("beta", "pi", 25), pass("beta", "claude", 6),
+		pass("alpha", "rho", 30), pass("alpha", "pi", 20), pass("alpha", "claude", 5),
+		fail("beta", "rho"), pass("beta", "pi", 25), pass("beta", "claude", 6),
 	))
 	out := buf.String()
 
-	for _, want := range []string{"alpha", "beta", "nabu", "pi", "claude", "PASS RATE"} {
+	for _, want := range []string{"alpha", "beta", "rho", "pi", "claude", "PASS RATE"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the report never mentions %q:\n%s", want, out)
 		}
@@ -79,15 +79,15 @@ func TestReportShowsEveryHarnessPerTask(t *testing.T) {
 func TestSuspectTasksAreExcludedFromTheRate(t *testing.T) {
 	var buf bytes.Buffer
 	Report(&buf, results(
-		pass("good", "nabu", 10), pass("good", "claude", 5),
-		fail("broken", "nabu"), fail("broken", "claude"),
+		pass("good", "rho", 10), pass("good", "claude", 5),
+		fail("broken", "rho"), fail("broken", "claude"),
 	))
 	out := buf.String()
 
 	if !strings.Contains(out, "suspect") {
 		t.Errorf("a task the reference failed should be called out:\n%s", out)
 	}
-	// nabu did one real task out of one; the broken one is not counted.
+	// rho did one real task out of one; the broken one is not counted.
 	if !strings.Contains(out, "1/1") {
 		t.Errorf("the pass rate should exclude the suspect task:\n%s", out)
 	}
@@ -96,7 +96,7 @@ func TestSuspectTasksAreExcludedFromTheRate(t *testing.T) {
 func TestSelfJudgedCraftIsLabelled(t *testing.T) {
 	run := pass("alpha", "claude", 5)
 	run.Craft = Craft{Scored: true, Minimal: 4, Tested: 4, Focused: 4, SelfJudged: true}
-	other := pass("alpha", "nabu", 30)
+	other := pass("alpha", "rho", 30)
 	other.Craft = Craft{Scored: true, Minimal: 3, Tested: 3, Focused: 3}
 
 	var buf bytes.Buffer
@@ -113,7 +113,7 @@ func TestProblemsAreNamed(t *testing.T) {
 	var buf bytes.Buffer
 	Report(&buf, results(
 		Run{Task: "alpha", Harness: "pi", Outcome: TimedOut},
-		Run{Task: "beta", Harness: "nabu", Outcome: Violated, Broke: []string{"a_test.go"}},
+		Run{Task: "beta", Harness: "rho", Outcome: Violated, Broke: []string{"a_test.go"}},
 		Run{Task: "alpha", Harness: "claude", Outcome: Passed},
 		Run{Task: "beta", Harness: "claude", Outcome: Passed},
 	))
@@ -125,14 +125,14 @@ func TestProblemsAreNamed(t *testing.T) {
 }
 
 func TestCompareShowsMovement(t *testing.T) {
-	old := results(fail("alpha", "nabu"), pass("alpha", "claude", 5))
-	now := results(pass("alpha", "nabu", 30), pass("alpha", "claude", 5))
+	old := results(fail("alpha", "rho"), pass("alpha", "claude", 5))
+	now := results(pass("alpha", "rho", 30), pass("alpha", "claude", 5))
 
 	var buf bytes.Buffer
 	Compare(&buf, old, now)
 	out := buf.String()
 
-	if !strings.Contains(out, "nabu · alpha") {
+	if !strings.Contains(out, "rho · alpha") {
 		t.Errorf("the moved row is missing:\n%s", out)
 	}
 	if !strings.Contains(out, "better") {
@@ -141,7 +141,7 @@ func TestCompareShowsMovement(t *testing.T) {
 }
 
 func TestCompareSaysWhenNothingMoved(t *testing.T) {
-	same := results(pass("alpha", "nabu", 30), pass("alpha", "claude", 5))
+	same := results(pass("alpha", "rho", 30), pass("alpha", "claude", 5))
 
 	var buf bytes.Buffer
 	Compare(&buf, same, same)
@@ -153,9 +153,9 @@ func TestCompareSaysWhenNothingMoved(t *testing.T) {
 
 // Comparing across a model change compares stacks, not harnesses.
 func TestCompareWarnsWhenTheModelsChanged(t *testing.T) {
-	old := results(pass("alpha", "nabu", 30))
+	old := results(pass("alpha", "rho", 30))
 	old.Models = Models{Local: "qwen3.6-35b", Claude: "sonnet"}
-	now := results(pass("alpha", "nabu", 30))
+	now := results(pass("alpha", "rho", 30))
 	now.Models = Models{Local: "qwen4-70b", Claude: "sonnet"}
 
 	var buf bytes.Buffer
@@ -168,28 +168,28 @@ func TestCompareWarnsWhenTheModelsChanged(t *testing.T) {
 
 func TestTallyAggregatesRepeats(t *testing.T) {
 	r := results(
-		pass("alpha", "nabu", 10), fail("alpha", "nabu"), pass("alpha", "nabu", 30),
+		pass("alpha", "rho", 10), fail("alpha", "rho"), pass("alpha", "rho", 30),
 		pass("alpha", "claude", 5),
 	)
 
-	var nabu Tally
+	var rho Tally
 	for _, t := range r.Tally() {
-		if t.Harness == "nabu" {
-			nabu = t
+		if t.Harness == "rho" {
+			rho = t
 		}
 	}
 
-	if nabu.Attempts != 3 || nabu.Passed != 2 {
-		t.Errorf("tally = %d/%d, want 2/3", nabu.Passed, nabu.Attempts)
+	if rho.Attempts != 3 || rho.Passed != 2 {
+		t.Errorf("tally = %d/%d, want 2/3", rho.Passed, rho.Attempts)
 	}
-	if nabu.Median != 10*time.Second {
-		t.Errorf("median = %v, want the middle of 0s, 10s, 30s", nabu.Median)
+	if rho.Median != 10*time.Second {
+		t.Errorf("median = %v, want the middle of 0s, 10s, 30s", rho.Median)
 	}
 }
 
 func TestSaveAndLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	want := results(pass("alpha", "nabu", 30))
+	want := results(pass("alpha", "rho", 30))
 
 	path, err := want.Save(dir)
 	if err != nil {

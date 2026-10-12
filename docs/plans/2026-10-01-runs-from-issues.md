@@ -78,9 +78,9 @@ branch is rebased onto `main` before it merges.
 
 ## 3. Checking it for real
 
-With `<root>/github/config.json` pointing at the scratch repository and `nabu runner
+With `<root>/github/config.json` pointing at the scratch repository and `rho runner
 --once`:
-1. Open an issue labeled `nabu` asking for a small function.
+1. Open an issue labeled `rho` asking for a small function.
 2. Check that the home is created, the run goes to an open PR whose body starts
    `Closes #n`, CI is watched, and the issue gets one comment linking the PR.
 

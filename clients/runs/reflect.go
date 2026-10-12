@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // The digest's bounds. The whole of it is what one local session can read
@@ -135,11 +135,11 @@ func askSection(r Run, logs map[string][]protocol.Event, titles map[int]string) 
 					Prompt string `json:"prompt"`
 				}
 				_ = json.Unmarshal(c.Arguments, &args)
-				// nabu's own ask is the same long framing every time, and the
+				// rho's own ask is the same long framing every time, and the
 				// heading says why it asked; the model's question is its own.
 				who, question := "the model asked", cutHead(strings.Join(strings.Fields(args.Prompt), " "), maxAskQuestion)
 				if strings.HasPrefix(c.Source, "module:") {
-					who, question = "nabu asked for the model", ""
+					who, question = "rho asked for the model", ""
 				}
 				byCall[c.CallID] = len(asks)
 				asks = append(asks, ask{

@@ -8,7 +8,7 @@ line).
 
 ## Problem
 
-nabu has no good way for a run's session to say "I can't do this as planned". When a
+rho has no good way for a run's session to say "I can't do this as planned". When a
 task cannot be done as written, the local model burns turns going round it: rewriting
 the same file, re-running the same failing test. The fix session can already say the
 check is wrong (`verify-revision.md`), but nothing lets a work session say the plan or
@@ -26,7 +26,7 @@ ended done or failed, as now.
 
 - The work, fix and ci-fix prompts gain the paragraph fix sessions already have for
   `verify.sh`: if you are sure the plan, or this task, cannot be done as it is written,
-  write `.nabu/runs/<slug>/replan-request.md` saying what you tried, what makes it
+  write `.rho/runs/<slug>/replan-request.md` saying what you tried, what makes it
   impossible, and what is true instead; commit it, and finish.
 - Each of those steps' session goals gains "or `replan-request.md` explains why the plan
   cannot work". Without it the goal judge would refuse the finish, and the session would
@@ -38,7 +38,7 @@ ended done or failed, as now.
     session, with the advice in its prompt, as a refused revision's advice reaches the
     next fix.
   - **`REPLAN`**, then the finding: what cannot be done as planned, and what is true
-    instead. The runner appends it to `.nabu/runs/<slug>/findings.md`, removes the
+    instead. The runner appends it to `.rho/runs/<slug>/findings.md`, removes the
     request, and goes to `plan`.
 
 ### The automatic ask decides it

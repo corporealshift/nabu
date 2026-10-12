@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // gitTimeout bounds every git call. A wedged git must not hold a session open.
@@ -31,7 +31,7 @@ func (m *Module) initGit() error {
 		return err
 	}
 
-	// Leave an existing work tree alone rather than reinitialise state nabu
+	// Leave an existing work tree alone rather than reinitialise state rho
 	// does not own.
 	if out, err := m.git("rev-parse", "--is-inside-work-tree"); err == nil &&
 		strings.TrimSpace(out) == "true" {
@@ -43,13 +43,13 @@ func (m *Module) initGit() error {
 		return fmt.Errorf("cannot make %s a repository: %w", m.Root, err)
 	}
 	// Without this a machine with no global identity fails every commit. The
-	// identity is local to nabu's own repository.
+	// identity is local to rho's own repository.
 	if out, err := m.git("config", "user.email"); err != nil || strings.TrimSpace(out) == "" {
-		if _, err := m.git("config", "user.email", "nabu@localhost"); err != nil {
+		if _, err := m.git("config", "user.email", "rho@localhost"); err != nil {
 			m.NoGit = true
 			return err
 		}
-		if _, err := m.git("config", "user.name", "nabu"); err != nil {
+		if _, err := m.git("config", "user.name", "rho"); err != nil {
 			m.NoGit = true
 			return err
 		}

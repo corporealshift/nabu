@@ -1,4 +1,4 @@
-# Asking Claude — a second opinion nabu can fetch for itself
+# Asking Claude — a second opinion rho can fetch for itself
 
 **Date:** 2026-09-19
 **Author:** Kyle (corporealshift), with Claude
@@ -6,10 +6,10 @@
 
 ## 1. Purpose
 
-Let nabu get a review, or an answer to a hard question, from Claude — without the owner
+Let rho get a review, or an answer to a hard question, from Claude — without the owner
 carrying the message.
 
-Today the loop is: nabu opens a PR, the owner asks Claude to review it, the owner relays
+Today the loop is: rho opens a PR, the owner asks Claude to review it, the owner relays
 the answer back. That works and has produced real findings, but it needs a person in the
 middle for every round trip.
 
@@ -42,7 +42,7 @@ claude.ask {prompt, timeout_seconds?} → Claude's reply
 ```
 
 It runs `claude -p "<prompt>"` with the session's workspace as the working directory, so
-Claude sees the repository nabu is working in.
+Claude sees the repository rho is working in.
 
 ### One tool, not two
 
@@ -62,7 +62,7 @@ worth having: that a second party looked and did not touch it.
 **Verified, not assumed.** Asked to create a file under these flags, Claude reported the
 write blocked and no file appeared.
 
-The cost is that Claude cannot run the tests. That is acceptable because **nabu can**: it
+The cost is that Claude cannot run the tests. That is acceptable because **rho can**: it
 runs them and puts the output in the prompt. Claude does not need a shell to know a test
 failed; it needs the failure text and the code that produced it.
 
@@ -71,9 +71,9 @@ failed; it needs the failure text and the code that produced it.
 ## 5. What it deliberately is not
 
 - **Not a conversation.** One prompt, one reply, no session resumed. Holding a Claude
-  session across nabu turns would mean a second conversation living inside a session, and
+  session across rho turns would mean a second conversation living inside a session, and
   nothing in the log model wants that.
-- **Not automatic.** It does not implement `BeforeStop`. Every call is one nabu chose to
+- **Not automatic.** It does not implement `BeforeStop`. Every call is one rho chose to
   make. A gate firing on every stop attempt would spend the owner's quota invisibly.
 - **Not a way to delegate work.** It answers; it does not change the workspace.
 
@@ -101,7 +101,7 @@ number now — but it is a real exposure, not an oversight.
 
 ## 8. Rejected alternatives
 
-**A skill instead of a tool.** nabu already has `bash`; a skill saying "run `claude -p …`"
+**A skill instead of a tool.** rho already has `bash`; a skill saying "run `claude -p …`"
 would cost no daemon code at all. Rejected because a shell call has no bounded timeout for
 this specific thing, no output cap, no structured failure kind, and `guard` cannot tier it
 apart from any other command. A tool is also in the model's list always, where a skill is

@@ -46,8 +46,8 @@ func TestClaudeCostKeepsWallTimeWhenItSaysNothing(t *testing.T) {
 	}
 }
 
-// nabu's --json stream is one event per line. Assistant messages are turns.
-func TestNabuUsageCountsAssistantTurns(t *testing.T) {
+// rho's --json stream is one event per line. Assistant messages are turns.
+func TestRhoUsageCountsAssistantTurns(t *testing.T) {
 	stream := `{"type":"state_change","data":{"from":"idle","to":"running"}}
 {"type":"message","data":{"role":"user","content":"go"}}
 {"type":"thinking","data":{"content":"hmm","source":"model"}}
@@ -55,7 +55,7 @@ func TestNabuUsageCountsAssistantTurns(t *testing.T) {
 {"type":"tool_call","data":{"tool":"read"}}
 {"type":"message","data":{"role":"assistant","content":"two","usage":{"input_tokens":150,"output_tokens":20}}}
 `
-	turns, in, out := nabuUsage(stream)
+	turns, in, out := rhoUsage(stream)
 
 	if turns != 2 {
 		t.Errorf("turns = %d, want 2 assistant messages", turns)
@@ -65,8 +65,8 @@ func TestNabuUsageCountsAssistantTurns(t *testing.T) {
 	}
 }
 
-func TestNabuUsageIgnoresNoise(t *testing.T) {
-	turns, in, out := nabuUsage("daemon starting\nnot json\n")
+func TestRhoUsageIgnoresNoise(t *testing.T) {
+	turns, in, out := rhoUsage("daemon starting\nnot json\n")
 	if turns != 0 || in != 0 || out != 0 {
 		t.Errorf("got %d %d %d, want zeros", turns, in, out)
 	}
@@ -112,11 +112,11 @@ func TestLastJSONObjectHandlesCRLF(t *testing.T) {
 // Preflight is where a harness refuses to run, rather than producing a result
 // that looks like a score.
 func TestPreflightRefusesWhatCannotBeMeasured(t *testing.T) {
-	if err := (&Nabu{}).Preflight(t.Context()); err == nil {
-		t.Error("nabu without an isolated root should refuse")
+	if err := (&Rho{}).Preflight(t.Context()); err == nil {
+		t.Error("rho without an isolated root should refuse")
 	}
-	if err := (&Nabu{Root: "x"}).Preflight(t.Context()); err != nil {
-		t.Errorf("nabu with a root should be fine: %v", err)
+	if err := (&Rho{Root: "x"}).Preflight(t.Context()); err != nil {
+		t.Errorf("rho with a root should be fine: %v", err)
 	}
 	if err := (&Claude{}).Preflight(t.Context()); err == nil {
 		t.Error("claude without a pinned model should refuse")
@@ -128,8 +128,8 @@ func TestPreflightRefusesWhatCannotBeMeasured(t *testing.T) {
 
 // A daemon that never started is not a harness that tried and failed. Left
 // unclassified it scores zero, which reads as the harness being bad at its job
-// — the exact way this benchmark first reported nabu at 0/18.
-func TestNabuDaemonFailureIsNotAScore(t *testing.T) {
+// — the exact way this benchmark first reported rho at 0/18.
+func TestRhoDaemonFailureIsNotAScore(t *testing.T) {
 	tests := []struct {
 		name string
 		out  string
@@ -137,7 +137,7 @@ func TestNabuDaemonFailureIsNotAScore(t *testing.T) {
 	}{
 		{
 			"the daemon never came up",
-			"nabu: no daemon listening, starting one\nnabu: daemon: none listening under C:/tmp/root after 20s\n",
+			"rho: no daemon listening, starting one\nrho: daemon: none listening under C:/tmp/root after 20s\n",
 			true,
 		},
 		{"the port was taken", "listen tcp 127.0.0.1:8761: address already in use\n", true},
@@ -147,20 +147,20 @@ func TestNabuDaemonFailureIsNotAScore(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := nabuDidNotStart(tt.out) != ""
+			got := rhoDidNotStart(tt.out) != ""
 			if got != tt.want {
-				t.Errorf("nabuDidNotStart = %v, want %v", got, tt.want)
+				t.Errorf("rhoDidNotStart = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
 // Two suites must not fight over one port.
-func TestEachNabuGetsItsOwnPort(t *testing.T) {
+func TestEachRhoGetsItsOwnPort(t *testing.T) {
 	providers := json.RawMessage(`{"local":{"base_url":"http://x/v1"}}`)
 
-	a := &Nabu{Root: t.TempDir()}
-	b := &Nabu{Root: t.TempDir()}
+	a := &Rho{Root: t.TempDir()}
+	b := &Rho{Root: t.TempDir()}
 	if err := a.WriteConfig(providers, "m"); err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-06
 **Status:** Approved by Kyle in conversation ("build it")
-**Amends:** `2026-09-11-nabu-architecture-design.md` §10.3 (who sets a session goal), and
+**Amends:** `2026-09-11-rho-architecture-design.md` §10.3 (who sets a session goal), and
 `2026-09-30-orchestrated-runs-design.md` (a run's base branch, and a `merge` step).
 
 Three parts, landing in order as one PR with a commit series for each:
@@ -12,13 +12,13 @@ Three parts, landing in order as one PR with a commit series for each:
 
 ## Problem
 
-A run takes one brief to one green PR. Kyle wants to hand nabu something broader, such as
+A run takes one brief to one green PR. Kyle wants to hand rho something broader, such as
 "add offline sync to the Android client", and come back to it done. Today he would have to
 split the goal into briefs himself, start each run once the last one had merged, and
 judge at the end whether the whole thing was done.
 
-Meanwhile the existing "goal" (`/goal` in the TUI, `nabu run --done-when`) sits unused.
-Kyle drives nabu mostly from his phone, through runs. A goal on one long session is the
+Meanwhile the existing "goal" (`/goal` in the TUI, `rho run --done-when`) sits unused.
+Kyle drives rho mostly from his phone, through runs. A goal on one long session is the
 shape the local model does worst at (`2026-09-30-orchestrated-runs-design.md`, Rejected).
 
 ## Decision
@@ -33,14 +33,14 @@ watcher set it.
 
 Removed:
 - `/goal <text>` and `/goal` in the TUI;
-- `nabu run --done-when`, and its line in the usage text.
+- `rho run --done-when`, and its line in the usage text.
 
 Clients still *show* a session goal, because work sessions have one. In Part 3, `/goal`
 comes back meaning a goal as described below.
 
 ### Part 2: goals
 
-A **goal** is a broad piece of work that `nabu runner` breaks into briefs and takes to one
+A **goal** is a broad piece of work that `rho runner` breaks into briefs and takes to one
 PR through as many runs as it needs. Claude plans and judges it. The local model does
 every run.
 
@@ -48,7 +48,7 @@ every run.
 description is the goal text. Like a run's home, it is never prompted: a prompt would start
 it working in Kyle's clone. Part 3 adds the ways to make one.
 
-**The goal branch.** Each goal has a branch, `nabu/goal-<slug>`, in a worktree beside
+**The goal branch.** Each goal has a branch, `rho/goal-<slug>`, in a worktree beside
 Kyle's clone, as a run has. A goal's runs branch from it and open their PRs against it.
 When a run's PR is green, the runner merges it into the goal branch, and the next run
 starts from the result. At the end, one PR goes from the goal branch to the default branch.
@@ -57,11 +57,11 @@ starts from the result. At the end, one PR goes from the goal branch to the defa
 
 | Step | Who | Does |
 |---|---|---|
-| `setup` | runner | Fetch. Branch `nabu/goal-<slug>` from the default branch in a new worktree. Commit `.nabu/goals/<slug>/goal.md`, and push the branch so runs can start from it. |
+| `setup` | runner | Fetch. Branch `rho/goal-<slug>` from the default branch in a new worktree. Commit `.rho/goals/<slug>/goal.md`, and push the branch so runs can start from it. |
 | `breakdown` | Claude | Read the goal and the repository, and return the done-when list and the first round's briefs. The runner commits `roadmap.md` and pushes. |
 | `runs` | runner | One run for each brief of the round, in order, one at a time. A run whose PR is green is merged into the goal branch. |
 | `check` | Claude | Judge the goal branch against `goal.md` and the done-when list. Met: go to `pr`. Unmet: Claude's new briefs are the next round. |
-| `pr` | runner | Open one PR from the goal branch to the default branch, labeled `nabu`. If it is already open, update its body. |
+| `pr` | runner | Open one PR from the goal branch to the default branch, labeled `rho`. If it is already open, update its body. |
 | `ci` | runner | Watch the final PR's checks as a run does. Green or merged: `done`. Failing: back to `check`, with the failure. |
 | `done` | | |
 | `blocked` | | Waiting for Kyle. See below. |
@@ -83,7 +83,7 @@ handful of outcomes a person could check. It is not a script (see Rejected).
 - Its home is created by the runner, with the goal's home as its `parent` and the brief as
   its description. So the phone shows goal → runs → steps.
 - Its base is the goal branch, not the default branch. It branches from
-  `origin/nabu/goal-<slug>` and opens its PR against that branch.
+  `origin/rho/goal-<slug>` and opens its PR against that branch.
 - Its PR carries no label. The watcher neither reviews it nor answers comments on it: it
   is merged as soon as it is green, and Kyle reviews the goal's final PR instead.
 
@@ -96,7 +96,7 @@ The rest of the run is unchanged: plan, the three Claude gates, tasks, `verify.s
 fix loop and CI fixes.
 
 **Check.** At the end of a round, or early when a run fails, the runner brings the goal
-worktree up to `origin/nabu/goal-<slug>` and asks Claude. The prompt gives:
+worktree up to `origin/rho/goal-<slug>` and asks Claude. The prompt gives:
 - the goal and the done-when list;
 - every round so far, with each brief and how its run ended: the PR, the final-review
   notes, or the failed step and its reason;
@@ -130,7 +130,7 @@ below. Asking for the goal again (`goal:requested`, Part 3) resumes it:
   afresh.
 
 **Progress on the phone, with no new protocol.** The runner keeps the goal home's task list
-(`nabu.session.update_tasks`) as the roadmap:
+(`rho.session.update_tasks`) as the roadmap:
 - one task per brief, `pending`, `in_progress`, `done` or `failed`, with the run's PR, or
   its failure, in the note;
 - one task per check, `Round N check`, with Claude's verdict in the note;
@@ -149,7 +149,7 @@ as any run does. Goals, runs and the watcher's jobs share `max_jobs`.
 - each round's runs, with links to their merged PRs;
 - the signature and marker.
 
-It carries the `nabu` label, so the watcher reviews it and answers Kyle's comments on it
+It carries the `rho` label, so the watcher reviews it and answers Kyle's comments on it
 as on any PR. Pushes from comments jobs go to the goal branch. A later check, if there is
 one, starts from there.
 
@@ -199,7 +199,7 @@ one, starts from there.
 - **Kyle approving each breakdown.** He chose hands-off.
 - **A goal-level check script.** For a broad goal it would be either CI, which every run's
   PR and the final PR already run, or text-grepping, which the runs spec bans.
-- **A separate `nabu goals` process.** It would duplicate the runner's Claude, git and gh
+- **A separate `rho goals` process.** It would duplicate the runner's Claude, git and gh
   code, and have to watch run labels from outside. Goals live in the runner beside runs.
 - **Goals in the daemon.** Policy belongs in clients and modules (invariant 4), as the runs
   spec said of a run engine.

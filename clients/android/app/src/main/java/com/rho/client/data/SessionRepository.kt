@@ -1,0 +1,562 @@
+package com.rho.client.data
+
+import com.rho.client.net.BrowseResult
+import com.rho.client.net.CreateSessionResult
+import com.rho.client.net.DaemonClient
+import com.rho.client.net.DaemonException
+import com.rho.client.net.Incoming
+import com.rho.client.net.SessionSummary
+import com.rho.client.protocol.Event
+import com.rho.client.protocol.RhoJson
+import com.rho.client.protocol.payload
+import com.rho.client.protocol.MessageData
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+
+/**
+ * Joins the daemon to the local mirror. Everything the daemon sends is written
+ * to Room and screens read Room, so offline rendering needs no separate path.
+ */
+class SessionRepository(
+    private val db: MirrorDb,
+    private val now: () -> Long = System::currentTimeMillis,
+) {
+    fun watchSessions(): Flow<List<SessionRow>> = db.sessions().watchAll()
+    fun watchEvents(sessionId: String): Flow<List<EventRow>> = db.events().watch(sessionId)
+    fun watchLastOrdinal(sessionId: String): Flow<Long?> = db.events().watchLastOrdinal(sessionId)
+    suspend fun rowsAfter(sessionId: String, ordinal: Long): List<EventRow> =
+        db.events().after(sessionId, ordinal)
+
+    /**
+     * One writer per session at a time. A catch-up and the live stream both
+     * append, and ordinals are handed out by reading the last one: two writers
+     * interleaved would give two rows the same place, or put a live event
+     * ahead of the history it follows.
+     */
+    private val locks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
+    private fun lockFor(sessionId: String) = locks.getOrPut(sessionId) { Mutex() }
+    fun watchSession(sessionId: String): Flow<SessionRow?> = db.sessions().watch(sessionId)
+    fun watchPending(sessionId: String): Flow<List<OutboxRow>> =
+        db.outbox().watchPendingFor(sessionId)
+
+    /**
+     * Forgets every session the daemon's full list leaves out: archived, by
+     * hand or for sitting idle (issue 56). Without this an archived session
+     * stayed on the phone for good, and every reconnect tried to sync it. Only
+     * for a complete listing: anything shorter would forget what it omitted.
+     */
+    suspend fun forgetUnlisted(summaries: List<SessionSummary>) {
+        db.sessions().deleteAllExcept(summaries.map { it.sessionId })
+    }
+
+    /**
+     * Asks the daemon for its sessions again while connected, and says which
+     * are new. A run makes a session for every step while the phone watches,
+     * and listing only on connecting left every step after the first unseen
+     * until the next reconnect.
+     */
+    suspend fun refreshSessions(client: DaemonClient): List<String> {
+        val listed = listSessions(client)
+        val known = db.sessions().ids().toSet()
+        forgetUnlisted(listed)
+        recordSessions(listed)
+        return listed.map { it.sessionId }.filterNot { it in known }
+    }
+
+    /** Records the sessions the daemon knows about, without their events. */
+    suspend fun recordSessions(summaries: List<SessionSummary>) {
+        for (s in summaries) {
+            val existing = db.sessions().get(s.sessionId)
+            db.sessions().upsert(
+                SessionRow(
+                    id = s.sessionId,
+                    workspace = s.workspace,
+                    state = s.state,
+                    // Listed but never fetched is unsynced, not empty (spec 4).
+                    cursor = existing?.cursor ?: "",
+                    synced = existing?.synced ?: false,
+                    workspaceKey = existing?.workspaceKey ?: "",
+                    updatedAt = interactionTime(s.updatedAt, existing?.updatedAt ?: 0, now()),
+                )
+            )
+        }
+    }
+
+    /**
+     * Where catch-up resumes from. A cursor with no events behind it is a
+     * mirror that was emptied under it, and asking for events after the end of
+     * the log would return nothing forever, so it starts again.
+     */
+    internal suspend fun cursorFor(sessionId: String): String {
+        val cursor = db.sessions().get(sessionId)?.cursor.orEmpty()
+        if (cursor.isEmpty()) return ""
+        return if (db.events().count(sessionId) == 0) "" else cursor
+    }
+
+    /**
+     * Brings one session's mirror up to date. Subscribing precedes fetching so
+     * an event appended during catch-up is not lost in the gap.
+     */
+    suspend fun sync(client: DaemonClient, sessionId: String) = lockFor(sessionId).withLock {
+        client.callOrThrow("rho.session.subscribe", buildJsonObject {
+            put("session_id", sessionId)
+        })
+
+        val cursor = cursorFor(sessionId)
+
+        val result = try {
+            client.callOrThrow("rho.session.events_after", buildJsonObject {
+                put("session_id", sessionId)
+                if (cursor.isNotEmpty()) put("last_event_id", cursor)
+            })
+        } catch (e: Exception) {
+            // An unrecognised cursor means this device's idea of the log is
+            // wrong, and refetching beats staying silently behind.
+            if (cursor.isEmpty()) throw e
+            db.sessions().markSynced(sessionId, "", false, now())
+            client.callOrThrow("rho.session.events_after", buildJsonObject {
+                put("session_id", sessionId)
+            })
+        }
+
+        val obj = result.jsonObject
+        val events = obj["events"]?.jsonArray?.map {
+            RhoJson.decodeFromJsonElement(Event.serializer(), it)
+        } ?: emptyList()
+        val synced = obj["synced"]?.jsonPrimitive?.boolean ?: false
+
+        apply(sessionId, events, synced)
+    }
+
+    /**
+     * Writes one pushed event, which is the live path after catch-up.
+     *
+     * It waits for a catch-up in progress, then keeps only what that did not
+     * already bring: the daemon subscribes before it answers, so an event can
+     * arrive both ways. Ids within one log sort in creation order (spec 2).
+     */
+    suspend fun record(event: Incoming.Event) {
+        val sessionId = event.value.sessionId
+        lockFor(sessionId).withLock {
+            val cursor = db.sessions().get(sessionId)?.cursor.orEmpty()
+            if (cursor.isNotEmpty() && event.value.event.id <= cursor) return@withLock
+            apply(sessionId, listOf(event.value.event), synced = true)
+        }
+    }
+
+    /** Ordinals continue, so a later batch cannot sort above an earlier one. */
+    internal suspend fun apply(sessionId: String, events: List<Event>, synced: Boolean) {
+        val existing = db.sessions().get(sessionId)
+        if (existing == null) {
+            db.sessions().upsert(SessionRow(id = sessionId, updatedAt = now()))
+        }
+        var ordinal = db.events().lastOrdinal(sessionId) ?: 0L
+        val rows = events.map { e ->
+            ordinal += 1
+            EventRow(
+                id = e.id,
+                sessionId = sessionId,
+                ordinal = ordinal,
+                type = e.type,
+                raw = RhoJson.encodeToString(Event.serializer(), e),
+            )
+        }
+        val cursor = events.lastOrNull()?.id
+            ?: db.sessions().get(sessionId)?.cursor.orEmpty()
+        db.append(sessionId, rows, cursor, synced,
+            interactionAfter(events, existing?.updatedAt ?: 0, now()))
+
+        events.forEach { e ->
+            if (e.type == "state_change") {
+                val to = (e.data as? JsonObject)?.get("to")?.jsonPrimitive?.content
+                if (!to.isNullOrEmpty()) db.sessions().setState(sessionId, to)
+            }
+        }
+    }
+
+    /**
+     * The last thing the user asked, which is what tells two sessions in one
+     * workspace apart. Empty when nothing has been asked yet.
+     */
+    suspend fun latestPrompt(sessionId: String): String {
+        for (raw in db.events().recentPrompts(sessionId)) {
+            val event = runCatching {
+                RhoJson.decodeFromString(Event.serializer(), raw)
+            }.getOrNull() ?: continue
+            val message = event.payload<MessageData>() ?: continue
+            if (message.role == "user") return message.content.trim()
+        }
+        return ""
+    }
+
+    /**
+     * A session's options as mirrored: its parent and labels are what make a
+     * run's sessions one thing in the list. Defaults when nothing is mirrored.
+     */
+    suspend fun latestOptions(sessionId: String): com.rho.client.protocol.Options {
+        val events = db.events().optionEvents(sessionId).mapNotNull {
+            runCatching { RhoJson.decodeFromString(Event.serializer(), it) }.getOrNull()
+        }
+        return com.rho.client.protocol.project(events).options
+    }
+
+    /**
+     * Hands a session to the runner, as /run does in the terminal client: the
+     * brief, when there is one, as its description, then its labels with
+     * run:requested. Never the goal: setting one starts the session working on
+     * it, in the owner's checkout, beside the run.
+     */
+    suspend fun startRun(client: DaemonClient, sessionId: String, brief: String, labels: List<String>) =
+        handOver(client, sessionId, brief, labels)
+
+    /**
+     * Hands a session to the runner as a goal, the same way: the text as its
+     * description, then its labels with goal:requested
+     * (docs/specs/2026-10-06-goals-design.md).
+     */
+    suspend fun startGoal(client: DaemonClient, sessionId: String, text: String, labels: List<String>) =
+        handOver(client, sessionId, text, labels)
+
+    private suspend fun handOver(client: DaemonClient, sessionId: String, brief: String, labels: List<String>) {
+        if (brief.isNotBlank()) {
+            client.callOrThrow("rho.session.set_option", buildJsonObject {
+                put("session_id", sessionId)
+                put("key", "description")
+                put("value", brief.trim())
+            })
+        }
+        client.callOrThrow("rho.session.set_option", buildJsonObject {
+            put("session_id", sessionId)
+            put("key", "labels")
+            put("value", kotlinx.serialization.json.JsonArray(labels.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+        })
+    }
+
+    /** Queues a prompt. It exists locally before any send is attempted. */
+    suspend fun queuePrompt(sessionId: String, content: String, clientId: String) {
+        db.outbox().put(
+            OutboxRow(
+                clientId = clientId,
+                sessionId = sessionId,
+                content = content,
+                createdAt = now(),
+            )
+        )
+    }
+
+    /** How many prompts are still waiting to be sent. */
+    suspend fun pendingCount(): Int = db.outbox().pending().size
+
+    /** Prompts the daemon refused for good, app-wide. */
+    fun watchBlocked(): Flow<List<OutboxRow>> = db.outbox().watchBlocked()
+
+    /** Blocked prompts, asked once rather than watched. */
+    suspend fun blockedPrompts(): List<OutboxRow> = db.outbox().blocked()
+
+    /**
+     * Records why the queue is not moving, when the cause is the connection
+     * rather than any one prompt. Without this a stuck queue shows a count
+     * and no reason, which is the hardest possible thing to diagnose.
+     */
+    suspend fun noteOutboxError(reason: String) = db.outbox().noteErrorOnPending(reason)
+
+    /** Puts a blocked prompt back in the queue. */
+    suspend fun retryBlocked(clientId: String) = db.outbox().unblock(clientId)
+
+    /** Throws a blocked prompt away. */
+    suspend fun discardBlocked(clientId: String) = db.outbox().discard(clientId)
+
+    /**
+     * Resumes a paused session (spec 7.9). Only `paused` is accepted; a
+     * session that has ended is terminal and needs a new one.
+     */
+    /**
+     * Cancels the turn in flight, leaving the session alive.
+     *
+     * Not rho.session.stop, which ends the session outright. Stopping what it
+     * is doing and being finished with it are different intentions and only one
+     * of them is recoverable.
+     */
+    suspend fun interruptSession(client: DaemonClient, sessionId: String) {
+        client.callOrThrow("rho.session.interrupt", buildJsonObject {
+            put("session_id", sessionId)
+        })
+    }
+
+    /** Puts a session away on the daemon, and drops this device's copy of it. */
+    suspend fun archiveSession(client: DaemonClient, sessionId: String) {
+        client.callOrThrow("rho.session.archive", buildJsonObject {
+            put("session_id", sessionId)
+        })
+        db.sessions().delete(sessionId)
+        // Everything under it went too, on the daemon (issue 135); the
+        // refresh drops those from the mirror.
+        refreshSessions(client)
+    }
+
+    /** Brings an archived session back. The next sync mirrors it again. */
+    suspend fun restoreSession(client: DaemonClient, sessionId: String) {
+        client.callOrThrow("rho.session.restore", buildJsonObject {
+            put("session_id", sessionId)
+        })
+    }
+
+    /** What is in the archive. Asked, never mirrored: it is put away. */
+    suspend fun listArchived(client: DaemonClient): List<SessionSummary> = list(client, archived = true)
+
+    /** The sessions in use. */
+    suspend fun listSessions(client: DaemonClient): List<SessionSummary> = list(client, archived = false)
+
+    private suspend fun list(client: DaemonClient, archived: Boolean): List<SessionSummary> {
+        val result = client.callOrThrow("rho.session.list", buildJsonObject {
+            if (archived) put("archived", true)
+        })
+        return result.jsonObject["sessions"]?.jsonArray
+            ?.map { RhoJson.decodeFromJsonElement(SessionSummary.serializer(), it) }
+            ?: emptyList()
+    }
+
+    /** How much work a session was (spec 7.21). Asked, never mirrored: it is cheap to ask again. */
+    suspend fun stats(client: DaemonClient, sessionId: String): com.rho.client.protocol.SessionStats {
+        val result = client.callOrThrow("rho.session.stats", buildJsonObject {
+            put("session_id", sessionId)
+        })
+        return RhoJson.decodeFromJsonElement(com.rho.client.protocol.SessionStats.serializer(), result)
+    }
+
+    /** A session and every session under it: a goal, its runs and their steps (spec 7.21 with tree). */
+    suspend fun statsTree(client: DaemonClient, sessionId: String): com.rho.client.protocol.TreeStats {
+        val result = client.callOrThrow("rho.session.stats", buildJsonObject {
+            put("session_id", sessionId)
+            put("tree", true)
+        })
+        return RhoJson.decodeFromJsonElement(com.rho.client.protocol.TreeStats.serializer(), result)
+    }
+
+    /** Tokens and turns per day across sessions (spec 7.22). */
+    suspend fun usage(client: DaemonClient, days: Int): List<com.rho.client.protocol.UsageDay> {
+        val result = client.callOrThrow("rho.usage", buildJsonObject { put("days", days) })
+        return result.jsonObject["days"]?.jsonArray
+            ?.map { RhoJson.decodeFromJsonElement(com.rho.client.protocol.UsageDay.serializer(), it) }
+            ?: emptyList()
+    }
+
+    /** The work done across sessions over the last [days] (spec 7.25). [kind] is all, interactive or runs. */
+    suspend fun windowStats(client: DaemonClient, days: Int, kind: String): com.rho.client.protocol.WindowStats {
+        val result = client.callOrThrow("rho.stats", buildJsonObject {
+            put("days", days)
+            put("kind", kind)
+        })
+        return RhoJson.decodeFromJsonElement(com.rho.client.protocol.WindowStats.serializer(), result)
+    }
+
+    /**
+     * One tool's calls, newest first (spec 7.26). With [sessionId], that
+     * session's calls only, whatever the period and kind.
+     */
+    suspend fun toolCalls(
+        client: DaemonClient,
+        tool: String,
+        days: Int,
+        kind: String,
+        sessionId: String? = null,
+        limit: Int = 100,
+    ): com.rho.client.protocol.ToolCalls {
+        val result = client.callOrThrow("rho.stats.calls", buildJsonObject {
+            put("tool", tool)
+            put("days", days)
+            put("kind", kind)
+            if (sessionId != null) put("session_id", sessionId)
+            put("limit", limit)
+        })
+        return RhoJson.decodeFromJsonElement(com.rho.client.protocol.ToolCalls.serializer(), result)
+    }
+
+    suspend fun resumeSession(client: DaemonClient, sessionId: String) {
+        client.callOrThrow("rho.session.resume", buildJsonObject {
+            put("session_id", sessionId)
+        })
+    }
+
+    /**
+     * Summarises a session's history now, rather than waiting for it to cross
+     * the automatic threshold (spec 7.15). Returns the mode that actually ran.
+     *
+     * The daemon refuses a running session and tells the caller to interrupt
+     * first. That rule is not repeated here: two copies of it would drift, and
+     * only the daemon's copy is the one that decides.
+     */
+    /**
+     * Sets a session's context size, "normal" or "large": how much of the
+     * model's window it fills before it is summarized
+     * (docs/specs/2026-10-08-context-size-design.md).
+     */
+    suspend fun setContext(client: DaemonClient, sessionId: String, size: String) {
+        client.callOrThrow("rho.session.set_option", buildJsonObject {
+            put("session_id", sessionId)
+            put("key", "context")
+            put("value", size)
+        })
+    }
+
+    suspend fun compactSession(client: DaemonClient, sessionId: String): String {
+        val result = client.callOrThrow("rho.session.compact", buildJsonObject {
+            put("session_id", sessionId)
+        })
+        return result.jsonObject["mode"]?.jsonPrimitive?.content.orEmpty()
+    }
+
+    /**
+     * Sends everything pending, oldest first. The client id makes a retry safe;
+     * an item clears only once the daemon returns an event id for it.
+     */
+    suspend fun flushOutbox(client: DaemonClient) {
+        for (item in db.outbox().pending()) {
+            try {
+                val result = client.callOrThrow("rho.session.send_prompt", buildJsonObject {
+                    put("session_id", item.sessionId)
+                    put("content", item.content)
+                    put("client_id", item.clientId)
+                })
+                val eventId = result.jsonObject["event_id"]?.jsonPrimitive?.content
+                if (eventId.isNullOrEmpty()) {
+                    db.outbox().markFailed(item.clientId, "the daemon returned no event id")
+                } else {
+                    db.outbox().markSent(item.clientId, eventId)
+                }
+            } catch (e: DaemonException) {
+                // A refusal the daemon will repeat is not worth retrying, and
+                // leaving it at the head of the queue stops every later prompt
+                // with it. Park it for the user to resolve and carry on.
+                if (e.isPermanent) {
+                    db.outbox().markBlocked(item.clientId, e.message ?: "the daemon refused it")
+                    continue
+                }
+                db.outbox().markFailed(item.clientId, e.message ?: "send failed")
+                return
+            } catch (e: Exception) {
+                // Transport, not judgement: stop rather than reorder the rest.
+                db.outbox().markFailed(item.clientId, e.message ?: "send failed")
+                return
+            }
+        }
+    }
+    /**
+     * Lists directories the daemon will start a session in.
+     *
+     * A null [path] asks for the configured roots, which is where a picker has
+     * to start: the phone cannot see the daemon's filesystem and has no way to
+     * guess a path worth typing.
+     */
+    suspend fun browse(client: DaemonClient, path: String?): BrowseResult {
+        val result = client.callOrThrow("rho.workspace.browse", buildJsonObject {
+            if (!path.isNullOrEmpty()) put("path", path)
+        })
+        return RhoJson.decodeFromJsonElement(BrowseResult.serializer(), result)
+    }
+
+    /**
+     * Creates one directory inside [parent] and returns the new directory's
+     * listing, so the caller can move into what it just made.
+     *
+     * [name] is one directory name, never a path. The daemon enforces that; the
+     * client does not pre-validate, because two copies of the same rule drift
+     * and only one of them is the one that matters.
+     */
+    suspend fun createDirectory(client: DaemonClient, parent: String, name: String): BrowseResult {
+        val result = client.callOrThrow("rho.workspace.create_directory", buildJsonObject {
+            put("parent", parent)
+            put("name", name)
+        })
+        return RhoJson.decodeFromJsonElement(BrowseResult.serializer(), result)
+    }
+
+    /**
+     * Starts a session in [workspace] and returns its id.
+     *
+     * The path handed in is one the daemon itself produced, so nothing here
+     * rewrites it: a client massaging a path would be guessing about a
+     * filesystem it cannot see.
+     */
+    suspend fun createSession(
+        client: DaemonClient,
+        workspace: String,
+        description: String = "",
+        labels: List<String> = emptyList(),
+    ): String {
+        val result = client.callOrThrow("rho.session.create", buildJsonObject {
+            put("workspace", workspace)
+            // Options only when there are some: the daemon fills in the rest
+            // from its config either way.
+            if (description.isNotEmpty() || labels.isNotEmpty()) {
+                put("options", buildJsonObject {
+                    if (description.isNotEmpty()) put("description", description)
+                    if (labels.isNotEmpty()) {
+                        put("labels", kotlinx.serialization.json.JsonArray(labels.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+                    }
+                })
+            }
+        })
+        val created = RhoJson.decodeFromJsonElement(CreateSessionResult.serializer(), result)
+        // Record it straight away, so the list shows what the reader just made
+        // rather than waiting for the next refresh. The real summary replaces
+        // this row the next time the daemon is asked.
+        if (created.sessionId.isNotEmpty()) {
+            recordSessions(
+                listOf(
+                    SessionSummary(
+                        sessionId = created.sessionId,
+                        workspace = workspace,
+                        state = "idle",
+                    )
+                )
+            )
+        }
+        return created.sessionId
+    }
+}
+
+/**
+ * When a session was last worked on, which is what the list is ordered by.
+ *
+ * The daemon's `updated_at` is its last event's timestamp, so it is the only
+ * honest answer. Stamping the local clock as each row was recorded instead
+ * ordered the list by the order the daemon happened to list them in, reversed
+ * — and since it lists newest-created first, that put the oldest session on
+ * top (issue 50).
+ *
+ * The daemon's word replaces this device's, even when it is older: a mirror
+ * that recorded a wrong time once would otherwise keep it forever.
+ */
+internal fun interactionTime(updatedAt: String, existing: Long, fallback: Long): Long =
+    parseInstant(updatedAt) ?: if (existing > 0) existing else fallback
+
+/**
+ * The same question answered by a batch of events rather than by a listing.
+ *
+ * This one never moves a session backwards: a device catching up on an old
+ * session already knows something newer, and mirroring the old batch is not
+ * news.
+ */
+internal fun interactionAfter(events: List<Event>, existing: Long, fallback: Long): Long {
+    val newest = events.mapNotNull { parseInstant(it.timestamp) }.maxOrNull()
+        ?: return if (existing > 0) existing else fallback
+    return maxOf(newest, existing)
+}
+
+/** Go writes RFC 3339 with nanoseconds, and with an offset rather than always Z. */
+internal fun parseInstant(text: String): Long? {
+    if (text.isBlank()) return null
+    return runCatching { java.time.OffsetDateTime.parse(text).toInstant().toEpochMilli() }
+        .recoverCatching { java.time.Instant.parse(text).toEpochMilli() }
+        .getOrNull()
+}

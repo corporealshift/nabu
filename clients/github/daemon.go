@@ -3,8 +3,8 @@ package github
 import (
 	"context"
 
-	"github.com/corporealshift/nabu/clients/goclient"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/clients/goclient"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Client is the Daemon over a goclient connection.
@@ -14,7 +14,7 @@ func (c Client) Create(ctx context.Context, workspace string, maxTurns int) (str
 	var out struct {
 		SessionID string `json:"session_id"`
 	}
-	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
+	err := c.C.CallInto(ctx, "rho.session.create", map[string]any{
 		"workspace": workspace,
 		// guard:no-push: the watcher pushes and posts itself, from what a
 		// finished session left. unattended: nobody watches a job.
@@ -25,17 +25,17 @@ func (c Client) Create(ctx context.Context, workspace string, maxTurns int) (str
 }
 
 func (c Client) SetGoal(ctx context.Context, sessionID, condition string) error {
-	return c.C.CallInto(ctx, "nabu.session.set_goal", map[string]any{
+	return c.C.CallInto(ctx, "rho.session.set_goal", map[string]any{
 		"session_id": sessionID, "condition": condition,
 	}, nil)
 }
 
 // promptClientID makes the one prompt a watcher session gets idempotent, so
 // sending it again after a crash does not append it twice (spec §7.4).
-const promptClientID = "nabu-github-prompt"
+const promptClientID = "rho-github-prompt"
 
 func (c Client) SendPrompt(ctx context.Context, sessionID, text string) error {
-	return c.C.CallInto(ctx, "nabu.session.send_prompt", map[string]any{
+	return c.C.CallInto(ctx, "rho.session.send_prompt", map[string]any{
 		"session_id": sessionID, "content": text, "client_id": promptClientID,
 	}, nil)
 }
@@ -45,7 +45,7 @@ func (c Client) State(ctx context.Context, sessionID string) (protocol.State, er
 }
 
 func (c Client) Stop(ctx context.Context, sessionID string) error {
-	return c.C.CallInto(ctx, "nabu.session.stop", map[string]any{"session_id": sessionID}, nil)
+	return c.C.CallInto(ctx, "rho.session.stop", map[string]any{"session_id": sessionID}, nil)
 }
 
 // Events is the whole log, fetched page by page until the daemon says it is
@@ -73,7 +73,7 @@ func (c Client) CreateHome(ctx context.Context, workspace, description string, l
 	var out struct {
 		SessionID string `json:"session_id"`
 	}
-	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
+	err := c.C.CallInto(ctx, "rho.session.create", map[string]any{
 		"workspace": workspace,
 		"options":   map[string]any{"description": description, "labels": labels},
 	}, &out)
@@ -87,10 +87,10 @@ func (c Client) Labels(ctx context.Context, sessionID string) ([]string, error) 
 
 func (c Client) Rerun(ctx context.Context, sessionID, description string, labels []string) error {
 	// The brief first, so the runner never sees the request without it.
-	if err := c.C.CallInto(ctx, "nabu.session.set_option",
+	if err := c.C.CallInto(ctx, "rho.session.set_option",
 		map[string]any{"session_id": sessionID, "key": "description", "value": description}, nil); err != nil {
 		return err
 	}
-	return c.C.CallInto(ctx, "nabu.session.set_option",
+	return c.C.CallInto(ctx, "rho.session.set_option",
 		map[string]any{"session_id": sessionID, "key": "labels", "value": labels}, nil)
 }

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // The kinds of notification (docs/specs/2026-10-06-phone-notifications-design.md).

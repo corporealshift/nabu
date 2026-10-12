@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // askGoal is the Goal action on a home: the text as its description, and
@@ -101,7 +101,7 @@ func TestAWholeGoal(t *testing.T) {
 			t.Errorf("a run's PR is not against the goal branch, unlabeled: %q", pr)
 		}
 	}
-	if final := g.gh.prs[2]; !strings.HasPrefix(final, "main|"+goal.Branch+"|Add Median and Mode to stats|nabu|") ||
+	if final := g.gh.prs[2]; !strings.HasPrefix(final, "main|"+goal.Branch+"|Add Median and Mode to stats|rho|") ||
 		!strings.Contains(final, "both are there, tested") || !strings.Contains(final, "stats has Median and Mode") {
 		t.Errorf("final pr = %q", final)
 	}

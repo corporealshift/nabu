@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // A run's steps copy their home's context size

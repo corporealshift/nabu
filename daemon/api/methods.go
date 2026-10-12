@@ -6,8 +6,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // rpcErrOf converts a manager error into an RPC error, preserving one the
@@ -46,21 +46,21 @@ func (h *Handler) sessionID(params json.RawMessage) (string, *protocol.RPCError)
 
 // registerMutators adds the methods that change a session.
 func (h *Handler) registerMutators() {
-	h.register("nabu.session.send_prompt", h.handleSendPrompt)
-	h.register("nabu.session.interrupt", h.handleInterrupt)
-	h.register("nabu.session.stop", h.handleStop)
-	h.register("nabu.session.resume", h.handleResume)
-	h.register("nabu.session.set_goal", h.handleSetGoal)
-	h.register("nabu.session.clear_goal", h.handleClearGoal)
-	h.register("nabu.session.set_option", h.handleSetOption)
-	h.register("nabu.session.update_tasks", h.handleUpdateTasks)
-	h.register("nabu.session.set_status", h.handleSetStatus)
-	h.register("nabu.session.compact", h.handleCompact)
-	h.register("nabu.session.archive", h.handleArchive)
-	h.register("nabu.session.restore", h.handleRestore)
+	h.register("rho.session.send_prompt", h.handleSendPrompt)
+	h.register("rho.session.interrupt", h.handleInterrupt)
+	h.register("rho.session.stop", h.handleStop)
+	h.register("rho.session.resume", h.handleResume)
+	h.register("rho.session.set_goal", h.handleSetGoal)
+	h.register("rho.session.clear_goal", h.handleClearGoal)
+	h.register("rho.session.set_option", h.handleSetOption)
+	h.register("rho.session.update_tasks", h.handleUpdateTasks)
+	h.register("rho.session.set_status", h.handleSetStatus)
+	h.register("rho.session.compact", h.handleCompact)
+	h.register("rho.session.archive", h.handleArchive)
+	h.register("rho.session.restore", h.handleRestore)
 }
 
-// handleArchive implements nabu.session.archive (spec 7.19).
+// handleArchive implements rho.session.archive (spec 7.19).
 func (h *Handler) handleArchive(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	id, rpcErr := h.sessionID(params)
 	if rpcErr != nil {
@@ -72,7 +72,7 @@ func (h *Handler) handleArchive(ctx context.Context, _ *connState, params json.R
 	return map[string]any{}, nil
 }
 
-// handleRestore implements nabu.session.restore (spec 7.20). The session is
+// handleRestore implements rho.session.restore (spec 7.20). The session is
 // archived, so it cannot be looked up the way every other method does.
 func (h *Handler) handleRestore(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p sessionParams
@@ -88,7 +88,7 @@ func (h *Handler) handleRestore(ctx context.Context, _ *connState, params json.R
 	return map[string]any{}, nil
 }
 
-// handleCompact implements nabu.session.compact (spec 7.15). It is a model
+// handleCompact implements rho.session.compact (spec 7.15). It is a model
 // call, so it takes minutes on a local model rather than returning immediately
 // like the other mutators.
 //
@@ -106,7 +106,7 @@ func (h *Handler) handleCompact(ctx context.Context, _ *connState, params json.R
 	return map[string]any{"event_id": e.ID, "mode": protocol.MustData[protocol.CompactionData](e).Mode}, nil
 }
 
-// handleSendPrompt implements nabu.session.send_prompt (spec 7.4). A prompt
+// handleSendPrompt implements rho.session.send_prompt (spec 7.4). A prompt
 // sent while running is not queued: the message is appended immediately and
 // the loop picks it up at the next turn boundary, because every request is
 // assembled from the log.
@@ -138,7 +138,7 @@ func (h *Handler) handleSendPrompt(ctx context.Context, _ *connState, params jso
 	return map[string]any{"event_id": ev.ID}, nil
 }
 
-// handleInterrupt implements nabu.session.interrupt (spec 7.7).
+// handleInterrupt implements rho.session.interrupt (spec 7.7).
 func (h *Handler) handleInterrupt(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	id, rpcErr := h.sessionID(params)
 	if rpcErr != nil {
@@ -150,7 +150,7 @@ func (h *Handler) handleInterrupt(ctx context.Context, _ *connState, params json
 	return map[string]any{}, nil
 }
 
-// handleStop implements nabu.session.stop (spec 7.8).
+// handleStop implements rho.session.stop (spec 7.8).
 func (h *Handler) handleStop(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	id, rpcErr := h.sessionID(params)
 	if rpcErr != nil {
@@ -162,7 +162,7 @@ func (h *Handler) handleStop(ctx context.Context, _ *connState, params json.RawM
 	return map[string]any{}, nil
 }
 
-// handleResume implements nabu.session.resume (spec 7.9).
+// handleResume implements rho.session.resume (spec 7.9).
 func (h *Handler) handleResume(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string               `json:"session_id"`
@@ -180,7 +180,7 @@ func (h *Handler) handleResume(ctx context.Context, _ *connState, params json.Ra
 	return map[string]any{}, nil
 }
 
-// handleSetGoal implements nabu.session.set_goal (spec 7.11).
+// handleSetGoal implements rho.session.set_goal (spec 7.11).
 func (h *Handler) handleSetGoal(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
@@ -202,7 +202,7 @@ func (h *Handler) handleSetGoal(ctx context.Context, _ *connState, params json.R
 	return map[string]any{"event_id": ev.ID}, nil
 }
 
-// handleClearGoal implements nabu.session.clear_goal (spec 7.12).
+// handleClearGoal implements rho.session.clear_goal (spec 7.12).
 func (h *Handler) handleClearGoal(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	id, rpcErr := h.sessionID(params)
 	if rpcErr != nil {
@@ -215,7 +215,7 @@ func (h *Handler) handleClearGoal(ctx context.Context, _ *connState, params json
 	return map[string]any{"event_id": ev.ID}, nil
 }
 
-// handleSetOption implements nabu.session.set_option (spec 7.13).
+// handleSetOption implements rho.session.set_option (spec 7.13).
 func (h *Handler) handleSetOption(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string `json:"session_id"`
@@ -238,7 +238,7 @@ func (h *Handler) handleSetOption(ctx context.Context, _ *connState, params json
 	return map[string]any{"event_id": ev.ID}, nil
 }
 
-// handleUpdateTasks implements nabu.session.update_tasks (spec 7.14). Edits
+// handleUpdateTasks implements rho.session.update_tasks (spec 7.14). Edits
 // from a client are appended with source "client".
 func (h *Handler) handleUpdateTasks(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
@@ -261,7 +261,7 @@ func (h *Handler) handleUpdateTasks(ctx context.Context, _ *connState, params js
 	return map[string]any{"event_id": s.State().LastEventID}, nil
 }
 
-// handleSetStatus implements nabu.session.set_status (spec 7.27).
+// handleSetStatus implements rho.session.set_status (spec 7.27).
 func (h *Handler) handleSetStatus(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
 	var p struct {
 		SessionID string          `json:"session_id"`
@@ -281,12 +281,12 @@ func (h *Handler) handleSetStatus(ctx context.Context, _ *connState, params json
 	return map[string]any{"event_id": ev.ID}, nil
 }
 
-// handleDaemonStop implements nabu.daemon.stop.
+// handleDaemonStop implements rho.daemon.stop.
 //
 // This method is NOT in protocol/spec.md 7. Spec 8 requires that
-// "nabu daemon stop performs the graceful shutdown" and defines no mechanism
+// "rho daemon stop performs the graceful shutdown" and defines no mechanism
 // for it, and signalling by pid is not gracefully portable to Windows, which
-// is nabu's primary target. The spec's method list needs this added.
+// is rho's primary target. The spec's method list needs this added.
 func (h *Handler) handleDaemonStop(context.Context, *connState, json.RawMessage) (any, *protocol.RPCError) {
 	if h.OnShutdown == nil {
 		return nil, protocol.NewRPCError(protocol.CodeInternalError, "this daemon cannot stop itself")

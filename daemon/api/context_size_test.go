@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // A session's context size is set at creation, recorded in its session event,
@@ -15,7 +15,7 @@ func TestContextSizeRoundTrips(t *testing.T) {
 		SessionID string         `json:"session_id"`
 		Event     protocol.Event `json:"event"`
 	}
-	result(t, hn.call(t, 1, "nabu.session.create", map[string]any{"workspace": hn.dir,
+	result(t, hn.call(t, 1, "rho.session.create", map[string]any{"workspace": hn.dir,
 		"options": map[string]any{"context": "large"}}), &out)
 	if d := protocol.MustData[protocol.SessionData](out.Event); d.Options.Context != protocol.ContextLarge {
 		t.Errorf("session event context = %q, want large", d.Options.Context)
@@ -24,7 +24,7 @@ func TestContextSizeRoundTrips(t *testing.T) {
 	var set struct {
 		EventID string `json:"event_id"`
 	}
-	result(t, hn.call(t, 2, "nabu.session.set_option",
+	result(t, hn.call(t, 2, "rho.session.set_option",
 		map[string]any{"session_id": out.SessionID, "key": "context", "value": "normal"}), &set)
 	s, _ := hn.h.getSession(out.SessionID)
 	if st := s.State(); st.Options.Context != protocol.ContextNormal || st.State != protocol.StateIdle {
@@ -33,7 +33,7 @@ func TestContextSizeRoundTrips(t *testing.T) {
 
 	before := len(s.Events())
 	for _, v := range []any{"huge", "", 3} {
-		resp := hn.call(t, 3, "nabu.session.set_option", map[string]any{"session_id": out.SessionID, "key": "context", "value": v})
+		resp := hn.call(t, 3, "rho.session.set_option", map[string]any{"session_id": out.SessionID, "key": "context", "value": v})
 		if code := rpcCode(t, resp); code != protocol.CodeInvalidParams {
 			t.Errorf("context %v: code %d, want invalid params", v, code)
 		}
@@ -42,7 +42,7 @@ func TestContextSizeRoundTrips(t *testing.T) {
 		t.Errorf("refused sizes appended %d events", after-before)
 	}
 
-	resp := hn.call(t, 4, "nabu.session.create", map[string]any{"workspace": hn.dir,
+	resp := hn.call(t, 4, "rho.session.create", map[string]any{"workspace": hn.dir,
 		"options": map[string]any{"context": "huge"}})
 	if code := rpcCode(t, resp); code != protocol.CodeInvalidParams {
 		t.Errorf("create with context huge: code %d, want invalid params", code)

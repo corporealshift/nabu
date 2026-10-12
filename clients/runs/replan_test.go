@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // A session may say the plan cannot work, and Claude judges it

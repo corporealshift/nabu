@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // SaveInstructions governs when the model saves. A vaguer wording fills memory
@@ -107,7 +107,7 @@ func (m *Module) Init(h module.Host, cfg module.Config) error {
 	}
 
 	if m.Root == "" {
-		// ~/.nabu/memory, per spec 11.2.
+		// ~/.rho/memory, per spec 11.2.
 		if h == nil {
 			return nil
 		}
@@ -169,8 +169,8 @@ func (m *Module) WorkspaceStore(s module.Session) *Store {
 	return NewStore(filepath.Join(m.Root, "ws", key), ScopeWorkspace, false)
 }
 
-// globalCorpus is global memory plus imports, with nabu's own copy winning.
-// Shadowing an import beats editing it, which would be nabu writing into
+// globalCorpus is global memory plus imports, with rho's own copy winning.
+// Shadowing an import beats editing it, which would be rho writing into
 // another tool's state.
 func (m *Module) globalCorpus() []Memory {
 	var out []Memory

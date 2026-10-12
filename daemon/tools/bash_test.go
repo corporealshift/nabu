@@ -99,8 +99,8 @@ func TestShellCommandFlagMatchesInterpreter(t *testing.T) {
 }
 
 // A revision and path joined by a colon reach git as written. Git Bash on
-// Windows otherwise reads "nabu/notes:.nabu/plan.md" as a list of POSIX paths
-// and hands git "nabu\notes;.nabu\plan.md".
+// Windows otherwise reads "rho/notes:.rho/plan.md" as a list of POSIX paths
+// and hands git "rho\notes;.rho\plan.md".
 func TestBashPassesRevisionPathToNativePrograms(t *testing.T) {
 	requireShell(t)
 	if _, err := exec.LookPath("git"); err != nil {
@@ -109,27 +109,27 @@ func TestBashPassesRevisionPathToNativePrograms(t *testing.T) {
 	dir := t.TempDir()
 	for _, args := range [][]string{
 		{"init", "-q", "-b", "main"},
-		{"checkout", "-q", "-b", "nabu/notes"},
+		{"checkout", "-q", "-b", "rho/notes"},
 	} {
 		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}
 	}
-	if err := os.MkdirAll(filepath.Join(dir, ".nabu"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".rho"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, ".nabu", "plan.md"), []byte("the plan\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".rho", "plan.md"), []byte("the plan\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{
-		{"add", ".nabu/plan.md"},
+		{"add", ".rho/plan.md"},
 		{"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "plan"},
 	} {
 		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}
 	}
-	out, err := run(t, &Builtins{}, fakeSession{dir}, "bash", `{"command":"git show nabu/notes:.nabu/plan.md"}`)
+	out, err := run(t, &Builtins{}, fakeSession{dir}, "bash", `{"command":"git show rho/notes:.rho/plan.md"}`)
 	if err != nil || out != "the plan\n" {
 		t.Fatalf("err=%v out=%q", err, out)
 	}

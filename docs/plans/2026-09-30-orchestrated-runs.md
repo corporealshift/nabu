@@ -22,9 +22,9 @@ boundary test like the watcher's enforces that.
   one local model, nothing else could run at the same time anyway. Running them in the
   background is left until it is needed.
 - **Config lives in `<root>/runner/config.json`, and it is optional.** It holds `poll`,
-  `max_jobs`, `label` (`nabu`), `verify_timeout` (30m), the `claude` settings (`path`,
+  `max_jobs`, `label` (`rho`), `verify_timeout` (30m), the `claude` settings (`path`,
   `model`, `timeout` 15m) and the turn budgets (none by default; `plan_turns` and `work_turns` set them).
-  `nabu runner` also runs the GitHub watcher when `<root>/github/config.json` exists. The
+  `rho runner` also runs the GitHub watcher when `<root>/github/config.json` exists. The
   runner's `max_jobs` and `poll` then govern both.
 - **The slug** comes from the brief, or from the home's last prompt for a plain `/run`:
   lower-cased, dashes, at most 40 characters, then `-` and the last 4 characters of the
@@ -157,7 +157,7 @@ a timeout.
 - Claude missing;
 - the home's labels at each step.
 
-## 5. `nabu runner`
+## 5. `rho runner`
 
 **Depends on:** step 4.
 
@@ -165,19 +165,19 @@ a timeout.
 - `clients/github/watcher.go`: an optional `Runs` hook (`Waiting`, `Start`,
   `RunningSessions`), consulted at admission between comment jobs and reviews, and
   counted in the running total.
-- `cmd/nabu/runner.go`:
-  - `nabu runner [--once] [--root]`. Each tick, `Runner.Advance` and then `Watcher.Poll`
+- `cmd/rho/runner.go`:
+  - `rho runner [--once] [--root]`. Each tick, `Runner.Advance` and then `Watcher.Poll`
     (with the hook), or `Runner.Advance` and then `Start` on its own when there's no
     GitHub config.
   - `--once` loops until no run is active and nothing starts.
-- `cmd/nabu/main.go`: usage for `runner`, and `github` described as the GitHub part
+- `cmd/rho/main.go`: usage for `runner`, and `github` described as the GitHub part
   alone.
 - `ARCHITECTURE.md`: `clients/runs`.
 
 **Proves it:**
 - A watcher test: with a waiting run and a due review under `max_jobs: 1`, the comment
   job starts first, then the run, then the review.
-- A CLI test: `nabu runner --once` on an empty root exits 0 with nothing to do.
+- A CLI test: `rho runner --once` on an empty root exits 0 with nothing to do.
 
 ## 6. Checking it for real
 
@@ -185,8 +185,8 @@ Against a scratch daemon (`--root`, its own port) and the scratch repository:
 1. `/run add a Median function with tests` in a TUI session on the scratch clone. Or,
    since the TUI can't be driven from here, the same calls `/run` makes: `set_goal`, then
    `set_option labels`.
-2. `nabu runner --once --root …`.
-3. Check the branch's commits in order, `.nabu/runs/<slug>/`, the Claude-committed
+2. `rho runner --once --root …`.
+3. Check the branch's commits in order, `.rho/runs/<slug>/`, the Claude-committed
    revisions if any, the passing `verify.sh`, and the PR.
 
 ## Not doing in this plan

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The themed-icon mark: the system tints it, so it is one shape. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -6,9 +7,10 @@
     android:viewportHeight="108">
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M35.8,29.9 L84.1,46.7 L35.8,57.2 Z" />
+        android:fillType="evenOdd"
+        android:pathData="M22,62 L54,30 L86,62 Z M32.67,62 L54,40.67 L75.33,62 Z" />
     <path
         android:fillColor="#FFFFFF"
-        android:fillAlpha="0.7"
-        android:pathData="M35.8,57.2 L84.1,46.7 L44.2,80.3 Z" />
+        android:fillType="evenOdd"
+        android:pathData="M40.67,51.33 A13.33,10.67 0 1,0 67.33,51.33 A13.33,10.67 0 1,0 40.67,51.33 Z M46.13,50.8 A7.87,5.47 0 1,0 61.87,50.8 A7.87,5.47 0 1,0 46.13,50.8 Z" />
 </vector>

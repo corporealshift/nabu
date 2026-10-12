@@ -1,4 +1,4 @@
-# nabu
+# rho
 
 Go coding-agent harness: a daemon that owns append-only session logs, thin clients
 over JSON-RPC/WebSocket, policy in in-process modules. Owner: Kyle. Single developer.
@@ -6,7 +6,7 @@ over JSON-RPC/WebSocket, policy in in-process modules. Owner: Kyle. Single devel
 ## Read first
 
 - `ARCHITECTURE.md` — the map and the seven invariants.
-- `docs/specs/2026-09-11-nabu-architecture-design.md` — every decision and
+- `docs/specs/2026-09-11-rho-architecture-design.md` — every decision and
   its rejected alternatives. Do not re-litigate settled decisions; do propose changes
   as a new dated spec if a decision no longer holds.
 - `protocol/spec.md` — the normative wire contract. Changing an event or method means

@@ -8,9 +8,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // core is what the handle and host need from the Manager. The Manager

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Reminding the model of a skill when it touches the files the skill covers.

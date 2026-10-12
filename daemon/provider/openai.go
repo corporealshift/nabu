@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // OpenAI speaks the OpenAI chat-completions streaming API, which llama.cpp,

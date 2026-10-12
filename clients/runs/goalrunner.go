@@ -65,7 +65,7 @@ func (rn *Runner) pickUpGoals(ctx context.Context, d Daemon) error {
 				continue
 			}
 			slug := "goal-" + Slug(firstLine(text), h.ID)
-			g = &Goal{Home: h.ID, Workspace: full.Workspace, Text: text, Slug: slug, Branch: "nabu/" + slug,
+			g = &Goal{Home: h.ID, Workspace: full.Workspace, Text: text, Slug: slug, Branch: "rho/" + slug,
 				Worktree: filepath.Join(rn.Root, "runner", "worktrees", slug), Step: GoalSetup, Started: rn.Now()}
 			rn.goals[h.ID] = g
 			rn.logf("goal %s: %s", h.ID, g.Branch)
@@ -257,7 +257,7 @@ func (rn *Runner) goalRun(ctx context.Context, d Daemon, g *Goal) (GoalOutcome, 
 			return GoalOutcome{}, err
 		}
 		slug := Slug(br.Title, id)
-		r := &Run{Home: id, Workspace: g.Workspace, Brief: brief, Slug: slug, Branch: "nabu/" + slug, Base: g.Branch, Goal: g.Home,
+		r := &Run{Home: id, Workspace: g.Workspace, Brief: brief, Slug: slug, Branch: "rho/" + slug, Base: g.Branch, Goal: g.Home,
 			Worktree: filepath.Join(rn.Root, "runner", "worktrees", slug), Step: StepSetup, Started: rn.Now()}
 		rn.runs[id] = r
 		br.Run, br.State = id, BriefRunning

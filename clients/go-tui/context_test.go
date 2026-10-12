@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/clients/goclient"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/clients/goclient"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func sessionEvent(window int) protocol.Event {
@@ -144,7 +144,7 @@ func TestThePickerSaysWhenASessionStopped(t *testing.T) {
 		{"paused", 72 * time.Hour, "paused · 3 days ago"},
 		{"idle", 10 * time.Minute, "idle · 10 minutes ago"},
 	} {
-		row := pickerRow(goclient.SessionSummary{SessionID: "01S", Workspace: "C:/w/nabu", State: tt.state, LastPrompt: "x",
+		row := pickerRow(goclient.SessionSummary{SessionID: "01S", Workspace: "C:/w/rho", State: tt.state, LastPrompt: "x",
 			UpdatedAt: now.Add(-tt.ago)}, false, 0, fold{}, 100, now)
 		if !strings.Contains(row, tt.want) {
 			t.Errorf("%s %s ago: %q lacks %q", tt.state, tt.ago, row, tt.want)

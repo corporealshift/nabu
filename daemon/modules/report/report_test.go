@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // fakeSession is the slice of module.Session this module uses.

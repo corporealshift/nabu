@@ -2,7 +2,7 @@
 
 Read `ARCHITECTURE.md` for the map and its invariants. Every design decision, with the
 alternatives it rejected, is recorded under `docs/specs/`. This page covers the parts
-you notice when you use nabu.
+you notice when you use rho.
 
 ## One log per session
 
@@ -23,7 +23,7 @@ sequenceDiagram
     participant Judge as judge · fresh context
 
     You->>Client: a prompt
-    Client->>Daemon: nabu.session.send_prompt
+    Client->>Daemon: rho.session.send_prompt
     Daemon->>Log: append message
     Log-->>Client: event
 
@@ -91,7 +91,7 @@ the first answer wins.
 ## Memory and notes
 
 After a session ends, a curator decides whether anything in it is worth keeping, and
-writes it to `~/.nabu/memory`. The next session on that repository starts out knowing it.
+writes it to `~/.rho/memory`. The next session on that repository starts out knowing it.
 Memory is for facts that stay true. Working notes (`notes.write`) are for the state of
 work in progress, and they expire when nobody touches them.
 
@@ -113,5 +113,5 @@ Modules add:
 
 The protocol is JSON-RPC over WebSocket. `protocol/spec.md` specifies it, with
 conformance vectors, so a client can be written in any language. The terminal UI and the
-headless CLI are built into the `nabu` binary. The Android client is in `clients/android`
+headless CLI are built into the `rho` binary. The Android client is in `clients/android`
 ([android.md](android.md)). A desktop GUI is planned but not started.

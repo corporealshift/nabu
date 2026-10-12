@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/modules/prompt"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/modules/prompt"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // bigUsage reports input token usage at the given fraction of the harness's

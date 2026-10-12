@@ -1,4 +1,4 @@
-# nabu github, and reviewing pull requests
+# rho github, and reviewing pull requests
 
 **Date:** 2026-09-28
 **Status:** Approved by Kyle in conversation
@@ -8,8 +8,8 @@ is its own pull request, and they land in this order.
 
 ## Problem
 
-Kyle wants nabu to work from GitHub without being asked each time: review pull requests,
-address comments left on them, and work issues. Breezeway comes first. Nothing in nabu
+Kyle wants rho to work from GitHub without being asked each time: review pull requests,
+address comments left on them, and work issues. Breezeway comes first. Nothing in rho
 can do that today:
 
 - Every session starts because a client asked for one. Nothing notices an outside event
@@ -21,7 +21,7 @@ can do that today:
 
 ## Decision
 
-A new long-running client, `nabu github`, polls GitHub with `gh` and does its work by
+A new long-running client, `rho github`, polls GitHub with `gh` and does its work by
 starting ordinary daemon sessions over the existing protocol. It posts to GitHub itself,
 and only after a session has finished. **Neither the daemon, the protocol nor any module
 changes.**
@@ -32,8 +32,8 @@ This part builds the watcher and one job: reviewing pull requests.
 
 - `clients/github/` is the watcher: config, state, polling, the job queue and the
   worktrees. It imports `clients/goclient` and `protocol`, and never the daemon.
-- `cmd/nabu` gets a `github` subcommand:
-  `nabu github [--once] [--dry-run] [--root DIR]`.
+- `cmd/rho` gets a `github` subcommand:
+  `rho github [--once] [--dry-run] [--root DIR]`.
   - With no flags it runs until it is interrupted.
   - `--once` polls once, runs whatever jobs that finds, waits for them to finish, and
     exits. That is for testing and for Task Scheduler.
@@ -52,7 +52,7 @@ config is unchanged.
     {"name": "corporealshift/breezeway",
      "clone": "C:/Users/corpo/Documents/projects/breezeway"}
   ],
-  "label": "nabu",
+  "label": "rho",
   "poll": "2m",
   "quiet": "5m",
   "max_jobs": 1,
@@ -78,7 +78,7 @@ config is unchanged.
 
 The state is written before a session is created and after the result is posted. A crash
 between those two leaves a job marked as running with a session ID. On restart the
-watcher reattaches to it through `nabu.session.state`.
+watcher reattaches to it through `rho.session.state`.
 
 ### The poll
 
@@ -88,7 +88,7 @@ Every `poll`, for each repository:
 2. Turn the list plus the state into jobs. This is a pure function: snapshot + state +
    now → jobs. It is where the rules live, and most of the tests go here.
 3. Add the new jobs to a queue, and start them while fewer than `max_jobs` are running.
-4. Check every running job with `nabu.session.state`.
+4. Check every running job with `rho.session.state`.
 
 If `gh` or the daemon cannot be reached, that poll is skipped and nothing in the state
 changes. The next poll tries again.
@@ -103,19 +103,19 @@ subscriber and gets any question first. The watcher never answers one.
 **Which PRs.** Open, not a draft, not from a fork, and with a head SHA the watcher has not
 reviewed. The head must also have been the head for at least `quiet`, so a burst of
 pushes gets one review. Every such PR in a configured repository is reviewed, label or
-no label. That includes PRs nabu opened itself.
+no label. That includes PRs rho opened itself.
 
 **Worktree.** The watcher runs `git fetch origin pull/<n>/head <base>` in the clone, then
 `git worktree add --detach <root>/github/worktrees/<repo>/review-<n>-<sha7> <sha>`.
 
 **Session.**
-- `nabu.session.create` with the worktree as the workspace,
+- `rho.session.create` with the worktree as the workspace,
   `options.permission_mode: "auto"` and `budget.max_turns: review.max_turns`. That is 0
   by default, which is no cap (amended 2026-10-04: defaults of 30, then 100, cut real
   work off before it finished).
 - No goal. A review changes nothing, so the stop gate has nothing to object to.
 - The prompt gives the PR's title, body, base and head. It says the diff is
-  `git diff origin/<base>...<sha>` and tells the model not to change any files. If nabu
+  `git diff origin/<base>...<sha>` and tells the model not to change any files. If rho
   reviewed this PR before, it also includes that review's summary and says what has
   changed since it (`git diff <old sha>...<sha>`), so the model does not repeat itself.
   (Amended 2026-10-06.) It also lists the comments that comments jobs answered since
@@ -136,7 +136,7 @@ no label. That includes PRs nabu opened itself.
 ```
 
 **When it is done.** The session is done when its state is `idle`. The watcher calls
-`nabu.session.stop`, which writes the `report`, and reads the last assistant message with
+`rho.session.stop`, which writes the `report`, and reads the last assistant message with
 `events_after`. Then:
 
 - Parse the JSON block. Every comment whose `path` and `line` fall on the right side of a
@@ -151,30 +151,30 @@ no label. That includes PRs nabu opened itself.
 - Post one review with `gh api repos/<repo>/pulls/<n>/reviews`, using
   `event: "COMMENT"` and `commit_id: <reviewed sha>`. Pinning the commit means that if
   the PR has moved on since, the comments still point at the code that was reviewed.
-- The review body opens with `🤖 **nabu** reviewed \`<sha7>\``, and each line comment
-  opens with `🤖 **nabu**: `. Every body ends with `<!-- nabu -->`.
+- The review body opens with `🤖 **rho** reviewed \`<sha7>\``, and each line comment
+  opens with `🤖 **rho**: `. Every body ends with `<!-- rho -->`.
 - Record the SHA as reviewed and remove the worktree.
 
-**Why only `COMMENT`.** nabu posts as Kyle's `gh` login, and GitHub does not let an author
-approve or request changes on their own pull request. So nabu never approves or blocks
+**Why only `COMMENT`.** rho posts as Kyle's `gh` login, and GitHub does not let an author
+approve or request changes on their own pull request. So rho never approves or blocks
 anything, which is also the right amount of authority for it to have.
 
 ### The signature and the marker
 
-Kyle and nabu post as the same login, so GitHub shows Kyle as the author of nabu's
+Kyle and rho post as the same login, so GitHub shows Kyle as the author of rho's
 reviews. Two things tell them apart, one for people and one for the watcher:
 
-- **The signature**, `🤖 **nabu**`, opens every review body and every line comment. A line
+- **The signature**, `🤖 **rho**`, opens every review body and every line comment. A line
   comment carries its own because it is read in the diff, apart from the review it came
   with.
-- **The marker**, `<!-- nabu -->`, ends everything the watcher posts, and is invisible
+- **The marker**, `<!-- rho -->`, ends everything the watcher posts, and is invisible
   once rendered. Parts 2 and 3 never start a job from a comment that carries it. Without
-  the marker, a review from nabu would be read as comments from Kyle, get addressed, and
+  the marker, a review from rho would be read as comments from Kyle, get addressed, and
   set off another review. The watcher keys on the marker rather than the signature
   because Kyle might quote the signature himself.
 
-**Rejected: a separate GitHub identity.** A GitHub App (`nabu[bot]`) or a machine user
-would make nabu the real author. Its reviews could then approve or request changes, and
+**Rejected: a separate GitHub identity.** A GitHub App (`rho[bot]`) or a machine user
+would make rho the real author. Its reviews could then approve or request changes, and
 the marker would not be needed. Kyle chose the signature: it needs no app, no account and
 no key, and it is enough to tell who wrote what.
 
@@ -185,7 +185,7 @@ no key, and it is enough to tell who wrote what.
 | The daemon or GitHub cannot be reached | The poll is skipped. Nothing changes. |
 | The watcher restarts partway through a job | It reattaches using the session ID in the state. |
 | The session ends `blocked`, `paused` or `error` | Nothing is posted. The job is recorded as failed for that head SHA and not tried again until the PR has a new head. The worktree is kept for inspection. The watcher logs the session ID. |
-| The session stays `running` or waits on a question | It is left alone. It appears in `nabu status`, and a question in it can be answered from the TUI. |
+| The session stays `running` or waits on a question | It is left alone. It appears in `rho status`, and a question in it can be answered from the TUI. |
 | Posting the review fails | Nothing is recorded as reviewed. The session ID and the review text are logged, and the next poll posts again from the same session's final message, without running a new session. |
 | The session changes files anyway | The worktree is thrown away. Nothing is pushed. |
 
@@ -233,5 +233,5 @@ no key, and it is enough to tell who wrote what.
 - Tests of the post step against a fake `gh` and a fake daemon client: the right review
   JSON is sent, the marker is present, and the state is written in the right order around
   a failed post.
-- `nabu github --once --dry-run` against breezeway. The printed review is checked by eye.
+- `rho github --once --dry-run` against breezeway. The printed review is checked by eye.
 - One real `--once` run on a scratch repository with an open PR, before breezeway.

@@ -25,7 +25,7 @@ the code." Claude worked from whatever result files happened to be on disk:
 - Every diagnosis of a Robolectric timing or layout problem was a reading of the code.
   One run of the test would have settled it.
 
-When nabu asks on its own, the question carries the last failures. But the model keeps
+When rho asks on its own, the question carries the last failures. But the model keeps
 editing while Claude reads, and the failure text is a snapshot that goes stale.
 
 ## Decision

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // twoWorkspaces builds a session workspace and a second repository to read
@@ -130,12 +130,12 @@ func TestASiblingWithASharedPrefixIsNotInside(t *testing.T) {
 		root, path string
 		want       bool
 	}{
-		{"/srv/nabu", "/srv/nabu", true},
-		{"/srv/nabu", "/srv/nabu/daemon/agent.go", true},
-		{"/srv/nabu", "/srv/nabu-secrets/key.pem", false},
-		{"/srv/nabu", "/srv/nabufoo", false},
-		{"/srv/nabu", "/srv", false},
-		{"/srv/nabu", "/etc/passwd", false},
+		{"/srv/rho", "/srv/rho", true},
+		{"/srv/rho", "/srv/rho/daemon/agent.go", true},
+		{"/srv/rho", "/srv/rho-secrets/key.pem", false},
+		{"/srv/rho", "/srv/rhofoo", false},
+		{"/srv/rho", "/srv", false},
+		{"/srv/rho", "/etc/passwd", false},
 	}
 	for _, tc := range cases {
 		if got := within(filepath.FromSlash(tc.root), filepath.FromSlash(tc.path)); got != tc.want {

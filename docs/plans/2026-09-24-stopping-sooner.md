@@ -82,7 +82,7 @@ by how much damage each prevents.
 - `question_test.go` `TestChangesWorkspace`: rows for `git branch -D x`, `git branch -f x
   HEAD`, `git update-ref refs/heads/x HEAD`, `git checkout -B x` (true), and `git branch`,
   `git branch -a` (false).
-- `NABU_LOOP_REPLAY=~/.nabu/sessions go test ./daemon/modules/loop/ -run Replay -v` prints
+- `RHO_LOOP_REPLAY=~/.rho/sessions go test ./daemon/modules/loop/ -run Replay -v` prints
   stalled notices and blocks. Compare with spec §4:
   - 9 notices, 7 blocks, all in `01M2Y8K0`, `01M3336A`, `01M360WG`, `01M39RT5` and
     `01M30HBK`;
@@ -166,4 +166,4 @@ by how much damage each prevents.
 - Collapsing repeats when the request is assembled, or any other protocol change. Nothing
   here touches `protocol/spec.md`: `blocked` with a free-text reason already exists.
 - Detecting a stall from repeated words alone (spec §5).
-- Cleaning up `android-client-m4` in the nabu repo. That's Kyle's call, and separate.
+- Cleaning up `android-client-m4` in the rho repo. That's Kyle's call, and separate.

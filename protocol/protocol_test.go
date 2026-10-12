@@ -60,7 +60,7 @@ func TestValidateLogChain(t *testing.T) {
 func TestRPCErrorCarriesName(t *testing.T) {
 	e := NewRPCError(CodeCursorUnknown, "nope")
 	b, _ := json.Marshal(e)
-	if !strings.Contains(string(b), `"name":"nabu_cursor_unknown"`) {
+	if !strings.Contains(string(b), `"name":"rho_cursor_unknown"`) {
 		t.Fatalf("missing name: %s", b)
 	}
 }

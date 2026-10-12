@@ -42,7 +42,7 @@ func TestExecArgs(t *testing.T) {
 				return GH{r}.PostReview(ctx, "kyle/bw", 7, ReviewPost{CommitID: "abc", Event: "COMMENT", Body: "b " + Marker})
 			},
 			want:  []string{"gh", "api", "repos/kyle/bw/pulls/7/reviews", "--method", "POST", "--input", "-"},
-			stdin: `{"commit_id":"abc","body":"b <!-- nabu -->","event":"COMMENT"}`},
+			stdin: `{"commit_id":"abc","body":"b <!-- rho -->","event":"COMMENT"}`},
 		{name: "fetch",
 			call: func(r Runner) error { return GitCLI{r}.FetchPR(ctx, "C:/bw", 7, "main") },
 			want: []string{"git", "-C", "C:/bw", "fetch", "origin", "pull/7/head", "+refs/heads/main:refs/remotes/origin/main"}},
@@ -58,7 +58,7 @@ func TestExecArgs(t *testing.T) {
 		{name: "reply in a thread",
 			call:  func(r Runner) error { return GH{r}.ReplyTo(ctx, "kyle/bw", 7, 42, "ok "+Marker) },
 			want:  []string{"gh", "api", "repos/kyle/bw/pulls/7/comments/42/replies", "--method", "POST", "--input", "-"},
-			stdin: `{"body":"ok <!-- nabu -->"}`},
+			stdin: `{"body":"ok <!-- rho -->"}`},
 		{name: "comment",
 			call:  func(r Runner) error { return GH{r}.Comment(ctx, "kyle/bw", 7, "ok") },
 			want:  []string{"gh", "api", "repos/kyle/bw/issues/7/comments", "--method", "POST", "--input", "-"},
@@ -97,14 +97,14 @@ func TestOpenPRsDecodesGh(t *testing.T) {
 	out, _ := json.Marshal([]map[string]any{{
 		"number": 7, "headRefOid": "abc", "headRefName": "feat", "baseRefName": "main",
 		"isDraft": true, "isCrossRepository": true, "title": "T", "body": "B",
-		"labels": []map[string]any{{"name": "nabu", "color": "fff"}},
+		"labels": []map[string]any{{"name": "rho", "color": "fff"}},
 	}})
 	r, _ := recorder(string(out))
 	prs, err := GH{r}.OpenPRs(context.Background(), "kyle/bw")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []PR{{Number: 7, HeadSHA: "abc", HeadRef: "feat", BaseRef: "main", Title: "T", Body: "B", Draft: true, Fork: true, Labels: []string{"nabu"}}}
+	want := []PR{{Number: 7, HeadSHA: "abc", HeadRef: "feat", BaseRef: "main", Title: "T", Body: "B", Draft: true, Fork: true, Labels: []string{"rho"}}}
 	if !reflect.DeepEqual(prs, want) {
 		t.Errorf("prs = %+v", prs)
 	}
@@ -153,7 +153,7 @@ func TestBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, imp := range parsed.Imports {
-			if strings.HasPrefix(strings.Trim(imp.Path.Value, `"`), "github.com/corporealshift/nabu/daemon") {
+			if strings.HasPrefix(strings.Trim(imp.Path.Value, `"`), "github.com/corporealshift/rho/daemon") {
 				t.Errorf("%s imports %s", f, imp.Path.Value)
 			}
 		}
@@ -196,11 +196,11 @@ func TestPRCommentsReadsAllThreeKindsAndSkipsPendingReviews(t *testing.T) {
 
 func TestIssueCalls(t *testing.T) {
 	run, calls := recorder(`[{"number":12,"title":"T","body":"B","url":"u"}]`)
-	issues, err := GH{run}.OpenIssues(context.Background(), "kyle/bw", "nabu")
+	issues, err := GH{run}.OpenIssues(context.Background(), "kyle/bw", "rho")
 	if err != nil || !reflect.DeepEqual(issues, []Issue{{Number: 12, Title: "T", Body: "B", URL: "u"}}) {
 		t.Fatalf("issues = %+v, %v", issues, err)
 	}
-	want := []string{"gh", "issue", "list", "--repo", "kyle/bw", "--label", "nabu", "--state", "open", "--limit", "100", "--json", "number,title,body,url"}
+	want := []string{"gh", "issue", "list", "--repo", "kyle/bw", "--label", "rho", "--state", "open", "--limit", "100", "--json", "number,title,body,url"}
 	if !reflect.DeepEqual((*calls)[0].args, want) {
 		t.Errorf("args = %q", (*calls)[0].args)
 	}

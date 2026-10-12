@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // fillIndex writes n memories into the global store.
@@ -153,7 +153,7 @@ func TestImportedMemoriesAreNeverTouched(t *testing.T) {
 	m, h := curatorModule(t, `{"merge":[],"forget":["from-claude"]}`, nil)
 	fillIndex(t, m, maxIndexLines+2)
 
-	// An imported memory is not nabu's to delete.
+	// An imported memory is not rho's to delete.
 	m.imports = append(m.imports, NewStore(t.TempDir(), ScopeGlobal, true))
 	m.consolidate(context.Background(), newSession(t, "repo-abc123"))
 

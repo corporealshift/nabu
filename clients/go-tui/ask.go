@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/corporealshift/nabu/clients/goclient"
+	"github.com/corporealshift/rho/clients/goclient"
 )
 
 // question is something the agent asked that is waiting on an answer.

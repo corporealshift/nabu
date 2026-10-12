@@ -90,7 +90,7 @@ followed by:
 
 > Each is pinned by a test in `verify.sh`. To change one, say so in a comment on this PR.
 
-The comments job already handles comments on PRs labelled `nabu`, which every run's PR
+The comments job already handles comments on PRs labelled `rho`, which every run's PR
 is. Reversing a decision needs nothing new.
 
 If `plan.md` has no section, the body says `The plan recorded no open decisions.`. A

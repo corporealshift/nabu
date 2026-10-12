@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // logSession is a session with a workspace and a log the test can add to.

@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // TaskStore records a task snapshot for a session. The agent implements it:

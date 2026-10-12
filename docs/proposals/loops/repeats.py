@@ -2,7 +2,7 @@
 results (no new information), with where it started and what preceded it."""
 import json, os, sys
 sid = sys.argv[1]
-evs = [json.loads(l) for l in open(os.path.expanduser(f'~/.nabu/sessions/{sid}.jsonl'), encoding='utf-8') if l.strip()]
+evs = [json.loads(l) for l in open(os.path.expanduser(f'~/.rho/sessions/{sid}.jsonl'), encoding='utf-8') if l.strip()]
 calls = {}  # call_id -> (index, key)
 seq = []    # (index, key, result)
 for i, e in enumerate(evs):

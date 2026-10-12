@@ -7,7 +7,7 @@ def band(p):
 all_turns = collections.Counter()
 loop_turns = collections.Counter()
 loop_events = 0
-for f in glob.glob(os.path.expanduser('~/.nabu/sessions/*.jsonl')):
+for f in glob.glob(os.path.expanduser('~/.rho/sessions/*.jsonl')):
     evs = [json.loads(l) for l in open(f, encoding='utf-8') if l.strip()]
     window = next((e['data'].get('context_window') for e in evs if e['type'] == 'session'), 0) or 0
     if not window:

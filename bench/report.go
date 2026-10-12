@@ -17,7 +17,7 @@ func Report(w io.Writer, r Results) {
 	}
 
 	fmt.Fprintf(w, "\n%s\n", strings.Repeat("─", 72))
-	fmt.Fprintf(w, "nabu bench · %s · %d repeat(s) · judge %s\n", r.Started, r.Repeat, r.Judge)
+	fmt.Fprintf(w, "rho bench · %s · %d repeat(s) · judge %s\n", r.Started, r.Repeat, r.Judge)
 	if r.Models.Local != "" {
 		fmt.Fprintf(w, "local %s · claude %s\n", r.Models.Local, r.Models.Claude)
 	}

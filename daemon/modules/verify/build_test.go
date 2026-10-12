@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // run runs git in a test repository, failing the test on error.

@@ -41,8 +41,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // refusedPrefix starts every refusal this module makes, so it can recognise
@@ -383,7 +383,7 @@ func (m *Module) stalledNotice(ts []turn) (string, string) {
 		return "", ""
 	}
 	first, last := st.run[0], st.run[len(st.run)-1]
-	text := fmt.Sprintf("[nabu loop notice] Your last %d turns have returned nothing new: every result was one you had already seen since the person's last message, over %s.",
+	text := fmt.Sprintf("[rho loop notice] Your last %d turns have returned nothing new: every result was one you had already seen since the person's last message, over %s.",
 		len(st.run), since(first.at, last.at))
 
 	// The call made most often, the latest on a tie.
@@ -557,7 +557,7 @@ func (m *Module) identicalNotice(atts []attempt, a attempt) (string, string) {
 	if st.runs < m.identicalAfter {
 		return "", ""
 	}
-	text := fmt.Sprintf("[nabu loop notice] `%s` has now run %d times since the person's last message, with the same arguments and the same result each time (%s).",
+	text := fmt.Sprintf("[rho loop notice] `%s` has now run %d times since the person's last message, with the same arguments and the same result each time (%s).",
 		a.label, st.runs, quote(a.content))
 	if a.path != "" {
 		text += fmt.Sprintf(" Nothing else has changed %s in the %s since the first.", a.path, since(st.first.at, a.at))
@@ -573,7 +573,7 @@ func (m *Module) checkNotice(atts []attempt, a attempt) (string, string) {
 	st := checkStreak(atts, a.key)
 	switch {
 	case failed(a) && st.lastGap && st.runs >= m.notLandingAfter:
-		text := fmt.Sprintf("[nabu loop notice] `%s` has failed with the same output %d times in a row, and the %s made in between (%s) did not change it.",
+		text := fmt.Sprintf("[rho loop notice] `%s` has failed with the same output %d times in a row, and the %s made in between (%s) did not change it.",
 			a.label, st.runs, plural(len(st.changes), "change", "changes"), listed(st.changes, 6))
 		if e := firstError(a.content); e != "" {
 			text += fmt.Sprintf(" Its first error is still %q.", e)
@@ -585,7 +585,7 @@ func (m *Module) checkNotice(atts []attempt, a attempt) (string, string) {
 		return text, fmt.Sprintf("told the model its last %s did not change the failure of `%s`",
 			plural(len(st.changes), "change", "changes"), a.label)
 	case !st.anyChange && st.runs >= m.watchAfter && st.runs%m.watchAfter == 0 && !explicitWait.MatchString(a.command):
-		text := fmt.Sprintf("[nabu loop notice] `%s` has returned the same output %d times over %s, with nothing changed in between. "+
+		text := fmt.Sprintf("[rho loop notice] `%s` has returned the same output %d times over %s, with nothing changed in between. "+
 			"If you are waiting for something to finish, the `wait` tool runs a command until its output changes and returns once. "+
 			"If you are not waiting, asking again will not give a different answer.",
 			a.label, st.runs, since(st.first.at, a.at))

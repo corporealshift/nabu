@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/corporealshift/nabu/daemon/agent"
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/modules/memory"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/agent"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/modules/memory"
+	"github.com/corporealshift/rho/protocol"
 	"io"
 	"net"
 	"os"
@@ -18,7 +18,7 @@ import (
 )
 
 // newDaemon builds a daemon over a temp root bound to a random loopback port,
-// so tests never touch a real ~/.nabu and never collide with a live daemon.
+// so tests never touch a real ~/.rho and never collide with a live daemon.
 func newDaemon(t *testing.T) *Daemon {
 	t.Helper()
 	d, err := New(Options{Root: t.TempDir(), Bind: "127.0.0.1:0", LogWriter: io.Discard})
@@ -46,7 +46,7 @@ func TestEnsureLayoutCreatesTheTree(t *testing.T) {
 }
 
 func TestDefaultRootHonoursEnvOverride(t *testing.T) {
-	t.Setenv("NABU_ROOT", filepath.Join("some", "where"))
+	t.Setenv("RHO_ROOT", filepath.Join("some", "where"))
 	got, err := DefaultRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -238,7 +238,7 @@ func TestServeAndShutdown(t *testing.T) {
 }
 
 // session.Open appends "sessions" itself. Passing it the sessions directory
-// produced ~/.nabu/sessions/sessions, which no other component looks in.
+// produced ~/.rho/sessions/sessions, which no other component looks in.
 func TestSessionsLiveDirectlyUnderTheRoot(t *testing.T) {
 	d := newDaemon(t)
 	if err := d.Listen(); err != nil {
@@ -258,7 +258,7 @@ func TestSessionsLiveDirectlyUnderTheRoot(t *testing.T) {
 // Memory lands at <root>/memory, per spec 11.2. This is the join between the
 // host's data directory and the module's own layout, which neither package's
 // tests can see on its own.
-func TestMemoryLivesAtTheNabuRoot(t *testing.T) {
+func TestMemoryLivesAtTheRhoRoot(t *testing.T) {
 	root := t.TempDir()
 	mem := &memory.Module{}
 	d, err := New(Options{

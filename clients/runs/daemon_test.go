@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func TestStepSessionOptions(t *testing.T) {

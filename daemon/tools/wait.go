@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Bounds on a wait, so one call cannot hold a session for hours.

@@ -1,8 +1,8 @@
-# nabu — architecture map
+# rho — architecture map
 
 Short orientation for anyone (human or agent) opening this repo. The full design with
 every decision and rejected alternative is
-`docs/specs/2026-09-11-nabu-architecture-design.md`; read it before
+`docs/specs/2026-09-11-rho-architecture-design.md`; read it before
 proposing changes. The wire contract is `protocol/spec.md`.
 
 ## In one paragraph
@@ -47,7 +47,7 @@ daemon/
   notify/                 FCM
   workspace/              workspace key, trust, permission plumbing
   stats/                  how much work a session was, derived from its log
-cmd/nabu/                 the single binary (daemon + CLI subcommands)
+cmd/rho/                 the single binary (daemon + CLI subcommands)
 clients/                  go-tui/ android/ rust-gui/ goclient/
                           github/ — watcher: polls GitHub, runs sessions in worktrees, posts reviews and replies
                           runs/ — the runner: takes a /run brief to a PR through fixed steps, a session per step
@@ -81,6 +81,6 @@ A live smoke test drives the real agent loop against a local OpenAI-compatible
 server. It is skipped unless the base URL is set, so the gate stays hermetic:
 
 ```
-NABU_LIVE_BASE_URL=http://localhost:8033/v1 NABU_LIVE_MODEL=qwen3.6-35b-a3b \
+RHO_LIVE_BASE_URL=http://localhost:8033/v1 RHO_LIVE_MODEL=qwen3.6-35b-a3b \
   go test ./daemon/agent/ -run Live -v -timeout 10m
 ```

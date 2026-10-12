@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Log is one session's events, live or archived, with what is needed to say
@@ -24,7 +24,7 @@ const (
 	KindAll         Kind = "all"
 	KindInteractive Kind = "interactive"
 	// KindUnattended is work no person was watching: runs, goals and their
-	// steps, GitHub jobs, headless `nabu run`. See unattended.
+	// steps, GitHub jobs, headless `rho run`. See unattended.
 	KindUnattended Kind = "unattended"
 )
 

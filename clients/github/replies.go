@@ -109,8 +109,8 @@ func describe(c Comment, isNew bool) string {
 		state = "new"
 	}
 	who := c.Author
-	if fromNabu(c) {
-		who = "nabu"
+	if fromRho(c) {
+		who = "rho"
 	}
 	kind := "comment"
 	if c.Kind == CommentReview {

@@ -7,7 +7,7 @@
 ## 1. Purpose
 
 Five independent pieces of work, gathered here because they were decided together.
-Four of them come from nabu's own answer when asked what it was missing (session
+Four of them come from rho's own answer when asked what it was missing (session
 `01M2HFSR6RFH18BXFJ5R3FS8W3`, 2026-09-17 03:17). The fifth — copying text out of the
 Android transcript — comes from the owner.
 
@@ -15,7 +15,7 @@ Each piece ships on its own branch and its own PR. Nothing here is a package dea
 any one of them can land, or not land, without the others. The one ordering
 constraint is that **B precedes C**, for the reason given in §4.
 
-nabu's fifth suggestion, a scratchpad for working state distinct from `memory.save`,
+rho's fifth suggestion, a scratchpad for working state distinct from `memory.save`,
 is **deliberately excluded**. The task list and skills already cover it, and adding a
 third place to put state would make "where does this belong" a question with no good
 answer.
@@ -103,7 +103,7 @@ optional fields deliver without one.
 
 ### The problem
 
-nabu's words: it is parsing `git diff` and `git log` output as text, and calls that
+rho's words: it is parsing `git diff` and `git log` output as text, and calls that
 fragile. Every structured fact it wants — which files changed, what the hunk headers
 say, which commit touched a line — arrives as prose it has to re-derive.
 
@@ -141,7 +141,7 @@ they are born reporting `kind: not_found` when `gh` is not installed and
 
 ### The problem
 
-A session is locked to one workspace. nabu cannot read nabu's own source while working
+A session is locked to one workspace. rho cannot read rho's own source while working
 in `farthing`, so cross-project reference work is impossible.
 
 ### The change
@@ -153,7 +153,7 @@ must name a configured root; absent, they behave exactly as today.
 ### The boundary that does not move
 
 **Writes never cross.** `write`, `edit`, and `bash` stay confined to the session
-workspace. The guardrail that blocked `rm ~/nabu-permission-test-does-not-exist` in the
+workspace. The guardrail that blocked `rm ~/rho-permission-test-does-not-exist` in the
 owner's permission test keeps its exact current behaviour for everything that mutates.
 
 Read and write are separated here deliberately: reading another repository is a
@@ -169,7 +169,7 @@ unbounded one.
 
 ### The problem
 
-The owner drives the workspace concurrently from other terminals. nabu has no way to
+The owner drives the workspace concurrently from other terminals. rho has no way to
 know whether a file it read three turns ago is still what is on disk, so it is
 guessing, or re-reading defensively, or wrong.
 

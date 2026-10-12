@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://nabu.dev/schema/event.json",
-  "title": "nabu session event",
+  "$id": "https://rho.dev/schema/event.json",
+  "title": "rho session event",
   "type": "object",
   "required": ["id", "parent_id", "timestamp", "type", "data"],
   "properties": {

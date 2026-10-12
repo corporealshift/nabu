@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-08
 **Status:** Approved by Kyle in conversation
-**Amends:** the compaction stages in `2026-09-11-nabu-architecture-design.md` (thresholds
+**Amends:** the compaction stages in `2026-09-11-rho-architecture-design.md` (thresholds
 move from the daemon to each provider; stage 0 can be turned off), and `protocol/spec.md`
 §3.1 and §7 (a new session option).
 
@@ -98,7 +98,7 @@ whoever creates or sets it.
 - **A config value out of range** (`summarize_at` above 1, `clear_at` at or above
   `summarize_at`, `normal_window` below 0): the daemon refuses to start and names the
   provider and the key, as other config errors do.
-- **An unknown `context` value** in create or `set_option`: `nabu_invalid_params`, and
+- **An unknown `context` value** in create or `set_option`: `rho_invalid_params`, and
   nothing is appended.
 - **A summary that cannot shrink the context enough** (a single huge message): unchanged
   from today. Summarizing is what already happens at the upper threshold.
@@ -146,7 +146,7 @@ whoever creates or sets it.
 - `daemon/config`: the three settings load; out-of-range values are refused with the
   provider and key named.
 - Protocol: `context` round-trips through create and `set_option`; an invalid value is
-  `nabu_invalid_params`; the spec, schema and a conformance vector change together.
+  `rho_invalid_params`; the spec, schema and a conformance vector change together.
 - `clients/runs`: a run home and its steps copy `context` from their parent; an
   unreadable parent gives `normal`.
 - TUI and Android: the command and the menu set the option (unit tests with the fake

@@ -32,7 +32,7 @@ round, and there a goal is set.
 
 When a turn has done work, the work is committed and there is a pull request. Unfinished
 work is not pushed, and the model says what is left. Whether work is finished is the
-model's call: nabu cannot tell, and the task list is not reliable enough to decide it.
+model's call: rho cannot tell, and the task list is not reliable enough to decide it.
 
 ## Decision
 
@@ -52,7 +52,7 @@ if at least one of these holds:
 - a task's check last failed;
 - the project gate is configured and fails.
 
-The reminder says it is nabu's, not the person's. It quotes the person's last message
+The reminder says it is rho's, not the person's. It quotes the person's last message
 and says to stay within it. Then it gives the facts, and asks: if the work is finished,
 mark finished tasks done, commit on a branch and open a pull request; if it is not, do
 not push, and say what is left. It ends by saying the model may stop after answering.
@@ -76,5 +76,5 @@ person's last message. So a restart does not repeat it.
 - **Rewording the §6.4 veto template first.** That is a protocol change, and it does
   not stop the objections from repeating. The reminder does its own framing inside its
   reason, so no change to the protocol is needed.
-- **nabu committing or opening the PR itself.** That would be an actor neither the model
+- **rho committing or opening the PR itself.** That would be an actor neither the model
   nor Kyle asked for.

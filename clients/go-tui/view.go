@@ -7,8 +7,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/corporealshift/nabu/clients/goclient"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/clients/goclient"
+	"github.com/corporealshift/rho/protocol"
 )
 
 var (
@@ -123,7 +123,7 @@ func taskLine(t protocol.Task) string {
 // picker lists the sessions to switch between.
 func (m model) picker() string {
 	var b strings.Builder
-	title, empty, help := "Sessions", "no sessions yet — start one with `nabu run`",
+	title, empty, help := "Sessions", "no sessions yet — start one with `rho run`",
 		"↑↓ move · →← fold · enter attach · a archive · tab archived · esc"
 	if m.pickingArchived {
 		title, empty, help = "Archived sessions", "nothing archived",

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // recorder calls its own tool from BeforeRequest at the second request, the

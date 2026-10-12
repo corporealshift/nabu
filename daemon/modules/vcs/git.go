@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 const gitDescription = "Read the repository's state as structured data rather than as text to " +

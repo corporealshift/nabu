@@ -56,7 +56,7 @@ on suffix blocks: it answered the loop module's notices in the same session.
 
 ### Decision
 
-A skill may declare the files it covers, in a nabu-only frontmatter key:
+A skill may declare the files it covers, in a rho-only frontmatter key:
 
 ```yaml
 paths: **/*.gradle.kts, **/AndroidManifest.xml, **/gradlew*

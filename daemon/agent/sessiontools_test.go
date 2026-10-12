@@ -6,10 +6,10 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/modules/ask"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/modules/ask"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // A module can offer a tool to some sessions only. The ask module offers ask

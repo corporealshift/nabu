@@ -8,31 +8,31 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/daemon/provider"
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/daemon/tools"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/daemon/provider"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/daemon/tools"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // TestLiveLocalModel drives the whole loop against a real OpenAI-compatible
-// server. It is skipped unless NABU_LIVE_BASE_URL is set, so the default gate
+// server. It is skipped unless RHO_LIVE_BASE_URL is set, so the default gate
 // stays hermetic.
 //
-//	NABU_LIVE_BASE_URL=http://localhost:8033/v1 \
-//	NABU_LIVE_MODEL=qwen3.6-35b-a3b \
+//	RHO_LIVE_BASE_URL=http://localhost:8033/v1 \
+//	RHO_LIVE_MODEL=qwen3.6-35b-a3b \
 //	go test ./daemon/agent/ -run Live -v -timeout 10m
 func TestLiveLocalModel(t *testing.T) {
-	base := os.Getenv("NABU_LIVE_BASE_URL")
+	base := os.Getenv("RHO_LIVE_BASE_URL")
 	if base == "" {
-		t.Skip("set NABU_LIVE_BASE_URL to run the live smoke test")
+		t.Skip("set RHO_LIVE_BASE_URL to run the live smoke test")
 	}
-	model := os.Getenv("NABU_LIVE_MODEL")
+	model := os.Getenv("RHO_LIVE_MODEL")
 	if model == "" {
 		model = "local-model"
 	}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "greeting.txt"), []byte("hello from nabu\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "greeting.txt"), []byte("hello from rho\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store, err := session.Open(dir)
@@ -84,7 +84,7 @@ func TestLiveLocalModel(t *testing.T) {
 			continue
 		}
 		d := protocol.MustData[protocol.ToolResultData](e)
-		if d.Tool == "read" && d.Status == "ok" && strings.Contains(d.Content, "hello from nabu") {
+		if d.Tool == "read" && d.Status == "ok" && strings.Contains(d.Content, "hello from rho") {
 			readOK = true
 		}
 	}

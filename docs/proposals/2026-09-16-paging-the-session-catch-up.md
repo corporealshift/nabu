@@ -2,11 +2,11 @@
 
 **Status:** proposed, not scheduled. No decision taken.
 **Raised:** 2026-09-16, out of the websocket read-limit fix (PR #24).
-**Affects:** `nabu.session.events_after`, every client, the Android milestone.
+**Affects:** `rho.session.events_after`, every client, the Android milestone.
 
 ## The problem
 
-`nabu.session.events_after` returns **every event since the cursor in a single
+`rho.session.events_after` returns **every event since the cursor in a single
 message**. There is no limit and no paging. A client attaching to a session for the
 first time passes no cursor at all, so it asks for the entire log.
 
@@ -114,7 +114,7 @@ transport limit, both large enough that the common case is still a single round 
 - `daemon/api`: cap what `events_after` returns and set `synced` accordingly.
 - `protocol/spec.md` §7.5 and §4: document the cap and that a client must loop.
 - `clients/goclient`: fetch until `synced` is true.
-- `clients/go-tui`, `cmd/nabu`: no change beyond the client.
+- `clients/go-tui`, `cmd/rho`: no change beyond the client.
 - `clients/android`: build the loop in from the start rather than retrofitting.
 - New conformance vector for a capped response, even though the shape is unchanged,
   because the behaviour is now specified.

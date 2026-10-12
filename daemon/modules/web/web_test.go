@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // The bodies below are the documented response shapes for each service. They

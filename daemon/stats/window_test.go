@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // The period under test is 2026-09-20 and 2026-09-21, UTC.

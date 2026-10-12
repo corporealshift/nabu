@@ -5,16 +5,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
-// listed is the one summary for a session in nabu.session.list.
+// listed is the one summary for a session in rho.session.list.
 func (hn *harness) listed(t *testing.T, id string) map[string]any {
 	t.Helper()
 	var out struct {
 		Sessions []map[string]any `json:"sessions"`
 	}
-	result(t, hn.call(t, 90, "nabu.session.list", map[string]any{}), &out)
+	result(t, hn.call(t, 90, "rho.session.list", map[string]any{}), &out)
 	for _, s := range out.Sessions {
 		if s["session_id"] == id {
 			return s
@@ -39,7 +39,7 @@ func TestCreateWithAParentAndLabels(t *testing.T) {
 		SessionID string         `json:"session_id"`
 		Event     protocol.Event `json:"event"`
 	}
-	result(t, hn.call(t, 2, "nabu.session.create", map[string]any{"workspace": hn.dir,
+	result(t, hn.call(t, 2, "rho.session.create", map[string]any{"workspace": hn.dir,
 		"options": map[string]any{"parent": home, "labels": []string{"run:plan"}}}), &out)
 
 	d := protocol.MustData[protocol.SessionData](out.Event)
@@ -69,7 +69,7 @@ func TestCreateRefusesAnUnknownParentOrBadLabels(t *testing.T) {
 		"seventeen labels": {"labels": []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			resp := hn.call(t, 1, "nabu.session.create", map[string]any{"workspace": hn.dir, "options": opts})
+			resp := hn.call(t, 1, "rho.session.create", map[string]any{"workspace": hn.dir, "options": opts})
 			if code := rpcCode(t, resp); code != protocol.CodeInvalidParams {
 				t.Errorf("code = %d, want invalid params", code)
 			}
@@ -84,8 +84,8 @@ func TestCreateRefusesAnUnknownParentOrBadLabels(t *testing.T) {
 func TestAnArchivedParentIsStillAParent(t *testing.T) {
 	hn := newHarness(t)
 	home := hn.mustCreate(t)
-	result(t, hn.call(t, 2, "nabu.session.archive", map[string]any{"session_id": home}), &struct{}{})
-	resp := hn.call(t, 3, "nabu.session.create", map[string]any{"workspace": hn.dir,
+	result(t, hn.call(t, 2, "rho.session.archive", map[string]any{"session_id": home}), &struct{}{})
+	resp := hn.call(t, 3, "rho.session.create", map[string]any{"workspace": hn.dir,
 		"options": map[string]any{"parent": home}})
 	if resp.Error != nil {
 		t.Fatalf("an archived parent was refused: %+v", resp.Error)
@@ -98,9 +98,9 @@ func TestSetOptionLabels(t *testing.T) {
 	var out struct {
 		EventID string `json:"event_id"`
 	}
-	result(t, hn.call(t, 2, "nabu.session.set_option",
+	result(t, hn.call(t, 2, "rho.session.set_option",
 		map[string]any{"session_id": id, "key": "labels", "value": []string{"run:requested"}}), &out)
-	result(t, hn.call(t, 3, "nabu.session.set_option",
+	result(t, hn.call(t, 3, "rho.session.set_option",
 		map[string]any{"session_id": id, "key": "labels", "value": []string{"run:plan", "run:attempt:1/10"}}), &out)
 
 	s, _ := hn.h.getSession(id)
@@ -116,7 +116,7 @@ func TestSetOptionLabels(t *testing.T) {
 		t.Errorf("listed labels = %v", got)
 	}
 
-	result(t, hn.call(t, 4, "nabu.session.set_option",
+	result(t, hn.call(t, 4, "rho.session.set_option",
 		map[string]any{"session_id": id, "key": "labels", "value": []string{}}), &out)
 	if got := s.State().Options.Labels; len(got) != 0 {
 		t.Errorf("clearing left labels %q", got)
@@ -140,7 +140,7 @@ func TestSetOptionRefusesParentAndBadLabels(t *testing.T) {
 			if name == "parent" {
 				key, value = "parent", id
 			}
-			resp := hn.call(t, 1, "nabu.session.set_option", map[string]any{"session_id": id, "key": key, "value": value})
+			resp := hn.call(t, 1, "rho.session.set_option", map[string]any{"session_id": id, "key": key, "value": value})
 			if code := rpcCode(t, resp); code != protocol.CodeInvalidParams {
 				t.Errorf("code = %d, want invalid params", code)
 			}
@@ -159,7 +159,7 @@ func TestSetOptionDescriptionStartsNothing(t *testing.T) {
 	var out struct {
 		EventID string `json:"event_id"`
 	}
-	result(t, hn.call(t, 2, "nabu.session.set_option",
+	result(t, hn.call(t, 2, "rho.session.set_option",
 		map[string]any{"session_id": id, "key": "description", "value": "Add a Median function."}), &out)
 	s, _ := hn.h.getSession(id)
 	st := s.State()
@@ -170,7 +170,7 @@ func TestSetOptionDescriptionStartsNothing(t *testing.T) {
 		t.Errorf("setting a description moved the session to %q", st.State)
 	}
 	for _, v := range []any{3, strings.Repeat("a", protocol.MaxDescription+1)} {
-		resp := hn.call(t, 3, "nabu.session.set_option", map[string]any{"session_id": id, "key": "description", "value": v})
+		resp := hn.call(t, 3, "rho.session.set_option", map[string]any{"session_id": id, "key": "description", "value": v})
 		if code := rpcCode(t, resp); code != protocol.CodeInvalidParams {
 			t.Errorf("description %T: code %d", v, code)
 		}

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // The first cases are messages from real sessions, and what each actually was.
@@ -25,7 +25,7 @@ func TestAsksOnly(t *testing.T) {
 		// Requests, however they are phrased.
 		{"can you get some ci set up in m0? rust fmt check, clippy, tests, etc?", false},
 		{"what's going on here? ask Claude to help if you're struggling to get ci to pass", false},
-		{"what about the nabu system prompt? I'd like you to have a bit of your own personality", false},
+		{"what about the rho system prompt? I'd like you to have a bit of your own personality", false},
 		{"could you take a look at the failing test?", false},
 		{"why is this failing? fix it", false},
 		{"please rename the package", false},

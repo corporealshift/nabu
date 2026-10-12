@@ -23,13 +23,13 @@ type Issue struct {
 const maxBrief = 16000
 
 // IssueBrief is a run's brief from an issue: its title, which names the run,
-// its body, and every comment on it that nabu did not post.
+// its body, and every comment on it that rho did not post.
 func IssueBrief(repo string, is Issue, comments []Comment) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n%s\n\n(From issue %s#%d: %s)\n", strings.TrimSpace(is.Title), strings.TrimSpace(is.Body), repo, is.Number, is.URL)
 	first := true
 	for _, c := range comments {
-		if fromNabu(c) || strings.TrimSpace(c.Body) == "" {
+		if fromRho(c) || strings.TrimSpace(c.Body) == "" {
 			continue
 		}
 		if first {
@@ -46,15 +46,15 @@ func IssueBrief(repo string, is Issue, comments []Comment) string {
 	return text
 }
 
-// Fingerprint changes when an issue is edited or someone other than nabu
-// comments on it, and not when nabu does. It is what decides whether a failed
-// run is asked for again: going by the issue's updated time would have nabu's
+// Fingerprint changes when an issue is edited or someone other than rho
+// comments on it, and not when rho does. It is what decides whether a failed
+// run is asked for again: going by the issue's updated time would have rho's
 // own report of the failure start it again, forever.
 func Fingerprint(is Issue, comments []Comment) string {
 	h := sha256.New()
 	fmt.Fprintf(h, "%s\x00%s", is.Title, is.Body)
 	for _, c := range comments {
-		if !fromNabu(c) {
+		if !fromRho(c) {
 			fmt.Fprintf(h, "\x00%d", c.ID)
 		}
 	}

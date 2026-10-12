@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // Entry is one directory a client may descend into or start a session in.

@@ -1,4 +1,4 @@
-# nabu P2 — TUI: Drive and Inspect Implementation Plan
+# rho P2 — TUI: Drive and Inspect Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
@@ -6,7 +6,7 @@
 > from the stated behaviour, then the implementation. If a requirement is ambiguous or
 > contradicts the real code, STOP and report rather than guessing.
 
-**Goal:** Finish the TUI so nabu can be the daily driver: start and steer a run from the terminal, see what the agent thinks it is doing, and know it is alive while the model is slow.
+**Goal:** Finish the TUI so rho can be the daily driver: start and steer a run from the terminal, see what the agent thinks it is doing, and know it is alive while the model is slow.
 
 **Architecture:** Additions to the existing Bubble Tea program under `clients/go-tui`. The model stays pure data and the update function stays pure; everything that touches the network goes through the answer-channel pattern already used for permission replies. No new dependencies.
 
@@ -35,7 +35,7 @@ being sent, so a queued session does not appear to have been working the whole t
 
 ### Interrupt
 
-`ctrl+x` sends `nabu.session.interrupt`. Chosen over `ctrl+c`, which quits, because
+`ctrl+x` sends `rho.session.interrupt`. Chosen over `ctrl+c`, which quits, because
 quitting and interrupting are opposite intentions and the cost of confusing them is
 high: one leaves the run going, the other stops the turn.
 
@@ -46,7 +46,7 @@ worse than a line saying nothing happened.
 ### The composer
 
 `i` or `enter` opens a single-line input at the bottom. `enter` sends it as
-`nabu.session.send_prompt`, `esc` cancels. The transcript keeps scrolling underneath.
+`rho.session.send_prompt`, `esc` cancels. The transcript keeps scrolling underneath.
 
 **A prompt may be sent while the session is running.** Spec 7 is explicit that
 `send_prompt` does not queue: the message is appended and the loop picks it up at the
@@ -61,9 +61,9 @@ Input beginning with `/` is a command rather than a prompt:
 
 | Command | Effect |
 |---|---|
-| `/goal <text>` | `nabu.session.set_goal` |
-| `/goal` | `nabu.session.clear_goal` |
-| `/stop` | `nabu.session.stop` |
+| `/goal <text>` | `rho.session.set_goal` |
+| `/goal` | `rho.session.clear_goal` |
+| `/stop` | `rho.session.stop` |
 | `/sessions` | opens the session picker |
 | `/help` | lists the commands |
 
@@ -72,7 +72,7 @@ as a prompt would be worse than saying it is not a command.
 
 ### The session picker
 
-`s` or `/sessions` opens a list of sessions from `nabu.session.list`, newest first,
+`s` or `/sessions` opens a list of sessions from `rho.session.list`, newest first,
 showing id, state and workspace. `enter` attaches to the highlighted one, `esc`
 cancels.
 
@@ -100,7 +100,7 @@ task list re-rendered inline on every update would drown the conversation.
 ### What stays out
 
 Scrollback search, transcript export, mouse support, and editing a task from the TUI
-(`nabu.session.update_tasks` exists, but deciding how a terminal edits a task list is
+(`rho.session.update_tasks` exists, but deciding how a terminal edits a task list is
 its own design). Multi-line composer input.
 
 ---

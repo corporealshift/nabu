@@ -69,7 +69,7 @@ Contract and its implementation together, as the spec requires.
   - `daemon/agent`: a large session at 55K does nothing, at 109K summarizes; switching
     large to normal at 60K summarizes at the next turn end.
   - `daemon/api`: create with `context: large` records it in the `session` event;
-    `set_option` with `context: huge` is `nabu_invalid_params` and appends nothing.
+    `set_option` with `context: huge` is `rho_invalid_params` and appends nothing.
   - The full gate, and the Android unit tests.
 - **Depends on:** 1.
 
@@ -107,7 +107,7 @@ where the choice goes.
   - `ui/Screens.kt`: tapping `ContextBadge` opens a small dialog, "Normal" or "Large",
     with one line each on what it means. The badge reads "L" after the percentage when
     the session is large.
-  - `data/SessionRepository.kt` and `NabuViewModel.kt`: `setContext(sessionId, size)`
+  - `data/SessionRepository.kt` and `RhoViewModel.kt`: `setContext(sessionId, size)`
     through `set_option`. A refusal shows in the existing refusal banner.
 - **Proves it:** a unit test with `FakeDaemon` that `setContext` sends `key: context`,
   and the projection test from step 2 for the badge state.
@@ -119,7 +119,7 @@ where the choice goes.
 
 - Merge, then at a gap install the daemon (rename and copy, as before) and the phone
   build.
-- Set `local` in `~/.nabu/config.json`: `normal_window: 64000`, `clear_at: -1`. Restart
+- Set `local` in `~/.rho/config.json`: `normal_window: 64000`, `clear_at: -1`. Restart
   the daemon and the runner.
 - **Proves it:** the next run's step sessions show `summarize` compactions with the
   last input near 54K and no `clear_results`; the stats screen's compaction counts for

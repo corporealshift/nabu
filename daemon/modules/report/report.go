@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // DefaultCommitLimit bounds how many commits the report names. A long run can

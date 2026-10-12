@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // pendingID waits for the daemon to register exactly one outstanding request
@@ -295,7 +295,7 @@ func TestAQuestionWaitsForSomeoneToAttach(t *testing.T) {
 
 	cs, rc := hn.attach(t)
 	hn.subscribeVia(t, cs, id)
-	sent := rc.await(t, "nabu.rpc.ui.ask")
+	sent := rc.await(t, "rho.rpc.ui.ask")
 	if sent["request_id"] != reqID || sent["question"] != "which branch?" {
 		t.Fatalf("the late subscriber was sent %#v", sent)
 	}
@@ -329,16 +329,16 @@ func TestSubscribingSendsWhatIsStillOpen(t *testing.T) {
 		close(done)
 	}()
 	reqID := hn.pendingID(t)
-	rcA.await(t, "nabu.rpc.permission.request")
+	rcA.await(t, "rho.rpc.permission.request")
 
 	csB, rcB := hn.attach(t)
 	hn.subscribeVia(t, csB, id)
-	if got := rcB.await(t, "nabu.rpc.permission.request"); got["request_id"] != reqID {
+	if got := rcB.await(t, "rho.rpc.permission.request"); got["request_id"] != reqID {
 		t.Fatalf("the late subscriber was sent %#v", got)
 	}
 	// Subscribing again, as a reconnecting client does, sends it again.
 	hn.subscribeVia(t, csB, id)
-	rcB.await(t, "nabu.rpc.permission.request")
+	rcB.await(t, "rho.rpc.permission.request")
 
 	hn.answer(t, csB, reqID, permissionReply{Verdict: "approve"})
 	<-done
@@ -354,7 +354,7 @@ func TestSubscribingSendsWhatIsStillOpen(t *testing.T) {
 	for _, rc := range []*recordConn{rcA, rcB} {
 		select {
 		case n := <-rc.out:
-			if n.Method == "nabu.rpc.permission.request" {
+			if n.Method == "rho.rpc.permission.request" {
 				t.Fatal("a subscriber was sent the request twice")
 			}
 		default:

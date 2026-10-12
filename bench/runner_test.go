@@ -239,8 +239,8 @@ func TestClaudeJudgingClaudeIsMarkedSelfJudged(t *testing.T) {
 	if !judgeIsRelated("claude/sonnet", "claude") {
 		t.Error("claude judging claude should be marked")
 	}
-	if judgeIsRelated("claude/sonnet", "nabu") {
-		t.Error("claude judging nabu is not self-judging")
+	if judgeIsRelated("claude/sonnet", "rho") {
+		t.Error("claude judging rho is not self-judging")
 	}
 	if judgeIsRelated("none", "claude") {
 		t.Error("no judge is not self-judging")

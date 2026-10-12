@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Module is the one required interface. Everything else a module can do is an
@@ -255,7 +255,7 @@ type Host interface {
 	Model() Model
 	Tools() ToolCaller
 	UI() UI
-	// DataDir returns ~/.nabu/<name>/, created on first call.
+	// DataDir returns ~/.rho/<name>/, created on first call.
 	DataDir(module string) (string, error)
 	Log() *slog.Logger
 }

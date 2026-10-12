@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // TaskIDs gives each task in a task.update snapshot the id it is stored under

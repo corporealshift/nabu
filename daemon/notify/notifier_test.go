@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/session"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/session"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // fakeSender records every message, for every device.
@@ -188,7 +188,7 @@ func TestWhatNotifies(t *testing.T) {
 	}
 
 	// A question waits on a person wherever it is asked, and goes away when answered.
-	r.n.RequestOpened(step.ID(), "REQ1", "nabu.rpc.ui.ask")
+	r.n.RequestOpened(step.ID(), "REQ1", "rho.rpc.ui.ask")
 	r.n.RequestClosed(step.ID(), "REQ1")
 	got := r.sentSince()
 	if k := kinds(got); len(k) != 2 || k[0] != KindQuestion || k[1] != KindResolved || got[0]["request_id"] != "REQ1" {
@@ -232,7 +232,7 @@ func TestNoTextLeavesTheDaemon(t *testing.T) {
 	r.state(home, protocol.StateIdle, protocol.StateRunning, "prompt")
 	r.state(home, protocol.StateRunning, protocol.StateError, "x")
 	r.labels(home, nil, []string{"goal:blocked"})
-	r.n.RequestOpened(home.ID(), "REQ", "nabu.rpc.ui.ask")
+	r.n.RequestOpened(home.ID(), "REQ", "rho.rpc.ui.ask")
 	got := r.sentSince()
 	if len(got) != 3 {
 		t.Fatalf("sent %v", kinds(got))

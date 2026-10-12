@@ -22,9 +22,9 @@ Two session options, added to the protocol the way options already work.
 
 ### `parent`
 
-- A session ID, set **only at creation**: `nabu.session.create {options: {parent}}`.
+- A session ID, set **only at creation**: `rho.session.create {options: {parent}}`.
 - Recorded in the `session` event's `options`.
-- `set_option` with `parent` is `nabu_invalid_params`, because a session's parent never
+- `set_option` with `parent` is `rho_invalid_params`, because a session's parent never
   changes.
 - The daemon checks that the parent exists when the session is created, and nothing
   else. It attaches no meaning to it: it does not archive children with the parent and
@@ -87,9 +87,9 @@ already tolerates unknown fields, and will be checked for it.
 
 | What | Then |
 |---|---|
-| `create` with a parent that does not exist | `nabu_invalid_params`. The session is not created. |
-| `set_option parent` | `nabu_invalid_params` |
-| A label that is too long, has a character outside the set, or is one too many | `nabu_invalid_params`. Nothing is appended. |
+| `create` with a parent that does not exist | `rho_invalid_params`. The session is not created. |
+| `set_option parent` | `rho_invalid_params` |
+| A label that is too long, has a character outside the set, or is one too many | `rho_invalid_params`. Nothing is appended. |
 | `/run` with no runner running | The label sits there. The home shows `run:requested` until a runner starts and picks it up. Nothing is lost. |
 | The parent is archived and the child is not | The child is listed at the top level, since its parent is not in the list. |
 

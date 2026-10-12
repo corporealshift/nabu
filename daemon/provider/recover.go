@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Recovering a tool call the model wrote into its reasoning.

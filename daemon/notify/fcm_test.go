@@ -46,7 +46,7 @@ func (g *fakeGoogle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		g.checkJWT(r.Form.Get("assertion"))
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "AT1", "expires_in": 3600, "token_type": "Bearer"})
-	case r.URL.Path == "/v1/projects/nabu-test/messages:send":
+	case r.URL.Path == "/v1/projects/rho-test/messages:send":
 		if r.Header.Get("Authorization") != "Bearer AT1" {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
@@ -63,7 +63,7 @@ func (g *fakeGoogle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		g.sent = append(g.sent, body.Message)
-		_, _ = w.Write([]byte(`{"name":"projects/nabu-test/messages/1"}`))
+		_, _ = w.Write([]byte(`{"name":"projects/rho-test/messages/1"}`))
 	default:
 		g.t.Errorf("unexpected request to %s", r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)
@@ -89,7 +89,7 @@ func (g *fakeGoogle) checkJWT(jwt string) {
 	if err := json.Unmarshal(raw, &c); err != nil {
 		g.t.Fatal(err)
 	}
-	if c["iss"] != "nabu@nabu-test.iam.gserviceaccount.com" || c["scope"] != fcmScope || !strings.HasSuffix(c["aud"].(string), "/token") ||
+	if c["iss"] != "rho@rho-test.iam.gserviceaccount.com" || c["scope"] != fcmScope || !strings.HasSuffix(c["aud"].(string), "/token") ||
 		c["exp"].(float64)-c["iat"].(float64) != 3600 {
 		g.t.Errorf("claims = %v", c)
 	}
@@ -109,7 +109,7 @@ func testAccount(t *testing.T, tokenURI string) (string, *rsa.PublicKey) {
 	}
 	pemKey := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 	b, _ := json.Marshal(map[string]string{
-		"type": "service_account", "project_id": "nabu-test", "client_email": "nabu@nabu-test.iam.gserviceaccount.com",
+		"type": "service_account", "project_id": "rho-test", "client_email": "rho@rho-test.iam.gserviceaccount.com",
 		"private_key": string(pemKey), "token_uri": tokenURI,
 	})
 	path := filepath.Join(t.TempDir(), "key.json")

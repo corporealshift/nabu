@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // Module is the clock module.
@@ -62,7 +62,7 @@ func (m *Module) blocks() []module.ContextBlock {
 
 // Line is the date as the model is told it.
 func Line(t time.Time) string {
-	return fmt.Sprintf("This session started on %s, %s, in the local time of the machine nabu runs on (UTC%s). "+
+	return fmt.Sprintf("This session started on %s, %s, in the local time of the machine rho runs on (UTC%s). "+
 		"Use the local date when you write one. Timestamps in logs and tool output are often UTC, which can be a day ahead or behind.",
 		t.Format("Monday"), t.Format("2006-01-02"), t.Format("-07:00"))
 }

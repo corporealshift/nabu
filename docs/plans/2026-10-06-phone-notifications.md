@@ -7,7 +7,7 @@ commit per step. Each step leaves the gate green.
 
 - **Changes:**
   - `daemon/notify/devices.go`: a device list in `<root>/devices.json`;
-  - `daemon/api`: `nabu.device.register` and `nabu.device.unregister`;
+  - `daemon/api`: `rho.device.register` and `rho.device.unregister`;
   - `protocol/errors.go` and `protocol/schema/jsonrpc.json`: the method list;
   - `spec.md` §7.
 - **Proves it:** a devices round-trip test, a handler test, and the protocol method-list

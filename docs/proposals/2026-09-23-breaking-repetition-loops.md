@@ -72,7 +72,7 @@ Roughly ten times the rate past half full. **Confounded:** the long sessions are
 hard ones (a build that will not compile), so some of this is the task, not the context.
 Still, it says where to look.
 
-**The model's own words, copied forward.** Nabu sends the model's visible text back in the
+**The model's own words, copied forward.** Rho sends the model's visible text back in the
 history and drops its reasoning. "You're right — I've been stuck in a loop…" was first
 written **with no user message and no veto before it** (event 1029, after three identical
 `task.update`s). From then on it opens nearly every turn. Of 183 thoughts saying "the user is
@@ -99,7 +99,7 @@ presence_penalty 0.0  frequency_penalty 0.0  repeat_penalty 1.0  dry_multiplier 
 
 That is exactly Qwen's "thinking mode, precise coding" preset. The model card's other
 thinking preset, for general tasks, uses `presence_penalty=1.5`, and it says to raise it
-"between 0 and 2 to reduce endless repetitions". Nabu sends no sampling parameters of its
+"between 0 and 2 to reduce endless repetitions". Rho sends no sampling parameters of its
 own, so it has no way to change this for one request.
 
 **Tools that say nothing new.** Three of the loop shapes are a tool returning the same
@@ -204,7 +204,7 @@ for example, a denial followed by the user saying "no, keep going".
 
 ### C. Say which messages are the harness (spec: §6.4 veto text)
 
-Prefix the trailing harness message: *"[nabu, automated — not the person]"*. It's a one-line
+Prefix the trailing harness message: *"[rho, automated — not the person]"*. It's a one-line
 change to normative text, plus the vectors for it. Small effect on its own (22 of 183), but it
 stops the harness from feeding the apology frame.
 
@@ -233,10 +233,10 @@ if A and B are not enough.
 ### F. Context housekeeping (measure first)
 
 - **Summarise earlier when a loop is detected:** a fresh context drops the attractor
-  wholesale. It's a lever the loop module could pull through the existing `nabu.session.compact`.
+  wholesale. It's a lever the loop module could pull through the existing `rho.session.compact`.
 - **Revisit the 70–85% band:** four turns of results is little for a build-fix cycle.
   Measure before changing.
-- **`preserve_thinking`:** Qwen recommends it for agents, and nabu drops reasoning. It could
+- **`preserve_thinking`:** Qwen recommends it for agents, and rho drops reasoning. It could
   help (the model sees it already concluded the same thing) or hurt (more to copy). It's an
   experiment for the bench, not a default.
 
@@ -281,4 +281,4 @@ Hold **E** and **F** until A and B have been running for a week, then re-run the
 - Qwen3.6-35B-A3B model card, Best Practices:
   <https://huggingface.co/Qwen/Qwen3.6-35B-A3B> (sampling presets, `presence_penalty` for
   endless repetitions, `preserve_thinking` for agents).
-- Session logs under `~/.nabu/sessions/`, 2026-09-18 to 2026-09-22.
+- Session logs under `~/.rho/sessions/`, 2026-09-18 to 2026-09-22.

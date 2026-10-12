@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/corporealshift/nabu/daemon/modules/artifact"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/modules/artifact"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func made(id, name, title, html string) protocol.Event {

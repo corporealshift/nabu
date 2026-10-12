@@ -13,7 +13,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/protocol"
 )
 
 func discardLogger() *slog.Logger {
@@ -54,7 +54,7 @@ func startServer(t *testing.T, h ConnHandler, cfg *Config) string {
 	return "ws" + strings.TrimPrefix(hs.URL, "http")
 }
 
-// sayHello dials, sends nabu.hello with version, and returns the reply.
+// sayHello dials, sends rho.hello with version, and returns the reply.
 func sayHello(t *testing.T, url, version string) helloResponse {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -67,7 +67,7 @@ func sayHello(t *testing.T, url, version string) helloResponse {
 	t.Cleanup(func() { _ = c.CloseNow() })
 
 	req := helloRequest{
-		JSONRPC: "2.0", ID: 1, Method: "nabu.hello",
+		JSONRPC: "2.0", ID: 1, Method: "rho.hello",
 		Params: map[string]any{"client": "test", "client_version": "0", "protocol_version": version},
 	}
 	if err := wsjson.Write(ctx, c, req); err != nil {
@@ -139,7 +139,7 @@ func TestNonHelloBeforeHelloIsRefused(t *testing.T) {
 	}
 	defer c.CloseNow()
 
-	req := helloRequest{JSONRPC: "2.0", ID: 7, Method: "nabu.session.list"}
+	req := helloRequest{JSONRPC: "2.0", ID: 7, Method: "rho.session.list"}
 	if err := wsjson.Write(ctx, c, req); err != nil {
 		t.Fatal(err)
 	}

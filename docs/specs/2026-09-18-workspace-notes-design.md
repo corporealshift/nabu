@@ -9,7 +9,7 @@
 A place for what the agent works out while doing a job: the dead ends, the reason X
 has to happen before Y, how far through a refactor it got. Prose, not checkboxes.
 
-This **reverses an exclusion**. The 2026-09-17 spec listed nabu's scratchpad suggestion
+This **reverses an exclusion**. The 2026-09-17 spec listed rho's scratchpad suggestion
 and deliberately left it out, on the grounds that the task list and skills already
 covered it. They do not. The task list holds *what to do*, each item with a `done_when`
 that makes it checkable. Nothing holds *what was learned doing it*, and a summarize
@@ -37,7 +37,7 @@ is false within a week.
 `daemon/workspace` already computes a stable identity per spec §11.2: a slug of the
 repository directory name plus a short hash of the git common dir, so it is **the same
 key across worktrees and subdirectories of one repository**, and a path hash outside
-git. `memory` already scopes by it (`~/.nabu/memory/ws/<key>/`).
+git. `memory` already scopes by it (`~/.rho/memory/ws/<key>/`).
 
 Notes use the same key. No project concept is invented, because the one that would be
 needed already exists.
@@ -112,11 +112,11 @@ preserve strings are about the *summary* staying coherent with what the notes sa
 
 ## 7. Sharing with the owner
 
-Notes are plain markdown files at `~/.nabu/notes/ws/<key>/<slug>.md`, with frontmatter
+Notes are plain markdown files at `~/.rho/notes/ws/<key>/<slug>.md`, with frontmatter
 carrying the name and the last-written time. Readable, greppable and diffable with no
 extra machinery, which is most of what "share them with me" needs.
 
-Plus `nabu notes`, which prints the current workspace's notes, and `nabu notes --all`
+Plus `rho notes`, which prints the current workspace's notes, and `rho notes --all`
 for every workspace.
 
 ### Non-goals

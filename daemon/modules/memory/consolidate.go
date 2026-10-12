@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // maxConsolidationPerPass caps merges and deletions separately. A pass that
@@ -62,8 +62,8 @@ func (m *Module) consolidate(ctx context.Context, s module.Session) {
 		return
 	}
 
-	// Only nabu's own memories are eligible: an imported one belongs to
-	// another tool and is not nabu's to merge or delete.
+	// Only rho's own memories are eligible: an imported one belongs to
+	// another tool and is not rho's to merge or delete.
 	own, err := m.global.Load()
 	if err != nil || len(own) == 0 {
 		return
@@ -169,7 +169,7 @@ func (m *Module) applyConsolidation(ctx context.Context, s module.Session, p con
 	}
 }
 
-// forgetIfPresent removes a memory nabu owns, and reports whether it did. A
+// forgetIfPresent removes a memory rho owns, and reports whether it did. A
 // name that is not there, or belongs to an import, is skipped rather than
 // treated as an error.
 func (m *Module) forgetIfPresent(ctx context.Context, s module.Session, own map[string]Memory, name string) bool {

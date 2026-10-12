@@ -8,7 +8,7 @@ type Cursor struct {
 
 // EventsAfter returns the events after the cursor position, in log order, and
 // whether the client will be fully synced once it applies them. A
-// last_event_id that is not in the log yields *RPCError nabu_cursor_unknown.
+// last_event_id that is not in the log yields *RPCError rho_cursor_unknown.
 func EventsAfter(log []Event, lastEventID *string) (events []Event, synced bool, err error) {
 	if lastEventID == nil {
 		return append([]Event(nil), log...), true, nil

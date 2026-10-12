@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Asking on the model's behalf when a session has gone on too long
@@ -81,7 +81,7 @@ func asked(since []protocol.Event) int {
 func question(log []protocol.Event, commands []string) string {
 	task, since := stretchOf(log)
 	var b strings.Builder
-	fmt.Fprintf(&b, "nabu is asking on behalf of a smaller local model that has spent %d turns "+
+	fmt.Fprintf(&b, "rho is asking on behalf of a smaller local model that has spent %d turns "+
 		"on the task below without anyone stepping in. It may be going round in circles.\n\n", turns(since))
 
 	b.WriteString("## The task\n\n" + cut(strings.TrimSpace(task), taskMax) + "\n\n")

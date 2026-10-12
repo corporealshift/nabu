@@ -44,7 +44,7 @@ func NewRunner(opts Options) *Runner {
 
 // Run executes every task against every harness, repeat times.
 func (r *Runner) Run(ctx context.Context) (Results, error) {
-	parent, err := os.MkdirTemp("", "nabu-bench-")
+	parent, err := os.MkdirTemp("", "rho-bench-")
 	if err != nil {
 		return Results{}, err
 	}

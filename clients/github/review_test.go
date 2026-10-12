@@ -108,7 +108,7 @@ func TestBuildReview(t *testing.T) {
 	if want := []string{"main.go:" + Signature + ": added line", "main.go:" + Signature + ": context line"}; !reflect.DeepEqual(placed, want) {
 		t.Errorf("line comments = %v, want %v", placed, want)
 	}
-	if want := "🤖 **nabu** reviewed `abc1234`\n\nTwo things."; !strings.HasPrefix(post.Body, want) {
+	if want := "🤖 **rho** reviewed `abc1234`\n\nTwo things."; !strings.HasPrefix(post.Body, want) {
 		t.Errorf("body does not open with the signed header:\n%s", post.Body)
 	}
 	for _, s := range []string{"`main.go:15` — between hunks", "`old.txt:1` — deleted file", "`nowhere.go:1` — not in the diff"} {

@@ -1,4 +1,4 @@
-# nabu P3 — Memory: The Curator Implementation Plan
+# rho P3 — Memory: The Curator Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
@@ -263,7 +263,7 @@ merges and deletions, and applies at most three of each through the tool API.
 - [ ] At most three merges and three deletions are applied per pass
 - [ ] A deletion of a name that does not exist is dropped, not an error
 - [ ] Consolidation cannot remove every memory: an empty result is refused
-- [ ] Imported memories are never merged or deleted, because nabu does not own them
+- [ ] Imported memories are never merged or deleted, because rho does not own them
 - [ ] Every change goes through the tool API, so git records the pass
 
 **Verify:** `go build ./... && go vet ./... && go test ./...`

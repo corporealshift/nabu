@@ -115,7 +115,7 @@ type Goal struct {
 }
 
 // Dir is where the goal's files are committed on its branch.
-func (g Goal) Dir() string { return filepath.ToSlash(filepath.Join(".nabu", "goals", g.Slug)) }
+func (g Goal) Dir() string { return filepath.ToSlash(filepath.Join(".rho", "goals", g.Slug)) }
 
 // File is one of the goal's files, relative to the worktree.
 func (g Goal) File(name string) string { return g.Dir() + "/" + name }

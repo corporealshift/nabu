@@ -13,13 +13,13 @@ import (
 	"time"
 )
 
-// --------------------------------------------------------------------- nabu
+// --------------------------------------------------------------------- rho
 
-// Nabu drives the nabu CLI. It is given an isolated root so a benchmark run
+// Rho drives the rho CLI. It is given an isolated root so a benchmark run
 // never touches the owner's real sessions, and a config with the web module
 // off so results do not move with the internet.
-type Nabu struct {
-	Exe   string // default "nabu"
+type Rho struct {
+	Exe   string // default "rho"
 	Root  string // isolated --root
 	Model string
 	// Port is chosen when the config is written. A fixed one collides with a
@@ -28,19 +28,19 @@ type Nabu struct {
 	Port int
 }
 
-func (n *Nabu) Name() string { return "nabu" }
+func (n *Rho) Name() string { return "rho" }
 
-func (n *Nabu) Preflight(context.Context) error {
+func (n *Rho) Preflight(context.Context) error {
 	if n.Root == "" {
-		return fmt.Errorf("nabu: no isolated root configured")
+		return fmt.Errorf("rho: no isolated root configured")
 	}
 	return nil
 }
 
-func (n *Nabu) Run(ctx context.Context, ws *Workspace, task Task) (Attempt, error) {
+func (n *Rho) Run(ctx context.Context, ws *Workspace, task Task) (Attempt, error) {
 	exe := n.Exe
 	if exe == "" {
-		exe = "nabu"
+		exe = "rho"
 	}
 	argv := []string{exe, "run", "--root", n.Root, "--workspace", ws.Dir, "--json"}
 	if task.MaxTurns > 0 {
@@ -54,15 +54,15 @@ func (n *Nabu) Run(ctx context.Context, ws *Workspace, task Task) (Attempt, erro
 	}
 	// A daemon that never came up is not a harness that tried and failed. Left
 	// unclassified it scores zero and reads as the harness being bad at the job.
-	if reason := nabuDidNotStart(a.Output); reason != "" {
-		return a, fmt.Errorf("nabu: %s", reason)
+	if reason := rhoDidNotStart(a.Output); reason != "" {
+		return a, fmt.Errorf("rho: %s", reason)
 	}
-	a.Cost.Turns, a.Cost.InputTokens, a.Cost.OutputTokens = nabuUsage(a.Output)
+	a.Cost.Turns, a.Cost.InputTokens, a.Cost.OutputTokens = rhoUsage(a.Output)
 	return a, nil
 }
 
-// nabuDidNotStart reports why the run never reached the model, or "".
-func nabuDidNotStart(out string) string {
+// rhoDidNotStart reports why the run never reached the model, or "".
+func rhoDidNotStart(out string) string {
 	for _, line := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n") {
 		line = strings.TrimSpace(line)
 		switch {
@@ -77,19 +77,19 @@ func nabuDidNotStart(out string) string {
 
 // Shutdown stops the daemon this harness started. Without it the port stays
 // held and the next suite collides with it, which is exactly how this adapter
-// first reported nabu as scoring zero.
-func (n *Nabu) Shutdown(ctx context.Context) error {
+// first reported rho as scoring zero.
+func (n *Rho) Shutdown(ctx context.Context) error {
 	exe := n.Exe
 	if exe == "" {
-		exe = "nabu"
+		exe = "rho"
 	}
 	cmd := exec.CommandContext(ctx, exe, "daemon", "stop", "--root", n.Root)
 	return cmd.Run()
 }
 
-// nabuUsage reads the turn count and token totals out of nabu's --json stream.
+// rhoUsage reads the turn count and token totals out of rho's --json stream.
 // Assistant messages carry usage; counting them is also the turn count.
-func nabuUsage(out string) (turns, in, outTok int) {
+func rhoUsage(out string) (turns, in, outTok int) {
 	for _, line := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "{") {
@@ -119,9 +119,9 @@ func nabuUsage(out string) (turns, in, outTok int) {
 	return turns, in, outTok
 }
 
-// WriteConfig writes the isolated config nabu runs under: the owner's provider
+// WriteConfig writes the isolated config rho runs under: the owner's provider
 // block, the web module off, memory off so one run cannot teach the next.
-func (n *Nabu) WriteConfig(providers json.RawMessage, defaultModel string) error {
+func (n *Rho) WriteConfig(providers json.RawMessage, defaultModel string) error {
 	if err := os.MkdirAll(n.Root, 0o755); err != nil {
 		return err
 	}

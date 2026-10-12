@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/clients/github"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/clients/github"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Runner drives every run. It is asked to Advance each tick, which does all
@@ -185,7 +185,7 @@ func (rn *Runner) pickUp(ctx context.Context, d Daemon) error {
 				name = fmt.Sprintf("issue %d %s", issue, firstLine(name))
 			}
 			slug := Slug(firstLine(name), h.ID)
-			r = &Run{Home: h.ID, Workspace: full.Workspace, Brief: full.Brief, Slug: slug, Branch: "nabu/" + slug,
+			r = &Run{Home: h.ID, Workspace: full.Workspace, Brief: full.Brief, Slug: slug, Branch: "rho/" + slug,
 				Worktree: filepath.Join(rn.Root, "runner", "worktrees", slug), Step: StepSetup, Started: rn.Now(), Issue: issue}
 			rn.runs[h.ID] = r
 			rn.logf("run %s: %s", h.ID, r.Branch)
@@ -1358,7 +1358,7 @@ func prTitle(brief string) string {
 		t = strings.TrimSpace(t[:maxTitle-1]) + "…"
 	}
 	if t == "" {
-		t = "nabu run"
+		t = "rho run"
 	}
 	return t
 }

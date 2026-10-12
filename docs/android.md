@@ -42,10 +42,10 @@ Notifications go through Firebase Cloud Messaging, which needs a Firebase projec
 own:
 
 1. In the [Firebase console](https://console.firebase.google.com), create a project, and
-   add an Android app with the package name `com.nabu.client`. Download its
+   add an Android app with the package name `com.rho.client`. Download its
    `google-services.json` to `clients/android/app/`. Git ignores that file.
 2. In **Project settings → Service accounts**, generate a new private key. Save it as
-   `~/.nabu/fcm-service-account.json`, and point the config at it:
+   `~/.rho/fcm-service-account.json`, and point the config at it:
 
    ```json
    { "notify": { "service_account": "fcm-service-account.json" } }

@@ -1,4 +1,4 @@
-module github.com/corporealshift/nabu
+module github.com/corporealshift/rho
 
 go 1.26.4
 

@@ -308,7 +308,7 @@ func TestRunRoundTrip(t *testing.T) {
 	if _, ok, err := Load(root, "H"); ok || err != nil {
 		t.Fatalf("missing run: %v, %v", ok, err)
 	}
-	r := Run{Home: "H", Workspace: "C:/src/x", Slug: "add-x-0001", Branch: "nabu/add-x-0001", Worktree: "w",
+	r := Run{Home: "H", Workspace: "C:/src/x", Slug: "add-x-0001", Branch: "rho/add-x-0001", Worktree: "w",
 		Step: StepFix, Fixes: 3, Session: "S1", Start: "abc", Notes: []string{"n"},
 		Started: time.Date(2026, 9, 30, 1, 0, 0, 0, time.UTC), Updated: time.Date(2026, 9, 30, 2, 0, 0, 0, time.UTC)}
 	if err := r.Save(root); err != nil {
@@ -322,7 +322,7 @@ func TestRunRoundTrip(t *testing.T) {
 	if err != nil || len(all) != 1 {
 		t.Fatalf("LoadAll = %d, %v", len(all), err)
 	}
-	if r.File(PlanFile) != ".nabu/runs/add-x-0001/plan.md" {
+	if r.File(PlanFile) != ".rho/runs/add-x-0001/plan.md" {
 		t.Errorf("File = %q", r.File(PlanFile))
 	}
 }

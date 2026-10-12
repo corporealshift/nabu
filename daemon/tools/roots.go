@@ -6,18 +6,18 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
+	"github.com/corporealshift/rho/daemon/module"
 )
 
 // Roots are the other repositories this daemon may read, by name.
 //
-// nabu's own complaint: locked to one workspace, it could not reference another
+// rho's own complaint: locked to one workspace, it could not reference another
 // project's code while working. Reading another repository is a convenience
 // with a bounded blast radius; writing to one is a foot-gun with an unbounded
 // one. So this list is read-only, and only read, glob and grep consult it.
 //
 // Names rather than paths, because a name cannot be escaped from. The model
-// asks for "nabu" and the daemon decides what that means; there is no spelling
+// asks for "rho" and the daemon decides what that means; there is no spelling
 // of a name that reaches a directory the owner did not list.
 type Roots map[string]string
 
@@ -92,8 +92,8 @@ func (r Roots) resolveIn(name, path string) (string, error) {
 // within reports whether p is root or lies under it.
 //
 // filepath.Rel does the comparison, because it normalises both sides and a
-// string prefix test would accept "/srv/nabu-secrets" as being inside
-// "/srv/nabu".
+// string prefix test would accept "/srv/rho-secrets" as being inside
+// "/srv/rho".
 func within(root, p string) bool {
 	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(p))
 	if err != nil {

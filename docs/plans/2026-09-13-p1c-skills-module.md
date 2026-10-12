@@ -1,4 +1,4 @@
-# nabu P1c — `skills` Module Implementation Plan
+# rho P1c — `skills` Module Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
@@ -6,7 +6,7 @@
 > from the stated behaviour, then the implementation. If a requirement is ambiguous or
 > contradicts the real code, STOP and report rather than guessing.
 
-**Goal:** Let the model discover and read skills, so nabu can use the same skill library Claude Code already has on this machine.
+**Goal:** Let the model discover and read skills, so rho can use the same skill library Claude Code already has on this machine.
 
 **Architecture:** `skills` is an in-process module implementing `SessionStarter`, `ToolProvider` and `CompactionHook`. It discovers skills from configured paths, injects an index of them as a prefix context block at session start and again after a `summarize` compaction, and registers a tool the model calls to read one skill body on demand.
 
@@ -23,7 +23,7 @@ The spec leaves several policy details open. This plan decides them:
 The default search paths are:
 
 1. `~/.claude/skills` — Claude Code compatibility. This is mandatory.
-2. `<nabu root>/skills` — nabu's own skill directory, alongside `sessions/` and `memory/`.
+2. `<rho root>/skills` — rho's own skill directory, alongside `sessions/` and `memory/`.
 
 Both are global. **Workspace-local skills are deliberately out of scope**: a
 workspace-dependent path makes the index differ per session, which contradicts
@@ -243,7 +243,7 @@ Expected: all pass.
 
 Append tests:
 
-**Default paths:** With no config, the module uses `~/.claude/skills` and `<workspace>/.nabu/skills/`.
+**Default paths:** With no config, the module uses `~/.claude/skills` and `<workspace>/.rho/skills/`.
 
 **Custom paths:** With `paths` set in config, those paths replace the defaults.
 
@@ -253,7 +253,7 @@ Append tests:
 
 The `Init` method:
 1. Reads `paths` from config as `[]string` via `cfg.Strings("paths", nil)`
-2. If `paths` is nil (absent), sets the default paths: `~/.claude/skills` and `<workspace>/.nabu/skills/`
+2. If `paths` is nil (absent), sets the default paths: `~/.claude/skills` and `<workspace>/.rho/skills/`
 3. If `paths` is an empty slice, sets paths to nil (no discovery)
 4. Stores the paths in the module struct
 
@@ -333,7 +333,7 @@ The method:
 4. Returns no block at all when no skills were found, rather than an empty index. A
    block that says "no skills" is context spent to say nothing.
 
-**Why not workspace-local skills.** A `<workspace>/.nabu/skills/` path would be useful,
+**Why not workspace-local skills.** A `<workspace>/.rho/skills/` path would be useful,
 but it makes the index workspace-dependent, which contradicts discovering once at
 `Init` and would require per-session state on a module struct shared by every
 concurrent session. Spec 14.7 names configured paths and `~/.claude/skills` only.
@@ -553,7 +553,7 @@ Expected: no output.
 **Decisions made:**
 
 **Discovery paths:**
-- Default: `~/.claude/skills` and `<workspace>/.nabu/skills/`
+- Default: `~/.claude/skills` and `<workspace>/.rho/skills/`
 - Config `paths` replaces defaults entirely
 - Recurse into subdirectories, follow symlinks
 - Only directories with `SKILL.md` are skills

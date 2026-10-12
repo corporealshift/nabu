@@ -14,11 +14,11 @@ if (file("google-services.json").exists()) {
 }
 
 android {
-    namespace = "com.nabu.client"
+    namespace = "com.rho.client"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.nabu.client"
+        applicationId = "com.rho.client"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

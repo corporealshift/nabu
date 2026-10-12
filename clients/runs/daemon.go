@@ -9,8 +9,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/corporealshift/nabu/clients/goclient"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/clients/goclient"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // LabelRequested is the label /run puts on a home.
@@ -84,17 +84,17 @@ func (c Client) SetLabels(ctx context.Context, id string, labels []string) error
 	if labels == nil {
 		labels = []string{}
 	}
-	return c.C.CallInto(ctx, "nabu.session.set_option",
+	return c.C.CallInto(ctx, "rho.session.set_option",
 		map[string]any{"session_id": id, "key": "labels", "value": labels}, nil)
 }
 
 func (c Client) SetDescription(ctx context.Context, id, text string) error {
-	return c.C.CallInto(ctx, "nabu.session.set_option",
+	return c.C.CallInto(ctx, "rho.session.set_option",
 		map[string]any{"session_id": id, "key": "description", "value": text}, nil)
 }
 
 func (c Client) SetGoal(ctx context.Context, id, condition string) error {
-	return c.C.CallInto(ctx, "nabu.session.set_goal",
+	return c.C.CallInto(ctx, "rho.session.set_goal",
 		map[string]any{"session_id": id, "condition": condition}, nil)
 }
 
@@ -102,7 +102,7 @@ func (c Client) Create(ctx context.Context, workspace, parent string, maxTurns i
 	var out struct {
 		SessionID string `json:"session_id"`
 	}
-	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
+	err := c.C.CallInto(ctx, "rho.session.create", map[string]any{
 		"workspace": workspace,
 		"options":   stepOptions(parent, size),
 		"budget":    map[string]any{"max_turns": maxTurns, "source": "client"},
@@ -135,7 +135,7 @@ func (c Client) CreateHome(ctx context.Context, workspace, parent, description, 
 	if size != "" {
 		opts["context"] = size
 	}
-	err := c.C.CallInto(ctx, "nabu.session.create", map[string]any{
+	err := c.C.CallInto(ctx, "rho.session.create", map[string]any{
 		"workspace": workspace,
 		"options":   opts,
 	}, &out)
@@ -143,13 +143,13 @@ func (c Client) CreateHome(ctx context.Context, workspace, parent, description, 
 }
 
 func (c Client) UpdateTasks(ctx context.Context, id string, tasks []protocol.Task) error {
-	return c.C.CallInto(ctx, "nabu.session.update_tasks", map[string]any{"session_id": id, "tasks": tasks}, nil)
+	return c.C.CallInto(ctx, "rho.session.update_tasks", map[string]any{"session_id": id, "tasks": tasks}, nil)
 }
 
 // SetStatus sets a session's status: the run's or goal's snapshot, encoded
 // (protocol spec §7.27).
 func (c Client) SetStatus(ctx context.Context, id, kind string, data json.RawMessage) error {
-	return c.C.CallInto(ctx, "nabu.session.set_status", map[string]any{"session_id": id, "kind": kind, "data": data}, nil)
+	return c.C.CallInto(ctx, "rho.session.set_status", map[string]any{"session_id": id, "kind": kind, "data": data}, nil)
 }
 
 // SendPrompt sends a message with a client_id made from its text, so sending
@@ -158,8 +158,8 @@ func (c Client) SetStatus(ctx context.Context, id, kind string, data json.RawMes
 // own.
 func (c Client) SendPrompt(ctx context.Context, id, text string) error {
 	sum := sha256.Sum256([]byte(text))
-	return c.C.CallInto(ctx, "nabu.session.send_prompt",
-		map[string]any{"session_id": id, "content": text, "client_id": "nabu-runner-" + hex.EncodeToString(sum[:8])}, nil)
+	return c.C.CallInto(ctx, "rho.session.send_prompt",
+		map[string]any{"session_id": id, "content": text, "client_id": "rho-runner-" + hex.EncodeToString(sum[:8])}, nil)
 }
 
 func (c Client) State(ctx context.Context, id string) (protocol.State, error) {
@@ -191,7 +191,7 @@ func (c Client) EventsAfter(ctx context.Context, id, after string) ([]protocol.E
 }
 
 func (c Client) Stop(ctx context.Context, id string) error {
-	return c.C.CallInto(ctx, "nabu.session.stop", map[string]any{"session_id": id}, nil)
+	return c.C.CallInto(ctx, "rho.session.stop", map[string]any{"session_id": id}, nil)
 }
 
 func (c Client) Close() { c.C.Close() }

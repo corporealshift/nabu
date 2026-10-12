@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // fakeSession is the slice of module.Session these hooks use, plus a record of

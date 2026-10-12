@@ -30,7 +30,7 @@ type Devices struct {
 	list []Device
 }
 
-// DevicesFile is the file's name under the nabu root.
+// DevicesFile is the file's name under the rho root.
 const DevicesFile = "devices.json"
 
 // OpenDevices reads the devices file under root, or starts an empty list.

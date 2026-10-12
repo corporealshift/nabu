@@ -47,8 +47,8 @@ func (w *Workspace) initGit(ctx context.Context) error {
 	// none, and a commit without one fails.
 	steps := [][]string{
 		{"init", "--quiet"},
-		{"config", "user.email", "bench@nabu.local"},
-		{"config", "user.name", "nabu bench"},
+		{"config", "user.email", "bench@rho.local"},
+		{"config", "user.name", "rho bench"},
 		{"add", "-A"},
 		{"commit", "--quiet", "-m", "fixture"},
 	}

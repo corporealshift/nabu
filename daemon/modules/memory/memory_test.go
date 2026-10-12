@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // fakeSession is the slice of module.Session these hooks touch.
@@ -45,7 +45,7 @@ func newSession(t *testing.T, key string) *fakeSession {
 }
 
 // newModule builds a module rooted in a temp directory, so no test can touch
-// the developer's real ~/.nabu or ~/.claude.
+// the developer's real ~/.rho or ~/.claude.
 func newModule(t *testing.T, importDirs ...string) *Module {
 	t.Helper()
 	m := &Module{Root: t.TempDir(), ImportDirs: importDirs, NoGit: true}
@@ -181,9 +181,9 @@ func TestImportsAreReadOnlyAndMarked(t *testing.T) {
 		t.Errorf("imports are not marked:\n%s", blocks[0].Content)
 	}
 
-	// The nabu copy shadows the import rather than editing it.
+	// The rho copy shadows the import rather than editing it.
 	if err := m.GlobalStore().Save(Memory{
-		Name: "shadowed", Type: "project", Description: "the nabu version", Body: "the nabu version",
+		Name: "shadowed", Type: "project", Description: "the rho version", Body: "the rho version",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestImportsAreReadOnlyAndMarked(t *testing.T) {
 		if mem.Name == "shadowed" {
 			seen++
 			if mem.Imported {
-				t.Error("the import won over the nabu copy")
+				t.Error("the import won over the rho copy")
 			}
 		}
 	}

@@ -41,8 +41,8 @@ func TestExecArgs(t *testing.T) {
 		{"default branch", "origin/trunk\n", func(g GitCLI) error { b, err := g.DefaultBranch(ctx, "C:/c"); assertEq(t, b, "trunk"); return err },
 			[][]string{{"git", "-C", "C:/c", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"}}},
 		{"fetch", "", func(g GitCLI) error { return g.Fetch(ctx, "C:/c") }, [][]string{{"git", "-C", "C:/c", "fetch", "origin"}}},
-		{"worktree", "", func(g GitCLI) error { return g.AddBranchWorktree(ctx, "C:/c", "C:/w", "nabu/x-1", "main") },
-			[][]string{{"git", "-C", "C:/c", "worktree", "add", "-B", "nabu/x-1", "C:/w", "origin/main"}}},
+		{"worktree", "", func(g GitCLI) error { return g.AddBranchWorktree(ctx, "C:/c", "C:/w", "rho/x-1", "main") },
+			[][]string{{"git", "-C", "C:/c", "worktree", "add", "-B", "rho/x-1", "C:/w", "origin/main"}}},
 		{"head", "abc\n", func(g GitCLI) error { h, err := g.Head(ctx, "C:/w"); assertEq(t, h, "abc"); return err },
 			[][]string{{"git", "-C", "C:/w", "rev-parse", "HEAD"}}},
 		{"changed", "a.go\nb/c.go\n", func(g GitCLI) error {
@@ -65,8 +65,8 @@ func TestExecArgs(t *testing.T) {
 			[][]string{{"git", "-C", "C:/w", "add", "--", "p.md"}, {"git", "-C", "C:/w", "commit", "-q", "-m", "run: plan"}}},
 		{"remove", "", func(g GitCLI) error { return g.Remove(ctx, "C:/w", "run: gone", "r.md") },
 			[][]string{{"git", "-C", "C:/w", "rm", "-q", "--", "r.md"}, {"git", "-C", "C:/w", "commit", "-q", "-m", "run: gone"}}},
-		{"push", "", func(g GitCLI) error { return g.Push(ctx, "C:/w", "nabu/x-1") },
-			[][]string{{"git", "-C", "C:/w", "push", "-u", "origin", "nabu/x-1"}}},
+		{"push", "", func(g GitCLI) error { return g.Push(ctx, "C:/w", "rho/x-1") },
+			[][]string{{"git", "-C", "C:/w", "push", "-u", "origin", "rho/x-1"}}},
 		{"diffed", "", func(g GitCLI) error { _, err := g.Diffed(ctx, "C:/w", "main"); return err },
 			[][]string{{"git", "-C", "C:/w", "diff", "--name-only", "origin/main...HEAD"}}},
 	}
@@ -104,13 +104,13 @@ func TestDefaultBranchFallsBackToMain(t *testing.T) {
 }
 
 func TestCreatePR(t *testing.T) {
-	run, calls := recorder("Creating pull request for nabu/x-1 into main\n\nhttps://github.com/kyle/bw/pull/42\n")
-	n, url, err := GHCLI{run}.CreatePR(context.Background(), "C:/w", "main", "nabu/x-1", "Add x", "the body", "nabu")
+	run, calls := recorder("Creating pull request for rho/x-1 into main\n\nhttps://github.com/kyle/bw/pull/42\n")
+	n, url, err := GHCLI{run}.CreatePR(context.Background(), "C:/w", "main", "rho/x-1", "Add x", "the body", "rho")
 	if err != nil || n != 42 || url != "https://github.com/kyle/bw/pull/42" {
 		t.Fatalf("CreatePR = %d, %q, %v", n, url, err)
 	}
 	c := (*calls)[1]
-	want := []string{"gh", "pr", "create", "--base", "main", "--head", "nabu/x-1", "--title", "Add x", "--body-file", "-", "--label", "nabu"}
+	want := []string{"gh", "pr", "create", "--base", "main", "--head", "rho/x-1", "--title", "Add x", "--body-file", "-", "--label", "rho"}
 	if !reflect.DeepEqual(c.args, want) || c.stdin != "the body" || c.dir != "C:/w" {
 		t.Errorf("pr create = %+v", c)
 	}
@@ -120,9 +120,9 @@ func TestCreatePR(t *testing.T) {
 }
 
 // TestMain lets the test binary stand in for the claude CLI: with
-// NABU_FAKE_CLAUDE set it answers with how much prompt it read on stdin.
+// RHO_FAKE_CLAUDE set it answers with how much prompt it read on stdin.
 func TestMain(m *testing.M) {
-	if os.Getenv("NABU_FAKE_CLAUDE") != "" {
+	if os.Getenv("RHO_FAKE_CLAUDE") != "" {
 		in, _ := io.ReadAll(os.Stdin)
 		fmt.Printf("read %d bytes, %d args", len(in), len(os.Args)-1)
 		os.Exit(0)
@@ -133,7 +133,7 @@ func TestMain(m *testing.M) {
 // A prompt past Windows' 32K command-line limit still reaches claude, on
 // stdin.
 func TestClaudeAskTakesALongPrompt(t *testing.T) {
-	t.Setenv("NABU_FAKE_CLAUDE", "1")
+	t.Setenv("RHO_FAKE_CLAUDE", "1")
 	prompt := strings.Repeat("x", 100000)
 	got, err := ClaudeCLI{Path: os.Args[0]}.Ask(context.Background(), t.TempDir(), prompt)
 	if err != nil || !strings.HasPrefix(got, "read 100000 bytes") {
@@ -196,7 +196,7 @@ func TestBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, imp := range parsed.Imports {
-			if strings.HasPrefix(strings.Trim(imp.Path.Value, `"`), "github.com/corporealshift/nabu/daemon") {
+			if strings.HasPrefix(strings.Trim(imp.Path.Value, `"`), "github.com/corporealshift/rho/daemon") {
 				t.Errorf("%s imports %s", f, imp.Path.Value)
 			}
 		}
@@ -217,26 +217,26 @@ func TestCommentIssue(t *testing.T) {
 func TestOpenPRForAndEditPR(t *testing.T) {
 	ctx := context.Background()
 	none, calls := recorder("[]")
-	if _, _, found, err := (GHCLI{none}).OpenPRFor(ctx, "C:/w", "nabu/x-1"); found || err != nil {
+	if _, _, found, err := (GHCLI{none}).OpenPRFor(ctx, "C:/w", "rho/x-1"); found || err != nil {
 		t.Errorf("no PR: found %v, %v", found, err)
 	}
-	if got := (*calls)[0].args; !reflect.DeepEqual(got, []string{"gh", "pr", "list", "--head", "nabu/x-1", "--state", "open", "--json", "number,url"}) {
+	if got := (*calls)[0].args; !reflect.DeepEqual(got, []string{"gh", "pr", "list", "--head", "rho/x-1", "--state", "open", "--json", "number,url"}) {
 		t.Errorf("args = %q", got)
 	}
 	one, _ := recorder(`[{"number":5,"url":"https://github.com/kyle/x/pull/5"}]`)
-	if n, url, found, err := (GHCLI{one}).OpenPRFor(ctx, "C:/w", "nabu/x-1"); n != 5 || url != "https://github.com/kyle/x/pull/5" || !found || err != nil {
+	if n, url, found, err := (GHCLI{one}).OpenPRFor(ctx, "C:/w", "rho/x-1"); n != 5 || url != "https://github.com/kyle/x/pull/5" || !found || err != nil {
 		t.Errorf("one PR = %d, %q, %v, %v", n, url, found, err)
 	}
 
 	run, calls := recorder("")
-	if err := (GHCLI{run}).EditPR(ctx, "C:/w", 5, "Add x", "the body", "nabu"); err != nil {
+	if err := (GHCLI{run}).EditPR(ctx, "C:/w", 5, "Add x", "the body", "rho"); err != nil {
 		t.Fatal(err)
 	}
 	if (*calls)[0].args[1] != "label" {
 		t.Errorf("the label is not made first: %q", (*calls)[0].args)
 	}
 	c := (*calls)[1]
-	if !reflect.DeepEqual(c.args, []string{"gh", "pr", "edit", "5", "--title", "Add x", "--body-file", "-", "--add-label", "nabu"}) || c.stdin != "the body" {
+	if !reflect.DeepEqual(c.args, []string{"gh", "pr", "edit", "5", "--title", "Add x", "--body-file", "-", "--add-label", "rho"}) || c.stdin != "the body" {
 		t.Errorf("edit = %+v", c)
 	}
 }
@@ -245,10 +245,10 @@ func TestOpenPRForAndEditPR(t *testing.T) {
 func TestNoLabelAndMerge(t *testing.T) {
 	ctx := context.Background()
 	run, calls := recorder("https://github.com/kyle/bw/pull/42\n")
-	if _, _, err := (GHCLI{run}).CreatePR(ctx, "C:/w", "nabu/goal-x", "nabu/x-1", "Add x", "the body", ""); err != nil {
+	if _, _, err := (GHCLI{run}).CreatePR(ctx, "C:/w", "rho/goal-x", "rho/x-1", "Add x", "the body", ""); err != nil {
 		t.Fatal(err)
 	}
-	if len(*calls) != 1 || !reflect.DeepEqual((*calls)[0].args, []string{"gh", "pr", "create", "--base", "nabu/goal-x", "--head", "nabu/x-1", "--title", "Add x", "--body-file", "-"}) {
+	if len(*calls) != 1 || !reflect.DeepEqual((*calls)[0].args, []string{"gh", "pr", "create", "--base", "rho/goal-x", "--head", "rho/x-1", "--title", "Add x", "--body-file", "-"}) {
 		t.Errorf("create with no label = %q", *calls)
 	}
 

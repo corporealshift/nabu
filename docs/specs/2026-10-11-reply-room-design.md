@@ -8,7 +8,7 @@ the summarize call.
 ## Problem
 
 Strata refuses any request whose prompt plus `max_tokens` exceeds its context
-(`requests are never truncated`). nabu sized the reply cap from the last request's input
+(`requests are never truncated`). rho sized the reply cap from the last request's input
 alone. The next request also carries the reply to it and every tool result since, so
 the cap could be thousands of tokens too big.
 
@@ -35,7 +35,7 @@ fell back to clearing tool results.
   compacted before that request is built. The cap therefore always has at least the room
   above the summarize line.
 - **A refusal that names the room is retried once with it.** Strata's 400 says `at most
-  N here`; nabu asks again with N and logs a notice. A refusal that names no room fails
+  N here`; rho asks again with N and logs a notice. A refusal that names no room fails
   as before.
 - **`summary_thinking: false`** per provider sends `chat_template_kwargs:
   {"enable_thinking": false}` on the summarize call only. Unset, nothing changes: a
@@ -44,8 +44,8 @@ fell back to clearing tool results.
 ## Rejected
 
 - **Strata's `fit_max_tokens`.** It shortens the cap server-side, but only Strata has it,
-  it is set in Strata's own config file, and nabu would still compact too late.
-- **Counting tokens exactly.** nabu has no tokenizer for the model, and the estimate errs
+  it is set in Strata's own config file, and rho would still compact too late.
+- **Counting tokens exactly.** rho has no tokenizer for the model, and the estimate errs
   safe by design.
 - **Retrying any 400 with a smaller cap.** A refusal that names no room says nothing about
   what would fit.

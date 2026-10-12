@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // shellBase reduces a configured shell to a bare lowercase interpreter name, so
@@ -46,7 +46,7 @@ func (b *Builtins) shellCommand() (string, string, error) {
 // shellEnv is the environment commands run with. On Windows it turns off the
 // MSYS argument conversion in Git Bash and MSYS2, which rewrites any argument
 // it takes for a list of POSIX paths before a Windows program sees it: git show
-// nabu/notes:.nabu/plan.md reaches git as nabu\notes;.nabu\plan.md. A POSIX
+// rho/notes:.rho/plan.md reaches git as rho\notes;.rho\plan.md. A POSIX
 // path handed to a Windows program, as in git -C /c/src, is then passed as
 // written too, so C:/src is the form that works there. Shell builtins and the
 // MSYS programs themselves (cd, ls, cat) take either.

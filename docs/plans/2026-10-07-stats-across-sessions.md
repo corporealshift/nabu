@@ -15,7 +15,7 @@ which session they came from.
     throwing away every archived log when one of them fails to load: it uses what came
     back whatever the error.
 - **Proves it:** a store test that archives two sessions and gets both ids back, and one
-  unreadable archive still returns the other; the existing `nabu.usage` handler tests;
+  unreadable archive still returns the other; the existing `rho.usage` handler tests;
   the full gate.
 - **Depends on:** nothing.
 
@@ -51,17 +51,17 @@ Pure functions over logs. Nothing calls them yet.
 ## 3. The methods
 
 - **Changes:**
-  - `daemon/api/handler.go`: register `nabu.stats` and `nabu.stats.calls`. A shared
+  - `daemon/api/handler.go`: register `rho.stats` and `rho.stats.calls`. A shared
     `allLogs()` gathers live logs from `Store.List`/`Get` and archived ones from step 1,
     and counts what it could not read as `skipped`. Validate `kind` (`invalid_params`
     otherwise), require `tool`, default and cap `days` (7, 90) and `limit` (100, 500).
-    The period is whole local days ending today, as `nabu.usage` computes it.
-  - `protocol/spec.md`: §7.24 `nabu.stats` and §7.25 `nabu.stats.calls`, with the
+    The period is whole local days ending today, as `rho.usage` computes it.
+  - `protocol/spec.md`: §7.24 `rho.stats` and §7.25 `rho.stats.calls`, with the
     shapes from the spec. Like §7.21, marked not normative: clients ask for them.
   - `protocol/schema/jsonrpc.json`: both names in the method enum.
   - `docs/specs/2026-10-07-stats-across-sessions-design.md`: correct the "conformance
     vector" line. The vectors cover the projection and other things every client
-    computes; `nabu.session.stats` and `nabu.usage` have none, because clients ask
+    computes; `rho.session.stats` and `rho.usage` have none, because clients ask
     instead of computing. These follow them. Also add the `archived` field to a call.
 - **Proves it:** `daemon/api/handler_test.go`: totals across a live and an archived
   session; `kind=runs`; `invalid_params` on a bad kind and on a missing tool; calls for
@@ -90,7 +90,7 @@ Pure functions over logs. Nothing calls them yet.
     with "Open session" (shown only when the session is not archived).
     `argumentsInShort(json)`: `query`, `url`, `question`, `prompt`, `path`, `command`,
     `pattern` in that order, else compact JSON, cut to one line.
-  - `NabuViewModel.kt`: state and loading for both screens. `MainActivity.kt`:
+  - `RhoViewModel.kt`: state and loading for both screens. `MainActivity.kt`:
     `Screen.OverallStats` and `Screen.ToolCalls(tool, sessionId?)`, and back
     navigation that returns to where you came from. `Screens.kt`: a "Stats" action
     beside "Archived" in the session list's top bar.
@@ -98,12 +98,12 @@ Pure functions over logs. Nothing calls them yet.
   `./gradlew.sh :app:testDebugUnitTest :app:assembleDebug`; installed on Kyle's phone
   against the new daemon, the 7-day `web.search` count matches
   `grep -c '"tool":"web.search","arguments"'` summed over the week's logs in
-  `~/.nabu/sessions` and the archive.
+  `~/.rho/sessions` and the archive.
 - **Depends on:** 4.
 
 ## Not doing
 
 - The TUI, and jumping to the call inside a transcript (both rejected for now in the
   spec).
-- Changing `nabu.usage` or `nabu.session.stats` beyond step 1's fix.
+- Changing `rho.usage` or `rho.session.stats` beyond step 1's fix.
 - Caching. If the scan turns out slow on the phone, that is a new spec.

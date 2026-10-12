@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/corporealshift/nabu/daemon/module"
-	"github.com/corporealshift/nabu/protocol"
+	"github.com/corporealshift/rho/daemon/module"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // Keeping Claude's answers through a summary

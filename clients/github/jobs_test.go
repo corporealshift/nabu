@@ -38,7 +38,7 @@ func TestLoadConfig(t *testing.T) {
 		{name: "no clone", body: `{"repos":[{"name":"a/b"}]}`, wantErr: "no clone path"},
 		{name: "bad duration", body: `{` + repo + `,"poll":"soon"}`, wantErr: `"soon"`},
 		{name: "defaults", body: `{` + repo + `}`, check: func(t *testing.T, c Config) {
-			if c.Label != "nabu" || time.Duration(c.Poll) != 2*time.Minute || c.QuietFor() != 5*time.Minute ||
+			if c.Label != "rho" || time.Duration(c.Poll) != 2*time.Minute || c.QuietFor() != 5*time.Minute ||
 				c.MaxJobs != 1 || !c.ReviewEnabled() || !c.ReviewPushes() || c.Review.MaxTurns != 0 ||
 				!c.CommentsEnabled() || c.Comments.MaxTurns != 0 {
 				t.Errorf("defaults = %+v", c)
