@@ -50,6 +50,9 @@ type Daemon interface {
 	SendPrompt(ctx context.Context, id, text string) error
 	State(ctx context.Context, id string) (protocol.State, error)
 	Events(ctx context.Context, id string) ([]protocol.Event, error)
+	// EventsAfter is the events after the one with id after, or all of
+	// them when after is "".
+	EventsAfter(ctx context.Context, id, after string) ([]protocol.Event, error)
 	Stop(ctx context.Context, id string) error
 	Close()
 }

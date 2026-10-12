@@ -101,6 +101,10 @@ type ProviderConfig struct {
 	// SummarizeAt is the fraction at which the conversation is summarized.
 	// Zero means the daemon's default, 0.85.
 	SummarizeAt float64 `json:"summarize_at"`
+	// SummaryThinking set to false asks the server not to think while it
+	// writes a summary, through chat_template_kwargs, which llama-server and
+	// Strata read. Absent means the model thinks as it always does.
+	SummaryThinking *bool `json:"summary_thinking"`
 }
 
 // defaultSummarizeAt is the daemon's own summarize threshold, the one a

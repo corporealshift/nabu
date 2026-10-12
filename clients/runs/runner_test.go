@@ -45,8 +45,13 @@ type fakeSession struct {
 }
 
 func (s *fakeSession) say(role, text string) {
-	b, _ := json.Marshal(protocol.MessageData{Role: role, Content: text})
-	s.log = append(s.log, protocol.Event{Type: protocol.EventMessage, Data: b})
+	s.add(protocol.EventMessage, protocol.MessageData{Role: role, Content: text})
+}
+
+// add logs an event, with an id as the daemon gives one.
+func (s *fakeSession) add(typ protocol.EventType, data any) {
+	b, _ := json.Marshal(data)
+	s.log = append(s.log, protocol.Event{ID: fmt.Sprintf("e%d", len(s.log)+1), Type: typ, Data: b})
 }
 
 type fakeDaemon struct {
@@ -57,6 +62,8 @@ type fakeDaemon struct {
 	// every call, failed or not.
 	statusErr   error
 	statusCalls int
+	// reads is the cursor of each EventsAfter call.
+	reads []string
 }
 
 func newFakeDaemon() *fakeDaemon {
@@ -166,6 +173,20 @@ func (d *fakeDaemon) State(_ context.Context, id string) (protocol.State, error)
 
 func (d *fakeDaemon) Events(_ context.Context, id string) ([]protocol.Event, error) {
 	return slices.Clone(d.sessions[id].log), nil
+}
+
+func (d *fakeDaemon) EventsAfter(_ context.Context, id, after string) ([]protocol.Event, error) {
+	log := d.sessions[id].log
+	d.reads = append(d.reads, after)
+	if after == "" {
+		return slices.Clone(log), nil
+	}
+	for i, e := range log {
+		if e.ID == after {
+			return slices.Clone(log[i+1:]), nil
+		}
+	}
+	return nil, errors.New("no such event")
 }
 
 func (d *fakeDaemon) Stop(_ context.Context, id string) error {
@@ -307,6 +328,8 @@ func (c *fakeClaude) Available() bool { return !c.missing }
 
 func kindOf(prompt string) string {
 	switch {
+	case strings.Contains(prompt, "says the plan cannot be carried out"):
+		return "replan"
 	case strings.Contains(prompt, "break it into briefs"):
 		return "breakdown"
 	case strings.Contains(prompt, "judge whether the goal is met"):
@@ -340,6 +363,7 @@ func (c *fakeClaude) Ask(_ context.Context, _, prompt string) (string, error) {
 		"plan":   "NO CHANGES",
 		"verify": "APPROVED",
 		"revise": "REFUSED: the check is right.",
+		"replan": "REFUSED\nThe plan can work.",
 		"final":  "```json\n{\"blockers\":[],\"notes\":[\"consider generics\"]}\n```",
 		"breakdown": "```json\n{\"done_when\":[\"stats has Median and Mode\"],\"briefs\":[" +
 			"{\"title\":\"Median\",\"brief\":\"Add a Median function to stats.\"}," +

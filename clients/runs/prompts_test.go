@@ -59,11 +59,48 @@ func TestSessionPrompts(t *testing.T) {
 	if !strings.Contains(fixGoal, r.File(RevisionFile)) {
 		t.Errorf("fix goal = %q", fixGoal)
 	}
+	// Every session that carries out the plan may say it cannot work, and is
+	// judged done when it has (docs/specs/2026-10-12-run-replan-design.md).
+	ciFix, ciFixGoal := CIFixPrompt(r, "lint failed")
+	for name, p := range map[string][2]string{"work": {work, workGoal}, "fix": {fix, fixGoal}, "ci-fix": {ciFix, ciFixGoal}} {
+		if !strings.Contains(p[0], "Write "+r.File(ReplanFile)) || !strings.Contains(p[1], r.File(ReplanFile)+" explains why the plan cannot work") {
+			t.Errorf("%s is not offered the claim:\nprompt: %s\ngoal: %s", name, p[0], p[1])
+		}
+		if strings.Contains(p[0], "says it can") {
+			t.Errorf("%s carries advice nobody gave", name)
+		}
+	}
+	advised := r
+	advised.ReplanAdvice = "the fixture is in testFixtures"
+	for name, p := range map[string]string{
+		"work":   first(WorkPrompt(advised, 0, 1, Task{Title: "x"})),
+		"fix":    first(FixPrompt(advised, "FAIL", "")),
+		"ci-fix": first(CIFixPrompt(advised, "FAIL")),
+	} {
+		if !strings.Contains(p, "says it can. Their note:\n\nthe fixture is in testFixtures") {
+			t.Errorf("%s lacks the reviewer's advice", name)
+		}
+	}
+	for name, p := range map[string]string{"plan": PlanPrompt(r), "verify": VerifyPrompt(r), "tasks": TasksPrompt(r)} {
+		if strings.Contains(p, r.File(FindingsFile)) {
+			t.Errorf("%s names findings before any re-plan", name)
+		}
+	}
+	replanned := r
+	replanned.Replans = 1
+	for name, p := range map[string]string{"plan": PlanPrompt(replanned), "verify": VerifyPrompt(replanned), "tasks": TasksPrompt(replanned)} {
+		if !strings.Contains(p, r.File(FindingsFile)+" says what was found: read it first") {
+			t.Errorf("%s after a re-plan does not name the findings", name)
+		}
+	}
+
 	long, _ := FixPrompt(r, strings.Repeat("x", maxOutput*2), "")
 	if len(long) > maxOutput+5000 || !strings.Contains(long, "(earlier output cut)") {
 		t.Error("a long failure was not cut")
 	}
 }
+
+func first(prompt, _ string) string { return prompt }
 
 func TestClaudePrompts(t *testing.T) {
 	r := Run{Slug: "add-median-abcd", Base: "main"}
@@ -79,6 +116,9 @@ func TestClaudePrompts(t *testing.T) {
 		{"verify-review, passing before", VerifyReviewPrompt(r, true, "ok"), []string{"PASSES, which proves nothing", "not by checking the source"}},
 		{"revise", RevisePrompt(r, "FAIL"), []string{r.File(RevisionFile), "REFUSED", "Do not weaken it", "checks on the text of the source", expectation,
 			"and no stricter"}},
+		{"replan-review", ReplanReviewPrompt(r, `task 2 of tasks.md, "Add Median"`), []string{`task 2 of tasks.md, "Add Median"`,
+			r.File(ReplanFile), r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), "REPLAN on its own line", "REFUSED on its own line",
+			"is not a plan that cannot work", "the brief itself"}},
 		{"final-review", FinalReviewPrompt(r, []string{"stats.go", "stats_test.go"}), []string{
 			"- stats.go\n- stats_test.go", "Report only blockers", "are NOT blockers", `"blockers"`, "no blockers", expectation,
 			"say so in notes, not as a blocker"}},

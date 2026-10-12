@@ -106,6 +106,34 @@ func TestRefusal(t *testing.T) {
 	}
 }
 
+func TestParseReplan(t *testing.T) {
+	tests := []struct {
+		name, answer    string
+		finding, advice string
+		ok              bool
+	}{
+		{name: "replan on its line", answer: "REPLAN\nRoom's in-memory database needs Robolectric here.\nUse a fake DAO.",
+			finding: "Room's in-memory database needs Robolectric here.\nUse a fake DAO.", ok: true},
+		{name: "replan with a colon", answer: "REPLAN: the endpoint does not exist", finding: "the endpoint does not exist", ok: true},
+		{name: "after a preamble, in bold", answer: "I read the plan and the tests.\n\n**REPLAN** — no emulator on CI.", finding: "no emulator on CI.", ok: true},
+		{name: "refused", answer: "REFUSED: the fixture is in src/testFixtures.", advice: "the fixture is in src/testFixtures.", ok: true},
+		{name: "refused with nothing more", answer: "REFUSED", ok: true},
+		{name: "windows line endings", answer: "REPLAN\r\nno such API\r\n", finding: "no such API", ok: true},
+		{name: "replan with no finding", answer: "REPLAN", ok: false},
+		{name: "a longer word is not the verdict", answer: "REPLANNING would not help here.", ok: false},
+		{name: "neither", answer: "The plan looks fine to me.", ok: false},
+		{name: "empty", answer: "", ok: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			finding, advice, ok := ParseReplan(tt.answer)
+			if finding != tt.finding || advice != tt.advice || ok != tt.ok {
+				t.Errorf("ParseReplan = %q, %q, %v; want %q, %q, %v", finding, advice, ok, tt.finding, tt.advice, tt.ok)
+			}
+		})
+	}
+}
+
 func TestParseFinal(t *testing.T) {
 	blockers, notes, ok := ParseFinal("Reviewed.\n```json\n{\"blockers\":[{\"title\":\"Median of an even count\",\"detail\":\"returns the upper middle\"},{\"title\":\" \"}],\"notes\":[\"could use generics\"]}\n```")
 	if !ok || len(blockers) != 1 || blockers[0].Title != "Median of an even count" || len(notes) != 1 {

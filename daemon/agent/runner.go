@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/corporealshift/nabu/daemon/provider"
@@ -86,6 +88,16 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 		}
 	}
 	resp, err := p.Complete(callCtx, req, onDelta, onThinking)
+	// The cap is an estimate. A server that refuses it and says how much
+	// room there is gets asked once more with that.
+	if err != nil && ctx.Err() == nil && !replyTripped {
+		if room, ok := roomNamed(err); ok && room >= minReplyCap && room < req.MaxTokens {
+			h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "info", Message: fmt.Sprintf(
+				"the server had room for a %d-token reply, not %d; asked again with that", room, req.MaxTokens)})
+			req.MaxTokens, maxTokens = room, room
+			resp, err = p.Complete(callCtx, req, onDelta, onThinking)
+		}
+	}
 	if replyTripped && ctx.Err() == nil {
 		return false, m.stopRepeating(ctx, h, thought, reply, resp.Reasoning)
 	}
@@ -267,13 +279,30 @@ func (m *Manager) refuseTool(h *sessionHandle, call protocol.ToolCallData, kind,
 	}
 }
 
+// refusedRoom finds the reply room a server names when it refuses a request
+// as too big for its context, as Strata does: "request exceeds the context
+// window: ... (at most 15595 here)".
+var refusedRoom = regexp.MustCompile(`exceeds the context window.*?at most (\d+)`)
+
+// roomNamed is the reply room a refusal names, if it names one.
+func roomNamed(err error) (int, bool) {
+	m := refusedRoom.FindStringSubmatch(err.Error())
+	if m == nil {
+		return 0, false
+	}
+	n, convErr := strconv.Atoi(m[1])
+	return n, convErr == nil
+}
+
 // minReplyCap is the least a reply is allowed, however full the context: a
 // cap smaller than this cuts off even a short answer.
 const minReplyCap = 1024
 
 // replyCap is the most one reply may write: the provider's cap, or the
 // daemon-wide override, and never more than the context has room for. The
-// room is judged from the last request's size, which is all the log knows.
+// room is judged from the next request's estimated size: the last request's
+// alone left out the tool results since, and a server that never truncates
+// refused a request that size let through.
 func replyCap(log []protocol.Event, pcfg provider.Config, override int) int {
 	limit := pcfg.MaxTokens
 	if override > 0 {
@@ -282,7 +311,7 @@ func replyCap(log []protocol.Event, pcfg provider.Config, override int) int {
 	if limit <= 0 || pcfg.ContextWindow <= 0 {
 		return limit
 	}
-	if room := pcfg.ContextWindow - lastInputTokens(log); room < limit {
+	if room := pcfg.ContextWindow - nextRequestTokens(log); room < limit {
 		limit = max(room, minReplyCap)
 	}
 	return limit

@@ -167,8 +167,15 @@ func (c Client) State(ctx context.Context, id string) (protocol.State, error) {
 }
 
 func (c Client) Events(ctx context.Context, id string) ([]protocol.Event, error) {
+	return c.EventsAfter(ctx, id, "")
+}
+
+func (c Client) EventsAfter(ctx context.Context, id, after string) ([]protocol.Event, error) {
 	var all []protocol.Event
 	var cursor *string
+	if after != "" {
+		cursor = &after
+	}
 	for {
 		evs, synced, err := c.C.EventsAfter(ctx, id, cursor)
 		if err != nil {

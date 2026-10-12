@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Task is one checkbox in tasks.md.
@@ -122,6 +124,31 @@ func Refusal(answer string) string {
 		return ""
 	}
 	return strings.TrimSpace(strings.TrimLeft(after, ":.-— \n"))
+}
+
+// ParseReplan reads Claude's verdict on a claim that the plan cannot work:
+// the first line opening with REPLAN or REFUSED, and what follows it. A
+// REPLAN with nothing after it is no answer, since the planner needs the
+// finding.
+func ParseReplan(answer string) (finding, advice string, ok bool) {
+	lines := strings.Split(strings.ReplaceAll(answer, "\r\n", "\n"), "\n")
+	for i, l := range lines {
+		word := strings.TrimSpace(strings.Trim(strings.TrimSpace(l), "*_`#"))
+		for _, verdict := range []string{"REPLAN", "REFUSED"} {
+			rest, found := strings.CutPrefix(word, verdict)
+			// REPLANNING is a word, not the verdict.
+			if r, _ := utf8.DecodeRuneInString(rest); !found || unicode.IsLetter(r) || unicode.IsDigit(r) {
+				continue
+			}
+			rest = strings.Trim(rest, "*_`")
+			text := strings.TrimSpace(strings.TrimLeft(rest+"\n"+strings.Join(lines[i+1:], "\n"), ":.-— \n"))
+			if verdict == "REFUSED" {
+				return "", text, true
+			}
+			return text, "", text != ""
+		}
+	}
+	return "", "", false
 }
 
 var jsonBlock = regexp.MustCompile("(?s)```json[ \t]*\r?\n(.*?)\r?\n[ \t]*```")

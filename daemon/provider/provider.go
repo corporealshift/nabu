@@ -38,6 +38,8 @@ type Request struct {
 	Messages  []Message
 	Tools     []ToolSpec
 	MaxTokens int // 0 = provider default
+	// NoThinking asks the server not to think before answering.
+	NoThinking bool
 }
 
 // Response is the completed assistant turn.
@@ -95,6 +97,9 @@ type Config struct {
 	// depends on how the server caches (docs/specs/2026-10-08-context-size-design.md).
 	ClearAt     float64
 	SummarizeAt float64
+	// SummaryThinking false has summaries written without thinking. A local
+	// model can think for ten minutes over one; nil leaves it to think.
+	SummaryThinking *bool
 }
 
 // DefaultRepeatLimit is the copies in a row that stop a reply. The reply that

@@ -40,9 +40,12 @@ local model. This page lists every setting.
 - **`max_in_flight`**: how many requests nabu sends the endpoint at once. Default 1, which
   suits a local server running one slot.
 - **`max_tokens`**: caps one reply. The default is 16384, and never more than the context
-  has room for. Without a cap, a local model stuck in a loop writes until the ten-minute
-  timeout and the turn is lost. A hosted API that allows less output refuses the request
-  outright, so set it lower there.
+  has room for. The room is estimated from the last request, the reply to it, and what
+  the log has gained since, counting 2 characters a token, plus 512 tokens to spare. A
+  server that still refuses the request and names the room it has, as Strata does, is
+  asked once more with that. Without a cap, a local model stuck in a loop writes until
+  the ten-minute timeout and the turn is lost. A hosted API that allows less output
+  refuses the request outright, so set it lower there.
 - **`repeat_limit`**: ends a reply early when the model writes the same passage over and
   over. The default is 8 copies in a row of the same 40 bytes or more. A negative value
   turns it off. The copies are not logged, and the session blocks so you can look.
@@ -60,6 +63,15 @@ provider has three settings for this:
   large.
 - **`clear_at`**: the fraction at which old results are cleared. Below 0 means never.
 - **`summarize_at`**: the fraction at which the conversation is summarized.
+- **`summary_thinking`**: `false` asks the server to write summaries without thinking,
+  through `chat_template_kwargs`, which llama-server and Strata pass to a Qwen model's
+  template. A thinking model can spend ten minutes thinking over one summary. Left
+  unset, summaries think like any other turn.
+
+Both stages measure the next request: the last one, plus the reply and everything
+logged since, estimated as `max_tokens` is. A turn whose tool results would carry the
+next request over the line is compacted before that request is sent, so a reply always
+has at least the room above the summarize line.
 
 For a local server, use `"normal_window": 64000, "clear_at": -1`. Clearing changes
 messages a few turns back, so a local server's prompt cache misses and it reprocesses
@@ -163,6 +175,9 @@ the machine's Claude Code login, and each call spends your allowance.
   what keeps failing and the files it keeps changing. The model keeps working while Claude
   looks. The answer arrives as an ordinary `claude.ask` call in the conversation. Sessions
   in `ask` permission mode are skipped, because you are there to be asked. 0 turns it off.
+  Claude is also asked to open its answer with `PLAN CANNOT WORK` when the task cannot
+  be done as it is set out. A run's step session that gets that answer is stopped, and
+  the run is planned again from what Claude found.
 
 ### `builtins`: reading another repository
 
