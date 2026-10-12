@@ -287,6 +287,8 @@ func (c *fakeClaude) Available() bool { return !c.missing }
 
 func kindOf(prompt string) string {
 	switch {
+	case strings.Contains(prompt, "says the plan cannot be carried out"):
+		return "replan"
 	case strings.Contains(prompt, "break it into briefs"):
 		return "breakdown"
 	case strings.Contains(prompt, "judge whether the goal is met"):
@@ -320,6 +322,7 @@ func (c *fakeClaude) Ask(_ context.Context, _, prompt string) (string, error) {
 		"plan":   "NO CHANGES",
 		"verify": "APPROVED",
 		"revise": "REFUSED: the check is right.",
+		"replan": "REFUSED\nThe plan can work.",
 		"final":  "```json\n{\"blockers\":[],\"notes\":[\"consider generics\"]}\n```",
 		"breakdown": "```json\n{\"done_when\":[\"stats has Median and Mode\"],\"briefs\":[" +
 			"{\"title\":\"Median\",\"brief\":\"Add a Median function to stats.\"}," +

@@ -300,10 +300,20 @@ func (rn *Runner) advance(ctx context.Context, d Daemon, r *Run) error {
 // moves on and forgets its session.
 func (rn *Runner) record(r *Run, o Outcome) {
 	rec := Record{Step: r.Step, Session: r.Session, OK: o.OK, Why: o.Why, Note: o.Note, At: rn.Now()}
-	switch {
-	case r.Step == StepWork:
+	if r.Step == StepWork {
 		rec.Task = r.Task
+	}
+	switch {
 	case !o.OK:
+	case o.ReplanRequest:
+		rec.Result = "said the plan cannot work"
+	case r.Step == StepReplanReview && o.Replan != "":
+		rec.Result = "re-planned"
+	case r.Step == StepReplanReview:
+		rec.Result = "refused"
+	case o.Replan != "":
+		rec.Result = "Claude judged the plan cannot work"
+	case r.Step == StepWork:
 	case r.Step == StepCheck:
 		rec.Result = map[bool]string{true: "passed", false: "failed"}[o.CheckPassed]
 	case r.Step == StepFinalReview:
@@ -646,6 +656,13 @@ func (rn *Runner) missing(ctx context.Context, r *Run, goalMet bool) (string, er
 		if text, ok := rn.read(r, own); !ok || strings.TrimSpace(text) == "" {
 			return fmt.Sprintf("You ended your turn without writing %s. Write it now, as the first message asked, and commit it.", r.File(own)), nil
 		}
+		if mustRewrite(r) {
+			done, err := rn.rewrote(ctx, r, own)
+			if err != nil || done {
+				return "", err
+			}
+			return fmt.Sprintf("You ended your turn without rewriting %s. The old one could not be carried out; write it again now, as the first message asked, and commit it.", r.File(own)), nil
+		}
 		return "", nil
 	}
 	if r.Step == StepWork {
@@ -658,6 +675,60 @@ func (rn *Runner) missing(ctx context.Context, r *Run, goalMet bool) (string, er
 		}
 	}
 	return "", nil
+}
+
+// doing says what a session that claimed the plan cannot work was on, for
+// Claude.
+func (rn *Runner) doing(r *Run) string {
+	switch r.ReplanFrom {
+	case StepWork:
+		if tasks, err := rn.tasks(r); err == nil && r.Task < len(tasks) {
+			return fmt.Sprintf("task %d of %s, %q", r.Task+1, r.File(TasksFile), tasks[r.Task].Title)
+		}
+		return fmt.Sprintf("task %d of %s", r.Task+1, r.File(TasksFile))
+	case StepFix:
+		return "fixing the failing check"
+	case StepCIFix:
+		return "fixing the pull request's failing CI"
+	}
+	return string(r.ReplanFrom)
+}
+
+// found adds what was found to be impossible to findings.md, where the
+// planner reads it, under where it was found.
+func (rn *Runner) found(ctx context.Context, r *Run, from Step, finding string) error {
+	where := string(from)
+	if from == StepWork {
+		where = fmt.Sprintf("task %d", r.Task+1)
+	}
+	old, _ := rn.read(r, FindingsFile)
+	if old == "" {
+		old = "# What this run found it could not do as planned\n\n"
+	}
+	text := fmt.Sprintf("%s## %s, at %s\n\n%s\n\n", old, rn.Now().Format("2006-01-02 15:04"), where, strings.TrimSpace(finding))
+	return rn.write(ctx, r, FindingsFile, text, "run: what the plan could not do")
+}
+
+// mustRewrite reports whether a planning step has to change its file, not
+// just leave one there: after a re-plan the old plan and tasks are still on
+// the branch, and keeping them would repeat what could not be done.
+func mustRewrite(r *Run) bool {
+	own := ownFile(r.Step)
+	return r.Replans > 0 && (own == PlanFile || own == TasksFile)
+}
+
+// rewrote reports whether the session changed one of the run's files,
+// committed or not.
+func (rn *Runner) rewrote(ctx context.Context, r *Run, name string) (bool, error) {
+	changed, err := rn.Git.Changed(ctx, r.Worktree, r.Start)
+	if err != nil {
+		return false, err
+	}
+	dirty, err := rn.Git.Dirty(ctx, r.Worktree)
+	if err != nil {
+		return false, err
+	}
+	return slices.Contains(changed, r.File(name)) || slices.Contains(dirty, r.File(name)), nil
 }
 
 // ownFile is the one file a planning step writes, or "" for other steps.
@@ -739,6 +810,28 @@ func (rn *Runner) produced(ctx context.Context, d Daemon, r *Run, goalMet bool) 
 			o, _, err := rn.discard(ctx, r, fmt.Sprintf("the %s step may write only %s, and the session also changed %s",
 				r.Step, r.File(own), strings.Join(other, ", ")))
 			return o, err
+		}
+		if mustRewrite(r) && !slices.Contains(changed, r.File(own)) && !slices.Contains(dirty, r.File(own)) {
+			o, _, err := rn.discard(ctx, r, "the run is being planned again, and the session did not rewrite "+r.File(own))
+			return o, err
+		}
+	}
+
+	// A session that says the plan cannot work is judged on that claim, by
+	// Claude, whatever else it did (docs/specs/2026-10-12-run-replan-design.md).
+	if claims(r.Step) {
+		if claim, ok := rn.read(r, ReplanFile); ok {
+			dirty, err := rn.Git.Dirty(ctx, r.Worktree)
+			if err != nil {
+				return Outcome{}, err
+			}
+			if slices.Contains(dirty, r.File(ReplanFile)) {
+				if err := rn.Git.Commit(ctx, r.Worktree, "run: re-plan request (committed by the runner)", r.File(ReplanFile)); err != nil {
+					return Outcome{}, err
+				}
+			}
+			rn.logf("run %s: %s session %s says the plan cannot work", r.Home, r.Step, r.Session)
+			return Outcome{OK: true, ReplanRequest: true, Note: claim}, nil
 		}
 	}
 
@@ -873,6 +966,29 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 			return Outcome{}, err
 		}
 		return Outcome{OK: true, Note: note}, nil
+	case StepReplanReview:
+		answer, err := rn.Claude.Ask(ctx, r.Worktree, ReplanReviewPrompt(*r, rn.doing(r)))
+		if err != nil {
+			return Outcome{Why: err.Error()}, nil
+		}
+		finding, advice, ok := ParseReplan(answer)
+		if !ok {
+			return Outcome{Why: "claude's answer to the re-plan request was neither REPLAN nor REFUSED"}, nil
+		}
+		if finding != "" {
+			if err := rn.found(ctx, r, r.ReplanFrom, finding); err != nil {
+				return Outcome{}, err
+			}
+		}
+		if err := rn.Git.Remove(ctx, r.Worktree, "run: re-plan request answered", r.File(ReplanFile)); err != nil {
+			return Outcome{}, err
+		}
+		if finding != "" {
+			rn.logf("run %s: claude agrees the plan cannot work; planning again", r.Home)
+			return Outcome{OK: true, Replan: finding, Note: finding}, nil
+		}
+		rn.logf("run %s: claude says the plan can work", r.Home)
+		return Outcome{OK: true, Refused: advice, Note: advice}, nil
 	case StepFinalReview:
 		changed, err := rn.Git.Diffed(ctx, r.Worktree, r.Base)
 		if err != nil {
