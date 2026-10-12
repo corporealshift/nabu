@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -377,7 +378,7 @@ func TestReplyCap(t *testing.T) {
 		{"the provider's cap", 16384, 128000, 50000, 0, 16384},
 		{"the override wins", 16384, 128000, 50000, 4000, 4000},
 		{"no window, no room check", 16384, 0, 50000, 0, 16384},
-		{"little room left", 16384, 128000, 120000, 0, 8000},
+		{"little room left", 16384, 128000, 120000, 0, 8000 - requestMargin},
 		{"never below the floor", 16384, 128000, 127900, 0, minReplyCap},
 		{"the session that timed out", 16384, 128000, 103512, 0, 16384},
 	} {
@@ -403,8 +404,15 @@ func TestEveryRequestCarriesAReplyCap(t *testing.T) {
 	h.m.WaitIdle(s.ID())
 
 	// The harness window is 8000 tokens: the first request has all of it,
-	// the second only what the first left.
-	for i, want := range []int{8000, 3000} {
+	// the second only what is left after the first request, its reply, and
+	// the read's result that the second carries too.
+	result := 0
+	for _, e := range s.Events() {
+		if e.Type == protocol.EventToolResult {
+			result += len(protocol.MustData[protocol.ToolResultData](e).Content)
+		}
+	}
+	for i, want := range []int{8000, 8000 - 5000 - 10 - result/charsPerToken - requestMargin} {
 		if got := h.fake.Calls[i].MaxTokens; got != want {
 			t.Errorf("request %d: max tokens %d, want %d", i+1, got, want)
 		}
@@ -675,5 +683,101 @@ func TestARepeatingReplyWithoutThinkingIsCut(t *testing.T) {
 	}
 	if !strings.Contains(notice, "the model's reply repeated one passage") {
 		t.Errorf("notice: %s", notice)
+	}
+}
+
+// The next request carries the last one, the reply to it, and everything
+// logged since. A summary since makes it unknown, and small.
+func TestNextRequestTokens(t *testing.T) {
+	ev := func(typ protocol.EventType, data any) protocol.Event {
+		raw, _ := json.Marshal(data)
+		return protocol.Event{Type: typ, Data: raw}
+	}
+	reply := ev(protocol.EventMessage, protocol.MessageData{Role: "assistant",
+		Usage: &protocol.Usage{InputTokens: 47000, OutputTokens: 200}})
+	result := ev(protocol.EventToolResult, protocol.ToolResultData{CallID: "c1", Tool: "read", Status: "ok",
+		Content: strings.Repeat("x", 9000)})
+	suffix := ev(protocol.EventContext, protocol.ContextData{Source: "module:skills", Slot: "suffix",
+		Content: strings.Repeat("y", 300)})
+	summary := ev(protocol.EventCompaction, protocol.CompactionData{Mode: protocol.CompactionSummarize,
+		RangeStart: "a", RangeEnd: "b", Summary: strings.Repeat("z", 9000)})
+	for _, tc := range []struct {
+		name string
+		log  []protocol.Event
+		want int
+	}{
+		{"nothing asked yet", nil, 0},
+		{"just answered", []protocol.Event{reply}, 47200 + requestMargin},
+		{"with what came back since", []protocol.Event{reply, result, suffix}, 47200 + 4500 + 150 + requestMargin},
+		{"after a summary", []protocol.Event{reply, result, summary}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := nextRequestTokens(tc.log); got != tc.want {
+				t.Errorf("got %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// The two requests Strata refused, as the sessions logged them: the last
+// request's size and reply, the tool output since, and the prompt that was
+// refused with a 16,384-token cap in a 65,536-token window. The cap now fits.
+func TestTheRefusedRequestsNowFit(t *testing.T) {
+	ev := func(typ protocol.EventType, data any) protocol.Event {
+		raw, _ := json.Marshal(data)
+		return protocol.Event{Type: typ, Data: raw}
+	}
+	for _, tc := range []struct {
+		in, out, chars, refused int
+	}{
+		{45951, 123, 10496, 49933},
+		{47439, 83, 4442, 49869},
+	} {
+		log := []protocol.Event{
+			ev(protocol.EventMessage, protocol.MessageData{Role: "assistant",
+				Usage: &protocol.Usage{InputTokens: tc.in, OutputTokens: tc.out}}),
+			ev(protocol.EventToolResult, protocol.ToolResultData{CallID: "c1", Tool: "read", Status: "ok",
+				Content: strings.Repeat("x", tc.chars)}),
+		}
+		got := replyCap(log, provider.Config{MaxTokens: 16384, ContextWindow: 65536}, 0)
+		if tc.refused+got > 65536 {
+			t.Errorf("cap %d: %d tokens of prompt and reply in a 65536 window", got, tc.refused+got)
+		}
+	}
+}
+
+// A server that refuses the cap and names the room it has is asked once more
+// with that room, and the turn goes on.
+func TestARefusedCapIsAskedAgainWithTheRoomNamed(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{{}, {Content: "done"}})
+	h.fake.Errors = map[int]error{0: errors.New(`provider returned 400: {"error": {"message": "request exceeds the context window: ` +
+		`prompt (49933 tokens) + max tokens (16384) exceeds the context (65536); requests are never truncated. ` +
+		`Send a smaller max_tokens (at most 2000 here), or add fit_max_tokens"}}`)}
+	s := h.create(t)
+	h.m.Prompt(context.Background(), s.ID(), "go")
+	h.m.WaitIdle(s.ID())
+
+	if len(h.fake.Calls) != 2 || h.fake.Calls[1].MaxTokens != 2000 {
+		t.Fatalf("calls: %d, the second capped at %d", len(h.fake.Calls), h.fake.Calls[len(h.fake.Calls)-1].MaxTokens)
+	}
+	if st := s.State().State; st == protocol.StateError {
+		t.Fatalf("the session ended in error")
+	}
+}
+
+func TestRoomNamed(t *testing.T) {
+	for _, tc := range []struct {
+		err  string
+		want int
+		ok   bool
+	}{
+		{`request exceeds the context window: prompt (1 tokens) + max tokens (2) exceeds the context (3); Send a smaller max_tokens (at most 15595 here)`, 15595, true},
+		{`request exceeds the context window: prompt (70000 tokens) leaves no room to answer`, 0, false},
+		{`provider returned 503: busy`, 0, false},
+	} {
+		got, ok := roomNamed(errors.New(tc.err))
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("%q: got %d %v", tc.err, got, tc.ok)
+		}
 	}
 }

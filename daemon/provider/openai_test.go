@@ -170,3 +170,32 @@ func TestOpenAIRequestsAreCappedByDefault(t *testing.T) {
 		t.Errorf("max_tokens on the wire: %v", body["max_tokens"])
 	}
 }
+
+// NoThinking reaches the chat template as enable_thinking false; without it
+// the request carries no template arguments at all, for servers that know
+// none.
+func TestOpenAINoThinkingAsksTheTemplate(t *testing.T) {
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		var body map[string]any
+		json.Unmarshal(b, &body)
+		bodies = append(bodies, body)
+		sse(w, `{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`)
+		sse(w, "[DONE]")
+	}))
+	defer srv.Close()
+	p := NewOpenAI(Config{Name: "t", BaseURL: srv.URL + "/v1"}, srv.Client())
+	for _, off := range []bool{true, false} {
+		if _, err := p.Complete(context.Background(), Request{Model: "m", NoThinking: off}, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	kw, _ := bodies[0]["chat_template_kwargs"].(map[string]any)
+	if kw == nil || kw["enable_thinking"] != false {
+		t.Errorf("with NoThinking: chat_template_kwargs = %v", bodies[0]["chat_template_kwargs"])
+	}
+	if _, ok := bodies[1]["chat_template_kwargs"]; ok {
+		t.Errorf("without NoThinking: chat_template_kwargs = %v", bodies[1]["chat_template_kwargs"])
+	}
+}

@@ -48,6 +48,58 @@ func lastInputTokens(log []protocol.Event) int {
 	return 0
 }
 
+// charsPerToken is how many characters of log text are counted as one token
+// when estimating what a request has gained, and requestMargin is added for
+// the framing around each message. Tool output with its framing has measured
+// at 1.9 to 2.7 characters a token on Qwen's tokenizer, so both err toward a
+// request bigger than estimated: that costs a shorter reply cap, where one
+// smaller than estimated costs a refused request.
+const (
+	charsPerToken = 2
+	requestMargin = 512
+)
+
+// nextRequestTokens estimates the next request's size: the last request's,
+// plus the last reply and everything logged since, which the next request
+// carries as well. After a summary the next request is far smaller than the
+// last, and nothing in the log says how much, so the estimate is 0: unknown,
+// and small.
+func nextRequestTokens(log []protocol.Event) int {
+	last := -1
+	input, output := 0, 0
+	for i := len(log) - 1; i >= 0; i-- {
+		if log[i].Type != protocol.EventMessage {
+			continue
+		}
+		d := protocol.MustData[protocol.MessageData](log[i])
+		if d.Role == "assistant" && d.Usage != nil {
+			last, input, output = i, d.Usage.InputTokens, d.Usage.OutputTokens
+			break
+		}
+	}
+	if last < 0 {
+		return 0
+	}
+	chars := 0
+	for _, e := range log[last+1:] {
+		switch e.Type {
+		case protocol.EventCompaction:
+			if protocol.MustData[protocol.CompactionData](e).Mode == protocol.CompactionSummarize {
+				return 0
+			}
+		case protocol.EventToolResult:
+			chars += len(protocol.MustData[protocol.ToolResultData](e).Content)
+		case protocol.EventMessage:
+			chars += len(protocol.MustData[protocol.MessageData](e).Content)
+		case protocol.EventContext:
+			chars += len(protocol.MustData[protocol.ContextData](e).Content)
+		case protocol.EventStopVeto:
+			chars += len(protocol.MustData[protocol.StopVetoData](e).Reason)
+		}
+	}
+	return input + output + chars/charsPerToken + requestMargin
+}
+
 // compactWindow is the window a session's compaction measures against: for a
 // normal session, the provider's normal window when it has one smaller than
 // the model's; for a large one, and otherwise, the model's own. The reply cap
@@ -88,7 +140,7 @@ func (m *Manager) maybeCompact(ctx context.Context, h *sessionHandle, pcfg provi
 		_, summarizeAt := thresholds(pcfg, m.cfg.Compaction)
 		// Nothing compacts, so the limit is the model's real window: a normal
 		// window only says when to compact.
-		used := float64(lastInputTokens(log)) / float64(pcfg.ContextWindow)
+		used := float64(nextRequestTokens(log)) / float64(pcfg.ContextWindow)
 		if used >= summarizeAt {
 			h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "error",
 				Message: fmt.Sprintf("context limit reached (%.0f%% of %d tokens) and compaction is disabled for this session",
@@ -97,7 +149,7 @@ func (m *Manager) maybeCompact(ctx context.Context, h *sessionHandle, pcfg provi
 		}
 		return nil
 	}
-	switch stageFor(lastInputTokens(log), pcfg, m.cfg.Compaction, st.Options.Context) {
+	switch stageFor(nextRequestTokens(log), pcfg, m.cfg.Compaction, st.Options.Context) {
 	case protocol.CompactionSummarize:
 		return m.summarize(ctx, h)
 	case protocol.CompactionClearResults:
@@ -237,7 +289,7 @@ func (m *Manager) summarizeLocked(ctx context.Context, h *sessionHandle) error {
 	if len(preserve) > 0 {
 		sys += "\n\nThe summary MUST preserve these facts verbatim:\n- " + strings.Join(preserve, "\n- ")
 	}
-	p, modelName, _, err := m.deps.Providers.Resolve(st.Options.Model)
+	p, modelName, pcfg, err := m.deps.Providers.Resolve(st.Options.Model)
 	if err != nil {
 		return err
 	}
@@ -247,6 +299,7 @@ func (m *Manager) summarizeLocked(ctx context.Context, h *sessionHandle) error {
 			{Role: "system", Content: sys},
 			{Role: "user", Content: transcript},
 		},
+		NoThinking: pcfg.SummaryThinking != nil && !*pcfg.SummaryThinking,
 	}, nil, nil)
 	if err != nil && ctx.Err() != nil {
 		// Asked to stop, not failed: leave the history exactly as it was.
