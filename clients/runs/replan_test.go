@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/corporealshift/nabu/protocol"
 )
 
 // A session may say the plan cannot work, and Claude judges it
@@ -172,5 +174,95 @@ func TestAClaimTheReviewCannotReadIsTriedAgain(t *testing.T) {
 	g.tick()
 	if r.Step != StepWork || r.ReplanAdvice != "go on" {
 		t.Errorf("run = %+v", r)
+	}
+}
+
+// ask logs a claude.ask call and its answer in a session, as the host logs
+// the claude module's own asks: adjacent, with the call's source.
+func ask(s *fakeSession, id, source, status, answer string) {
+	s.add(protocol.EventToolCall, protocol.ToolCallData{CallID: id, Tool: "claude.ask", Source: source})
+	s.add(protocol.EventToolResult, protocol.ToolResultData{CallID: id, Tool: "claude.ask", Status: status, Content: answer})
+}
+
+func TestClaudesVerdictStopsTheSessionAndPlansAgain(t *testing.T) {
+	g := newRig(t)
+	r := g.planned("H1")
+	id, s := g.d.last()
+	g.tick() // running, nothing to see yet
+	if r.Step != StepWork || s.state != protocol.StateRunning {
+		t.Fatalf("run at %q, session %q", r.Step, s.state)
+	}
+	g.git.commit("session: stats.go", "stats.go")
+	g.git.dirty["scratch.go"] = true
+	ask(s, "a1", claudeSource, "ok", "**PLAN CANNOT WORK**\nRoom's in-memory database needs Robolectric, which this module does not have.")
+	s.say("assistant", "Let me try once more.")
+
+	g.tick() // the verdict is seen; the session is stopped
+	if s.state != protocol.StateCompleted {
+		t.Fatalf("session %s was not stopped: %q", id, s.state)
+	}
+	g.tick() // and acted on
+	if r.Step != StepPlan || r.Replans != 1 || r.Finding != "" {
+		t.Fatalf("run = %+v\nlog:\n%s", r, g.log.String())
+	}
+	findings, _ := g.rn.read(r, FindingsFile)
+	if !strings.Contains(findings, "needs Robolectric") || strings.Contains(findings, planVerdict) {
+		t.Errorf("findings.md = %q", findings)
+	}
+	if !slices.Contains(g.git.messages(), "session: stats.go") || len(g.git.dirty) != 0 {
+		t.Errorf("committed work should stay and the rest go: %q, dirty %v", g.git.messages(), g.git.dirty)
+	}
+	if rec := r.History[len(r.History)-1]; rec.Step != StepWork || rec.Result != "Claude judged the plan cannot work" || rec.Session != id {
+		t.Errorf("history = %+v", rec)
+	}
+	if slices.Contains(g.claude.asked, "replan") {
+		t.Error("Claude's own verdict was sent to Claude for review")
+	}
+}
+
+func TestOnlyTheModulesVerdictCounts(t *testing.T) {
+	g := newRig(t)
+	r := g.planned("H1")
+	_, s := g.d.last()
+	g.tick()
+	ask(s, "m1", "model", "ok", "PLAN CANNOT WORK\nas you suspected")
+	ask(s, "a1", claudeSource, "error", "PLAN CANNOT WORK")
+	ask(s, "a2", claudeSource, "ok", "The plan is fine. PLAN CANNOT WORK would be wrong here.")
+	g.tick()
+	if r.Step != StepWork || r.Finding != "" || s.state != protocol.StateRunning {
+		t.Fatalf("run = %+v, session %q", r, s.state)
+	}
+	last := s.log[len(s.log)-1].ID
+	if r.Seen != last {
+		t.Errorf("seen = %q, want %q", r.Seen, last)
+	}
+	saved, _, _ := Load(g.rn.Root, "H1")
+	if saved.Seen != last {
+		t.Errorf("the cursor was not saved: %q", saved.Seen)
+	}
+	g.tick()
+	if got := g.d.reads[len(g.d.reads)-1]; got != last {
+		t.Errorf("the next read started at %q, want %q", got, last)
+	}
+}
+
+func TestVerdictIn(t *testing.T) {
+	s := &fakeSession{}
+	s.say("user", "do task 1")
+	s.add(protocol.EventToolCall, protocol.ToolCallData{CallID: "a1", Tool: "claude.ask", Source: claudeSource})
+	if finding, seen := verdictIn(s.log); finding != "" || seen != "e1" {
+		t.Errorf("a call waiting for its result: %q, %q", finding, seen)
+	}
+	s.add(protocol.EventToolResult, protocol.ToolResultData{CallID: "a1", Tool: "claude.ask", Status: "ok", Content: "PLAN CANNOT WORK: no emulator"})
+	if finding, seen := verdictIn(s.log[1:]); finding != "no emulator" || seen != "e3" {
+		t.Errorf("read again with its result: %q, %q", finding, seen)
+	}
+	if finding, seen := verdictIn(nil); finding != "" || seen != "" {
+		t.Errorf("nothing new: %q, %q", finding, seen)
+	}
+	only := &fakeSession{}
+	only.add(protocol.EventToolCall, protocol.ToolCallData{CallID: "a1", Tool: "claude.ask", Source: claudeSource})
+	if _, seen := verdictIn(only.log); seen != "" {
+		t.Errorf("a lone waiting call moved the cursor to %q", seen)
 	}
 }
