@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The status-bar icon: Android draws it in one colour, so it is a shape,
-     not the launcher icon. A speech bubble. -->
+<!-- The status-bar icon: Android draws it in one colour, so the wedge's head
+     and tail, which the launcher tells apart by colour, are told apart here by
+     a gap along the edge they share. Same geometry as ui/theme/Wedge.kt,
+     scaled from its 64-unit grid into the 20-unit live area of a 24 grid. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -8,5 +10,8 @@
     android:viewportHeight="24">
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M4,4h16a2,2 0,0 1,2 2v10a2,2 0,0 1,-2 2H8l-4,4V6a2,2 0,0 1,2 -2z" />
+        android:pathData="M2.4,2 L21.49,8.23 L2.4,12.39 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M2.4,13.27 L21.68,9.11 L5.75,22 Z" />
 </vector>
