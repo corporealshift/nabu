@@ -52,8 +52,8 @@ inline at the section they affect.
 ## 1. Purpose
 
 Rho is a custom coding-agent harness that replaces `pi` (the `pi-coding-agent` CLI)
-as the owner's daily driver. It is named after the Mesopotamian god of scribes and
-record-keeping, because its central abstraction is an **append-only session log**.
+as the owner's daily driver. Its central abstraction is an **append-only session
+log**.
 
 Rho consists of a long-lived local daemon plus several clients: a terminal UI, a
 headless CLI, an Android app, and eventually a desktop GUI. Everything speaks one

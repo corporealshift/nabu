@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.Color
 /** A palette the owner can choose. */
 enum class Scheme(val label: String, val blurb: String) {
     Verdigris("Verdigris", "Bronze that has been in the ground"),
-    Dusk("Dusk", "A ziggurat at last light"),
+    Dusk("Dusk", "A mountain at last light"),
 }
 
 /** Light, dark, or whatever the phone is doing. */
