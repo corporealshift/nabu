@@ -122,3 +122,38 @@ func TestALargeSessionSwitchedToNormalSummarizes(t *testing.T) {
 		t.Errorf("summaries after switching to normal = %d, want 1", n)
 	}
 }
+
+// With summary_thinking false the summary is asked for without thinking, and
+// only the summary: the session's own turns think as before. Left unset, the
+// summary thinks too.
+func TestSummariesWithoutThinking(t *testing.T) {
+	off := false
+	for _, tc := range []struct {
+		name     string
+		thinking *bool
+		want     bool
+	}{
+		{"summary_thinking false", &off, true},
+		{"unset", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarnessWithProvider(t, provider.Config{Name: "fake", ContextWindow: 8000, SummaryThinking: tc.thinking},
+				[]provider.Response{
+					{ToolCalls: globCall("c1"), Usage: bigUsage(0.90)},
+					{Content: "the summary"},
+					{Content: "done", Usage: bigUsage(0.20)},
+				})
+			s := h.create(t)
+			h.m.Prompt(context.Background(), s.ID(), "go")
+			h.m.WaitIdle(s.ID())
+			if len(h.fake.Calls) != 3 {
+				t.Fatalf("calls: %d", len(h.fake.Calls))
+			}
+			for i, c := range h.fake.Calls {
+				if want := tc.want && i == 1; c.NoThinking != want {
+					t.Errorf("call %d: NoThinking %v, want %v", i, c.NoThinking, want)
+				}
+			}
+		})
+	}
+}

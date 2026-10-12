@@ -142,6 +142,9 @@ type wireRequest struct {
 	Stream        bool              `json:"stream"`
 	StreamOptions wireStreamOptions `json:"stream_options"`
 	MaxTokens     int               `json:"max_tokens,omitempty"`
+	// ChatTemplateKwargs reach the model's chat template on llama-server and
+	// Strata; enable_thinking false turns a Qwen model's thinking off.
+	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
 }
 
 type wireChunk struct {
@@ -177,6 +180,9 @@ type wireChunk struct {
 func toWire(req Request) wireRequest {
 	w := wireRequest{Model: req.Model, Stream: true, MaxTokens: req.MaxTokens}
 	w.StreamOptions.IncludeUsage = true
+	if req.NoThinking {
+		w.ChatTemplateKwargs = map[string]any{"enable_thinking": false}
+	}
 	for _, m := range req.Messages {
 		wm := wireMessage{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID}
 		for _, tc := range m.ToolCalls {
