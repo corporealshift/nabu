@@ -44,8 +44,13 @@ local model. This page lists every setting.
   the log has gained since, counting 2 characters a token, plus 512 tokens to spare. A
   server that still refuses the request and names the room it has, as Strata does, is
   asked once more with that. Without a cap, a local model stuck in a loop writes until
-  the ten-minute timeout and the turn is lost. A hosted API that allows less output
-  refuses the request outright, so set it lower there.
+  the timeout and the turn is lost. A hosted API that allows less output refuses the
+  request outright, so set it lower there.
+- **`timeout`**: how long one model call may take, in seconds. The default is 600 (10
+  minutes). A local model can need more: a long prompt that misses the server's cache is
+  read slowly, and a thinking model may then think for many minutes before it answers.
+  `"timeout": 1800` gives that provider 30 minutes. A call that runs out ends with an
+  error naming the limit and this key.
 - **`repeat_limit`**: ends a reply early when the model writes the same passage over and
   over. The default is 8 copies in a row of the same 40 bytes or more. A negative value
   turns it off. The copies are not logged, and the session blocks so you can look.

@@ -178,6 +178,7 @@ func New(opts Options) (*Daemon, error) {
 				ContextWindow: p.ContextWindow,
 				TasksEnabled:  p.TasksEnabled,
 				MaxTokens:     p.MaxTokens,
+				Timeout:       time.Duration(p.Timeout) * time.Second,
 				RepeatLimit:   p.RepeatLimit,
 				NormalWindow:  p.NormalWindow,
 				ClearAt:       p.ClearAt,

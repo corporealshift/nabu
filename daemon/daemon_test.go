@@ -345,6 +345,35 @@ func TestTheConfiguredContextWindowReachesTheProvider(t *testing.T) {
 	}
 }
 
+// A provider with a timeout gets it, in seconds; one without keeps the
+// 10-minute default.
+func TestTheConfiguredTimeoutReachesTheProvider(t *testing.T) {
+	root := t.TempDir()
+	cfg := `{"providers":{"strata":{"base_url":"http://localhost:8033/v1","timeout":1800},` +
+		`"hosted":{"base_url":"https://api.example/v1"}}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(Options{Root: root, Bind: "127.0.0.1:0", LogWriter: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Shutdown(context.Background()) })
+
+	for model, want := range map[string]time.Duration{
+		"strata/anything": 30 * time.Minute,
+		"hosted/anything": 10 * time.Minute,
+	} {
+		_, _, pcfg, err := d.providers.Resolve(model)
+		if err != nil {
+			t.Fatalf("Resolve %s: %v", model, err)
+		}
+		if pcfg.Timeout != want {
+			t.Errorf("%s: Timeout = %v, want %v", model, pcfg.Timeout, want)
+		}
+	}
+}
+
 // The request layer reads this off the registry, so it has to arrive there.
 func TestTasksEnabledReachesTheProvider(t *testing.T) {
 	root := t.TempDir()

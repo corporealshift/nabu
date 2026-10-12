@@ -87,6 +87,10 @@ type ProviderConfig struct {
 	// hosted API that allows less output than that needs it set lower, or it
 	// refuses the request.
 	MaxTokens int `json:"max_tokens"`
+	// Timeout bounds one model call, in seconds. Zero means the daemon's
+	// default, 10 minutes. A local model that reads a long prompt past its
+	// cache and then thinks at length can need more.
+	Timeout int `json:"timeout"`
 	// RepeatLimit is how many copies in a row of one passage stop a reply as
 	// it streams. Zero means the daemon's default, 8; below zero turns it off.
 	RepeatLimit int `json:"repeat_limit"`
@@ -119,6 +123,9 @@ func (c ProviderConfig) validate(name string) error {
 	}
 	if c.NormalWindow < 0 {
 		return bad("normal_window", "must not be negative")
+	}
+	if c.Timeout < 0 {
+		return bad("timeout", "must not be negative")
 	}
 	if c.SummarizeAt < 0 || c.SummarizeAt > 1 {
 		return bad("summarize_at", "must be between 0 and 1")
