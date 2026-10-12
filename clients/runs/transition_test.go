@@ -2,6 +2,7 @@ package runs
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -118,6 +119,71 @@ func TestTransition(t *testing.T) {
 		{name: "check passes with a PR open", from: Run{Step: StepCheck, PR: 7, FinalReviewed: true}, o: Outcome{OK: true, CheckPassed: true}, want: StepPush},
 		{name: "push goes to ci", from: at(StepPush), o: ok, want: StepCI},
 
+		// A session may say the plan cannot work
+		// (docs/specs/2026-10-12-run-replan-design.md).
+		{name: "work claims the plan cannot work", from: Run{Step: StepWork, Task: 2}, o: Outcome{OK: true, ReplanRequest: true}, want: StepReplanReview,
+			check: func(t *testing.T, r Run) {
+				if r.ReplanFrom != StepWork || r.Task != 2 || r.Waiting {
+					t.Errorf("run = %+v", r)
+				}
+			}},
+		{name: "fix claims it", from: at(StepFix), o: Outcome{OK: true, ReplanRequest: true}, want: StepReplanReview},
+		{name: "ci-fix claims it", from: at(StepCIFix), o: Outcome{OK: true, ReplanRequest: true}, want: StepReplanReview},
+		{name: "a planning step cannot claim it", from: at(StepTasks), o: Outcome{OK: true, ReplanRequest: true, TasksLeft: 2}, want: StepWork},
+		{name: "claude agrees: back to plan", from: Run{Step: StepReplanReview, ReplanFrom: StepWork, FinalReviewed: true, Fixes: 4, Revisions: 1, Advice: "a"},
+			o: Outcome{OK: true, Replan: "Room cannot run on the JVM"}, want: StepPlan,
+			check: func(t *testing.T, r Run) {
+				if r.Replans != 1 || r.FinalReviewed || r.Fixes != 0 || r.Revisions != 0 || r.Advice != "" || !r.Waiting {
+					t.Errorf("a re-plan starts the plan over: %+v", r)
+				}
+			}},
+		{name: "claude agrees past the cap", from: Run{Step: StepReplanReview, ReplanFrom: StepWork, Replans: MaxReplans},
+			o: Outcome{OK: true, Replan: "still impossible"}, want: StepFailed,
+			check: func(t *testing.T, r Run) {
+				if r.FailedAt != StepPlan || !strings.Contains(r.Why, "still impossible") {
+					t.Errorf("failed at %q: %q", r.FailedAt, r.Why)
+				}
+			}},
+		{name: "claude disagrees: back to the step that claimed", from: Run{Step: StepReplanReview, ReplanFrom: StepFix, Task: 1},
+			o: Outcome{OK: true, Refused: "the mock is in testFixtures"}, want: StepFix,
+			check: func(t *testing.T, r Run) {
+				if r.Refusals != 1 || r.ReplanAdvice != "the mock is in testFixtures" || r.Attempt != 0 || !r.Waiting {
+					t.Errorf("run = %+v", r)
+				}
+			}},
+		{name: "claude disagrees past the cap", from: Run{Step: StepReplanReview, ReplanFrom: StepWork, Refusals: MaxRefusals},
+			o: Outcome{OK: true, Refused: "it can"}, want: StepFailed,
+			check: func(t *testing.T, r Run) {
+				if r.FailedAt != StepWork || !strings.Contains(r.Why, "Claude disagreed") {
+					t.Errorf("failed at %q: %q", r.FailedAt, r.Why)
+				}
+			}},
+		{name: "an automatic verdict re-plans with no review", from: at(StepWork), o: Outcome{OK: true, Replan: "the API does not exist"}, want: StepPlan,
+			check: func(t *testing.T, r Run) {
+				if r.Replans != 1 {
+					t.Errorf("replans = %d", r.Replans)
+				}
+			}},
+		{name: "a step that does its job spends its advice", from: Run{Step: StepWork, ReplanAdvice: "x"}, o: ok, want: StepCheck,
+			check: func(t *testing.T, r Run) {
+				if r.ReplanAdvice != "" {
+					t.Errorf("advice = %q", r.ReplanAdvice)
+				}
+			}},
+		{name: "a retry keeps its advice", from: Run{Step: StepWork, ReplanAdvice: "x"}, o: failed, want: StepWork,
+			check: func(t *testing.T, r Run) {
+				if r.ReplanAdvice != "x" {
+					t.Errorf("advice = %q", r.ReplanAdvice)
+				}
+			}},
+		{name: "a review that did not parse is tried again", from: Run{Step: StepReplanReview, ReplanFrom: StepWork}, o: failed, want: StepReplanReview},
+		{name: "a new step forgets the session's cursor and verdict", from: Run{Step: StepWork, Seen: "e9", Finding: "f"}, o: Outcome{OK: true, Replan: "f"}, want: StepPlan,
+			check: func(t *testing.T, r Run) {
+				if r.Seen != "" || r.Finding != "" {
+					t.Errorf("run = %+v", r)
+				}
+			}},
+
 		{name: "a session step is retried once", from: at(StepPlan), o: failed, want: StepPlan,
 			check: func(t *testing.T, r Run) {
 				if r.Attempt != 1 || !r.Waiting {
@@ -202,6 +268,8 @@ func TestResume(t *testing.T) {
 		check    func(t *testing.T, r Run)
 	}{
 		{StepPlan, StepPlan, nil},
+		{StepWork, StepWork, nil},
+		{StepReplanReview, StepReplanReview, nil},
 		{StepFix, StepCheck, func(t *testing.T, r Run) {
 			if r.Fixes != 0 {
 				t.Errorf("fixes = %d", r.Fixes)
@@ -219,9 +287,11 @@ func TestResume(t *testing.T) {
 		}},
 	}
 	for _, tt := range tests {
-		r := Run{Step: StepFailed, FailedAt: tt.failedAt, Why: "x", Attempt: 2, Fixes: MaxFixes, Revisions: MaxRevisions, CIFixes: MaxCIFixes}
+		r := Run{Step: StepFailed, FailedAt: tt.failedAt, Why: "x", Attempt: 2, Fixes: MaxFixes, Revisions: MaxRevisions, CIFixes: MaxCIFixes,
+			Replans: MaxReplans + 1, Refusals: MaxRefusals}
 		got := Resume(r)
-		if got.Step != tt.want || got.FailedAt != "" || got.Why != "" || got.Attempt != 0 || got.Waiting != tt.want.Session() {
+		if got.Step != tt.want || got.FailedAt != "" || got.Why != "" || got.Attempt != 0 || got.Waiting != tt.want.Session() ||
+			got.Replans != 0 || got.Refusals != 0 {
 			t.Errorf("resume from %q = %+v", tt.failedAt, got)
 		}
 		if tt.check != nil {

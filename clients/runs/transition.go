@@ -17,6 +17,12 @@ const (
 	// ciTries is how many polls of the checks may fail in a row: ci is a
 	// poll, so one failed gh call is not much.
 	ciTries = 10
+	// MaxReplans is how many times a run goes back to plan because its plan
+	// cannot work, and MaxRefusals how many times Claude may disagree that
+	// it cannot. Past either, the run fails for Kyle
+	// (docs/specs/2026-10-12-run-replan-design.md).
+	MaxReplans  = 2
+	MaxRefusals = 2
 	// MaxCIFixes is how many ci-fix sessions a run gets.
 	MaxCIFixes = 5
 )
@@ -44,7 +50,17 @@ type Outcome struct {
 	Wait bool
 	// Note is what the step found worth keeping in the run's history.
 	Note string
+	// ReplanRequest is a session's claim that the plan cannot work, left for
+	// Claude to judge. Replan is a finding Claude agreed with, or reached
+	// itself; Refused is Claude's advice when it disagreed.
+	ReplanRequest bool
+	Replan        string
+	Refused       string
 }
+
+// claims reports whether a step's session may say the plan cannot work: the
+// steps that carry it out, not the ones that write it.
+func claims(s Step) bool { return s == StepWork || s == StepFix || s == StepCIFix }
 
 // Transition is the whole workflow: given where a run is and what came of
 // its step, where it goes next. It is pure, so every arrow of the spec's
@@ -71,6 +87,18 @@ func Transition(r Run, o Outcome) Run {
 			return fail(r, r.Step, o.Why)
 		}
 		return enter(r, r.Step, false)
+	}
+
+	if claims(r.Step) {
+		switch {
+		case o.Replan != "":
+			return replan(r, o.Replan)
+		case o.ReplanRequest:
+			r.ReplanFrom = r.Step
+			return enter(r, StepReplanReview, true)
+		}
+		// The step did its job, so the advice it was given is spent.
+		r.ReplanAdvice = ""
 	}
 
 	switch r.Step {
@@ -124,6 +152,17 @@ func Transition(r Run, o Outcome) Run {
 	case StepRevise:
 		r.Revisions++
 		return enter(r, StepCheck, true)
+	case StepReplanReview:
+		if o.Replan != "" {
+			return replan(r, o.Replan)
+		}
+		r.Refusals++
+		if r.Refusals > MaxRefusals {
+			// Failed at the step that claimed, so a resume tries it again.
+			return fail(r, r.ReplanFrom, fmt.Sprintf("the session said the plan cannot work %d times, and Claude disagreed each time: %s", r.Refusals, o.Refused))
+		}
+		r.ReplanAdvice = o.Refused
+		return enter(r, r.ReplanFrom, true)
 	case StepFinalReview:
 		r.FinalReviewed = true
 		if o.Blockers > 0 {
@@ -166,8 +205,24 @@ func enter(r Run, s Step, fresh bool) Run {
 		r.Attempt = 0
 	}
 	r.Session, r.Start, r.Prompted, r.Stopped, r.NudgedAt = "", "", false, false, 0
+	r.Seen, r.Finding = "", ""
 	r.Waiting = s.Session()
 	return r
+}
+
+// replan sends a run back to plan, with what was found to be impossible
+// already in findings.md (docs/specs/2026-10-12-run-replan-design.md). The
+// check is written again from the new plan, so the fixes and revisions
+// counted against the old one start again.
+func replan(r Run, finding string) Run {
+	r.Replans++
+	if r.Replans > MaxReplans {
+		// Failed at plan, so a resume plans again.
+		return fail(r, StepPlan, fmt.Sprintf("the plan was found unworkable %d times; the last finding: %s", r.Replans, finding))
+	}
+	r.FinalReviewed, r.Fixes, r.Revisions = false, 0, 0
+	r.Advice, r.ReplanAdvice = "", ""
+	return enter(r, StepPlan, true)
 }
 
 // fail ends a run at a step, with the reason. The reason is recorded first,
@@ -207,6 +262,8 @@ func Resume(r Run) Run {
 	if r.Step != StepFailed {
 		return r
 	}
+	// Kyle asking again is a fresh judgment of whether the plan can work.
+	r.Replans, r.Refusals = 0, 0
 	switch r.FailedAt {
 	case StepFix:
 		r.Fixes = 0

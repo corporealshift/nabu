@@ -72,11 +72,15 @@ ended done or failed, as now.
 
 ### Caps
 
-- **`MaxReplans`, 2.** A third agreed claim fails the run at `replan-review` with the
-  finding. A goal handles that as any failed run: the round ends and its check runs.
-- **`MaxRefusals`, 2.** A third refused claim fails the run at `replan-review`: the model
-  and Claude disagree about whether the plan can work, and that is worth Kyle's eye.
+- **`MaxReplans`, 2.** A third agreed claim fails the run at `plan` with the finding, so
+  resuming it plans again. A goal handles that as any failed run: the round ends and its
+  check runs.
+- **`MaxRefusals`, 2.** A third refused claim fails the run at the step that claimed, so
+  resuming it tries that step again: the model and Claude disagree about whether the
+  plan can work, and that is worth Kyle's eye.
 - `Resume` clears both, as it clears the fix and revision counts.
+- A re-plan also starts the fix and revision counts again, since the check they were
+  counted against is written again.
 
 ## How it fails
 
