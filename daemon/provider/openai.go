@@ -210,10 +210,33 @@ func toWire(req Request) wireRequest {
 	return w
 }
 
-// once performs a single streaming attempt.
+// once performs a single streaming attempt, bounded by the provider's timeout.
+// When that limit ends it, the error says which limit it was and where to
+// raise it; the original error stays wrapped, so retrying treats it the same.
 func (p *OpenAI) once(ctx context.Context, req Request, onDelta, onThinking func(string)) (Response, error) {
-	ctx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
+	attempt, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
 	defer cancel()
+	resp, err := p.stream(attempt, req, onDelta, onThinking)
+	if err != nil && ctx.Err() == nil && errors.Is(attempt.Err(), context.DeadlineExceeded) {
+		err = fmt.Errorf("model call took longer than the %s provider timeout; raise providers.%s.timeout: %w",
+			limit(p.cfg.Timeout), p.cfg.Name, err)
+	}
+	return resp, err
+}
+
+// limit writes a timeout the way a person would set it: 10m, not 10m0s.
+func limit(d time.Duration) string {
+	switch {
+	case d%time.Hour == 0:
+		return fmt.Sprintf("%dh", d/time.Hour)
+	case d%time.Minute == 0:
+		return fmt.Sprintf("%dm", d/time.Minute)
+	}
+	return d.String()
+}
+
+// stream sends the request and reads the reply.
+func (p *OpenAI) stream(ctx context.Context, req Request, onDelta, onThinking func(string)) (Response, error) {
 	body, err := json.Marshal(toWire(req))
 	if err != nil {
 		return Response{}, err

@@ -555,6 +555,39 @@ func TestProviderRepeatLimitIsConfigurable(t *testing.T) {
 	}
 }
 
+// A provider's timeout loads as written, absent stays zero for the daemon's
+// default, and a negative one is refused with the provider and key named.
+func TestProviderTimeout(t *testing.T) {
+	root := t.TempDir()
+	body := `{"providers":{"strata":{"timeout":1800},"hosted":{}}}`
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Providers["strata"].Timeout; got != 1800 {
+		t.Errorf("strata timeout = %d, want 1800", got)
+	}
+	if got := cfg.Providers["hosted"].Timeout; got != 0 {
+		t.Errorf("hosted timeout = %d, want 0 (the default)", got)
+	}
+
+	bad := t.TempDir()
+	body = `{"providers":{"strata":{"timeout":-1}}}`
+	if err := os.WriteFile(filepath.Join(bad, "config.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Load(bad)
+	if err == nil {
+		t.Fatal("Load succeeded, want a negative timeout refused")
+	}
+	if !strings.Contains(err.Error(), `"strata"`) || !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("error %q should name the provider and timeout", err)
+	}
+}
+
 // The context-size settings load, and ones that cannot mean what they say are
 // refused with the provider and key named
 // (docs/specs/2026-10-08-context-size-design.md).

@@ -81,7 +81,9 @@ Create `~/.rho/config.json`:
 
 `default_model` is `provider/model`: `local` picks the provider block, and the rest is
 sent to the server as the model name. Always set `context_window`. Without it, rho never
-compacts, and a long session grows until the server refuses it.
+compacts, and a long session grows until the server refuses it. A model call is given 10
+minutes; a slow local model can be given longer with `timeout`, in seconds. The other
+provider settings are in [docs/configuration.md](docs/configuration.md#the-model).
 
 Then, in a repository:
 

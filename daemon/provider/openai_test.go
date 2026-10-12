@@ -149,6 +149,50 @@ func TestOpenAITimeoutMidStreamReturnsWhatArrived(t *testing.T) {
 	}
 }
 
+// A call ended by the provider's timeout says which limit it hit and the key
+// that raises it. One ended by the caller's own deadline is not blamed on it.
+func TestOpenAITimeoutNamesTheLimitAndKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		sse(w, `{"choices":[{"delta":{"reasoning_content":"thinking"}}]}`)
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	p := NewOpenAI(Config{Name: "strata", BaseURL: srv.URL + "/v1", Timeout: 200 * time.Millisecond}, srv.Client())
+	_, err := p.Complete(context.Background(), Request{Model: "m"}, nil, nil)
+	if err == nil {
+		t.Fatal("want a timeout error")
+	}
+	for _, want := range []string{"200ms provider timeout", "providers.strata.timeout"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should contain %q", err, want)
+		}
+	}
+
+	p = NewOpenAI(Config{Name: "strata", BaseURL: srv.URL + "/v1", Timeout: time.Minute}, srv.Client())
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_, err = p.Complete(ctx, Request{Model: "m"}, nil, nil)
+	if err == nil || strings.Contains(err.Error(), "provider timeout") {
+		t.Errorf("a caller's deadline should not be reported as the provider timeout: %v", err)
+	}
+}
+
+func TestLimitIsWrittenAsSet(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		10 * time.Minute:       "10m",
+		30 * time.Minute:       "30m",
+		time.Hour:              "1h",
+		90 * time.Second:       "1m30s",
+		200 * time.Millisecond: "200ms",
+	} {
+		if got := limit(d); got != want {
+			t.Errorf("limit(%v) = %q, want %q", d, got, want)
+		}
+	}
+}
+
 // With no cap given, a request still carries one: the provider's default.
 func TestOpenAIRequestsAreCappedByDefault(t *testing.T) {
 	var body map[string]any
