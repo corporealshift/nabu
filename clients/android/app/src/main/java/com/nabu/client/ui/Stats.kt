@@ -187,7 +187,7 @@ fun StatsScreen(state: StatsState, onBack: () -> Unit, onTool: (String) -> Unit 
 }
 
 @Composable
-private fun Tile(label: String, value: String, modifier: Modifier = Modifier) {
+internal fun Tile(label: String, value: String, modifier: Modifier = Modifier) {
     val c = NabuTheme.colors
     Column(
         modifier.background(c.surface, RoundedCornerShape(12.dp)).padding(12.dp),
@@ -199,7 +199,7 @@ private fun Tile(label: String, value: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun Heading(title: String, subtitle: String) {
+internal fun Heading(title: String, subtitle: String) {
     val c = NabuTheme.colors
     Column {
         Text(title, style = MaterialTheme.typography.titleSmall, color = c.ink)

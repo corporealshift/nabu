@@ -59,6 +59,8 @@ type Verdict struct {
 	Round  int    `json:"round"`
 	Met    bool   `json:"met"`
 	Reason string `json:"reason"`
+	// At is when the check gave it.
+	At time.Time `json:"at,omitzero"`
 }
 
 // Goal is a broad piece of work on its way to one pull request, through as
@@ -100,6 +102,13 @@ type Goal struct {
 	// only when they change. Tasked is the same for its task list.
 	Labelled string `json:"labelled,omitempty"`
 	Tasked   string `json:"tasked,omitempty"`
+
+	// Since is when the current step began, or during runs the current
+	// round; SinceKey is the step and round it was taken for. Statused is as
+	// a run's.
+	Since    time.Time `json:"since,omitzero"`
+	SinceKey string    `json:"since_key,omitempty"`
+	Statused string    `json:"statused,omitempty"`
 
 	Started time.Time `json:"started"`
 	Updated time.Time `json:"updated"`

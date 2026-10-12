@@ -13,7 +13,7 @@ const Version = "1.0"
 // EventType is the type discriminator of a session event.
 type EventType string
 
-// The fifteen event types (spec §3.1). Order here is documentation order.
+// The seventeen event types (spec §3.1). Order here is documentation order.
 const (
 	EventSession       EventType = "session"
 	EventMessage       EventType = "message"
@@ -31,6 +31,7 @@ const (
 	EventBudget        EventType = "budget"
 	EventNotice        EventType = "notice"
 	EventReport        EventType = "report"
+	EventStatus        EventType = "status"
 )
 
 // EventTypes lists every valid event type in documentation order.
@@ -38,7 +39,7 @@ var EventTypes = []EventType{
 	EventSession, EventMessage, EventThinking, EventToolCall, EventToolResult,
 	EventOptionsChange,
 	EventStateChange, EventCompaction, EventContext, EventTasks, EventGoal, EventCheck,
-	EventStopVeto, EventBudget, EventNotice, EventReport,
+	EventStopVeto, EventBudget, EventNotice, EventReport, EventStatus,
 }
 
 // Event is one record in the append-only session log (spec §3).
@@ -310,6 +311,24 @@ type GoalData struct {
 	Source    string `json:"source"`
 }
 
+// StatusData is a full snapshot of what a client is doing in a session, for
+// people to read: the runner's run or goal (spec §3.1). Data is the client's
+// own shape; the daemon checks only that it is an object and how big it is.
+type StatusData struct {
+	Source string          `json:"source"`
+	Kind   string          `json:"kind"`
+	Data   json.RawMessage `json:"data"`
+}
+
+// The kinds of status.
+const (
+	StatusRun  = "run"
+	StatusGoal = "goal"
+)
+
+// MaxStatusBytes bounds a status snapshot's data, encoded.
+const MaxStatusBytes = 64 << 10
+
 // CheckData records that a verification check ran.
 type CheckData struct {
 	Name    string `json:"name"`
@@ -425,6 +444,8 @@ func DecodeData(e Event) (any, error) {
 		target = &NoticeData{}
 	case EventReport:
 		target = &ReportData{}
+	case EventStatus:
+		target = &StatusData{}
 	default:
 		return nil, fmt.Errorf("event %s: unknown type %q", e.ID, e.Type)
 	}

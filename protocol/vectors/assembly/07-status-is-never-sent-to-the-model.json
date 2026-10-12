@@ -1,0 +1,75 @@
+{
+  "name": "status is never sent to the model",
+  "description": "A status is for people reading the session. It sits between a prompt and the reply, and neither appears in the request nor disturbs what does.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-10-11T00:00:01.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "auto"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-10-11T00:00:02.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "Plan the work in brief.md."
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-10-11T00:00:03.000Z",
+      "type": "status",
+      "data": {
+        "source": "client",
+        "kind": "run",
+        "data": {
+          "version": 1,
+          "step": "plan"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-10-11T00:00:04.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "Reading the brief.",
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 4,
+          "cached_tokens": 0
+        }
+      }
+    }
+  ],
+  "operation": {
+    "op": "assemble"
+  },
+  "expect": {
+    "segments": [
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000002"
+      },
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000004"
+      }
+    ]
+  }
+}

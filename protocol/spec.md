@@ -62,7 +62,7 @@ A session is an append-only sequence of events. Each event is:
 | `id` | string | ULID. Unique within the daemon. |
 | `parent_id` | string \| null | The id of the preceding event in this session; `null` only for the first event, which MUST be of type `session`. |
 | `timestamp` | string | RFC 3339 UTC. Informational: ordering is by position in the log, never by timestamp. |
-| `type` | string | One of the fifteen types in §3.1. |
+| `type` | string | One of the seventeen types in §3.1. |
 | `data` | object | Type-specific payload (§3.1). Unknown extra fields MUST be preserved by readers and MUST NOT cause rejection. |
 
 **The daemon is the sole writer.** Clients never append. A client-originated change
@@ -305,6 +305,18 @@ assistant `message`. They are rendered into the next request per §6.4.
 set. Readers MUST tolerate `files_touched`, `commits`, and `tree_dirty` being absent
 (the `report` module was disabled).
 
+#### `status` — full snapshot, for people
+
+```jsonc
+{"source":"client","kind":"run","data":{"version":1,"step":"work","task":2,"history":[]}}
+```
+
+What a client is doing in a session, for people reading it: the runner's run or goal
+on its home. `kind` ∈ `run | goal`. `data` is a JSON object of the client's own shape,
+at most 65536 bytes encoded; the daemon checks those two things and nothing else, as it
+gives a label no meaning. Each `status` is a full snapshot and the current status is
+the last one. It is never sent to the model (§6).
+
 ### 3.2 Validation
 
 An event is invalid, and a reader MUST reject the log, if: `id` is not a ULID;
@@ -346,6 +358,7 @@ for the same log (vectors under `vectors/projection/`).
 | `usage` | sum of assistant `message.usage` fields |
 | `last_event_id` | id of the last event |
 | `compacted_through` | `range_end` of the last `summarize` compaction, or none |
+| `status` | the last `status` event, or none |
 
 `thinking` events are ignored by the projection entirely: they carry no state,
 and a log that differs only in its thinking projects identically.
@@ -374,7 +387,7 @@ Order:
 6. Outstanding `stop_veto`s rendered per §6.4, as one user-role message.
 
 Events of type `options_change`, `state_change`, `tasks`, `goal`, `check`, `budget`,
-`notice`, `report`, and `thinking` are never sent to the model directly; their effect
+`notice`, `report`, `status`, and `thinking` are never sent to the model directly; their effect
 reaches the model through tool results (tasks) and the Current state block. Thinking
 has no effect to reach it: replaying a model's own reasoning back to it is not
 something every provider accepts, and nothing here depends on it.
@@ -651,7 +664,7 @@ idle clock. Every session archived with it, whose last event is the notice
 stays archived. An unknown id is `nabu_session_not_found`; restoring a session that is
 not archived does nothing.
 
-### 7.21 `nabu.session.stats {session_id}` → `SessionStats`
+### 7.21 `nabu.session.stats {session_id, tree?}` → `SessionStats`
 
 How much work a session was, derived from its log alone:
 
@@ -674,6 +687,28 @@ that reported usage, in order. `tools` is ordered by calls. `working_seconds` is
 `running`, counting no more than 15 minutes for any silence (a daemon stopped
 with the session still marked running is not work). `rereads` lists files read three times or more, most first; it is a signal worth
 a look, not a verdict. Arrays are always present, possibly empty.
+
+With `tree: true`, the result is the session and every session under it by `parent`, at
+any depth (a goal's home, its runs' homes and their steps), archived ones included:
+
+```jsonc
+{"session_id": "…", "sessions": 9, "turns": 412, "prompts": 9,
+ "tokens": {"input": 9100000, "output": 88000, "cached": 0},
+ "tools": [{"tool": "read", "calls": 300, "errors": 4, "sessions": 8}],
+ "compactions": {"summarize": 6, "clear_results": 0},
+ "vetoes": 2, "interruptions": 0, "working_seconds": 31000,
+ "per_day": [{"date": "2026-10-11", "turns": 412, "input": 9100000, "output": 88000}],
+ "started_at": "…", "last_event_at": "…",
+ "members": [{"session_id": "…", "parent": "…", "labels": ["unattended"], "turns": 130,
+              "working_seconds": 9000, "tokens": {"input": 3000000, "output": 30000},
+              "started_at": "…", "last_event_at": "…", "archived": false}],
+ "skipped": 0}
+```
+
+The totals are summed as `nabu.stats` sums sessions (§7.25), over each member's whole
+log. `per_day` covers the days from the earliest `started_at` to the latest
+`last_event_at`. `members` is each session's own numbers, the root first and the rest in
+the order they were made. `skipped` counts logs that could not be read.
 
 Not normative in the way §5 is: clients ask for it rather than computing it.
 
@@ -755,6 +790,12 @@ first line of its description, without a leading `#`; else, for a session with a
 the parent's label, since a step's own prompt is the same for every step; else the first
 line of its first prompt. `archived` says the session is archived
 (§7.19).
+
+### 7.27 `nabu.session.set_status {session_id, kind, data}` → `{event_id}`
+
+Appends a `status` event (§3.1) with `source: client`. `invalid_params` when `kind` is
+not `run` or `goal`, or `data` is not a JSON object or is over 65536 bytes encoded;
+nothing is appended then. Allowed in any session state, and starts nothing.
 
 ## 8. Error codes
 

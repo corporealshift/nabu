@@ -28,6 +28,8 @@ type fakeHome struct {
 	tasks  []protocol.Task
 	// context is the home's context size.
 	context string
+	// statuses is every status set on the home, oldest first.
+	statuses []protocol.StatusData
 }
 
 type fakeSession struct {
@@ -56,6 +58,10 @@ type fakeDaemon struct {
 	homes    map[string]*fakeHome
 	sessions map[string]*fakeSession
 	order    []string
+	// statusErr, when set, is what SetStatus fails with. statusCalls counts
+	// every call, failed or not.
+	statusErr   error
+	statusCalls int
 	// reads is the cursor of each EventsAfter call.
 	reads []string
 }
@@ -118,6 +124,20 @@ func (d *fakeDaemon) CreateHome(_ context.Context, ws, parent, description, size
 	id := fmt.Sprintf("R%d", len(d.homes)+1)
 	d.homes[id] = &fakeHome{workspace: ws, parent: parent, description: description, context: size}
 	return id, nil
+}
+
+// SetStatus checks what the daemon would refuse, and records the rest.
+func (d *fakeDaemon) SetStatus(_ context.Context, id, kind string, data json.RawMessage) error {
+	d.statusCalls++
+	if d.statusErr != nil {
+		return d.statusErr
+	}
+	st := protocol.StatusData{Source: "client", Kind: kind, Data: slices.Clone(data)}
+	if err := protocol.ValidateStatus(st); err != nil {
+		return err
+	}
+	d.homes[id].statuses = append(d.homes[id].statuses, st)
+	return nil
 }
 
 // UpdateTasks checks what the daemon would refuse.

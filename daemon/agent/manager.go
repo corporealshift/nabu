@@ -386,6 +386,21 @@ func (m *Manager) SetGoal(ctx context.Context, id, condition string) (protocol.E
 	return e, nil
 }
 
+// SetStatus records a client's snapshot of what it is doing in a session
+// (spec §7.27). It starts nothing and is allowed in any state: a status is for
+// people to read, and the model never sees it.
+func (m *Manager) SetStatus(ctx context.Context, id, kind string, data json.RawMessage) (protocol.Event, error) {
+	h, err := m.handle(id)
+	if err != nil {
+		return protocol.Event{}, err
+	}
+	d := protocol.StatusData{Source: "client", Kind: kind, Data: data}
+	if err := protocol.ValidateStatus(d); err != nil {
+		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
+	}
+	return h.s.Append(protocol.EventStatus, d)
+}
+
 // ClearGoal deactivates the current goal.
 func (m *Manager) ClearGoal(ctx context.Context, id string) (protocol.Event, error) {
 	h, err := m.handle(id)

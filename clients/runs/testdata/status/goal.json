@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "text": "build the app based on the designs in the design directory",
+  "step": "runs",
+  "round": 2,
+  "rounds": 10,
+  "since": "2026-10-11T15:53:44Z",
+  "briefs": [
+    {
+      "title": "Mission Control",
+      "round": 1,
+      "state": "done",
+      "run": "01M4A",
+      "pr_url": "https://github.com/o/r/pull/30"
+    },
+    {
+      "title": "Settings",
+      "round": 1,
+      "state": "failed",
+      "run": "01M4B",
+      "failed_at": "work",
+      "why": "the fix cap was reached"
+    },
+    {
+      "title": "In-Flight notes",
+      "round": 2,
+      "state": "running",
+      "run": "01M4P8EH2VXBN4WJZ8R8PJ1HKX"
+    }
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "met": false,
+      "reason": "Settings is not built.",
+      "at": "2026-10-11T14:53:44Z"
+    }
+  ],
+  "pr": {
+    "number": 0,
+    "url": ""
+  },
+  "started": "2026-10-11T10:53:44Z",
+  "updated": "2026-10-11T15:53:44Z"
+}

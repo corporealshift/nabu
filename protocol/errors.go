@@ -90,6 +90,7 @@ var Methods = []string{
 	"nabu.stats.calls",
 	"nabu.device.register",
 	"nabu.device.unregister",
+	"nabu.session.set_status",
 	"nabu.session.event",
 	"nabu.session.delta",
 	"nabu.session.thinking",

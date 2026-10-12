@@ -20,6 +20,8 @@ data class State(
     val usage: Usage = Usage(),
     val lastEventId: String = "",
     val compactedThrough: String = "",
+    /** The last status, or null when nothing has set one. */
+    val status: StatusData? = null,
 ) {
     /** Whether the goal still governs the loop. */
     val goalActive: Boolean
@@ -72,6 +74,9 @@ fun project(log: List<Event>, from: State = State()): State {
 
             EventType.GOAL ->
                 e.payload<GoalData>()?.let { st = st.copy(goal = it) }
+
+            EventType.STATUS ->
+                e.payload<StatusData>()?.let { st = st.copy(status = it) }
 
             EventType.TASKS ->
                 e.payload<TasksData>()?.let { st = st.copy(tasks = it.tasks) }

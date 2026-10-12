@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -222,6 +223,10 @@ func ValidateEvent(e Event) error {
 		default:
 			return fail(fmt.Sprintf("level %q invalid", d.Level))
 		}
+	case *StatusData:
+		if err := ValidateStatus(*d); err != nil {
+			return fail(err.Error())
+		}
 	case *ReportData:
 		switch d.ExitStatus {
 		case StateCompleted, StateBlocked, StatePaused, StateError:
@@ -261,6 +266,25 @@ func validateOptions(o Options) error {
 
 // isSource accepts daemon|client|model|module:<name>; when allowInfra is false
 // only model and module:<name> are accepted (tool_call sources).
+// ValidateStatus checks a status (spec §3.1). Of its data the daemon knows
+// only that it is a JSON object, and no bigger than MaxStatusBytes.
+func ValidateStatus(d StatusData) error {
+	if d.Kind != StatusRun && d.Kind != StatusGoal {
+		return fmt.Errorf("kind %q invalid", d.Kind)
+	}
+	if !isSource(d.Source, true) {
+		return fmt.Errorf("source %q invalid", d.Source)
+	}
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(d.Data, &obj) != nil || obj == nil {
+		return errors.New("data must be a JSON object")
+	}
+	if len(d.Data) > MaxStatusBytes {
+		return fmt.Errorf("data is %d bytes; the most is %d", len(d.Data), MaxStatusBytes)
+	}
+	return nil
+}
+
 func isSource(s string, allowInfra bool) bool {
 	switch s {
 	case "model":

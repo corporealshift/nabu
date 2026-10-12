@@ -146,6 +146,12 @@ func (c Client) UpdateTasks(ctx context.Context, id string, tasks []protocol.Tas
 	return c.C.CallInto(ctx, "nabu.session.update_tasks", map[string]any{"session_id": id, "tasks": tasks}, nil)
 }
 
+// SetStatus sets a session's status: the run's or goal's snapshot, encoded
+// (protocol spec §7.27).
+func (c Client) SetStatus(ctx context.Context, id, kind string, data json.RawMessage) error {
+	return c.C.CallInto(ctx, "nabu.session.set_status", map[string]any{"session_id": id, "kind": kind, "data": data}, nil)
+}
+
 // SendPrompt sends a message with a client_id made from its text, so sending
 // the same one again after a restart appends nothing (spec §7.4), while a
 // different one, such as a nudge after the first prompt, is a message of its

@@ -54,6 +54,7 @@ func (h *Handler) registerMutators() {
 	h.register("nabu.session.clear_goal", h.handleClearGoal)
 	h.register("nabu.session.set_option", h.handleSetOption)
 	h.register("nabu.session.update_tasks", h.handleUpdateTasks)
+	h.register("nabu.session.set_status", h.handleSetStatus)
 	h.register("nabu.session.compact", h.handleCompact)
 	h.register("nabu.session.archive", h.handleArchive)
 	h.register("nabu.session.restore", h.handleRestore)
@@ -258,6 +259,26 @@ func (h *Handler) handleUpdateTasks(ctx context.Context, _ *connState, params js
 		return nil, rpcErr
 	}
 	return map[string]any{"event_id": s.State().LastEventID}, nil
+}
+
+// handleSetStatus implements nabu.session.set_status (spec 7.27).
+func (h *Handler) handleSetStatus(ctx context.Context, _ *connState, params json.RawMessage) (any, *protocol.RPCError) {
+	var p struct {
+		SessionID string          `json:"session_id"`
+		Kind      string          `json:"kind"`
+		Data      json.RawMessage `json:"data"`
+	}
+	if rpcErr := decodeParams(params, &p); rpcErr != nil {
+		return nil, rpcErr
+	}
+	if _, rpcErr := h.getSession(p.SessionID); rpcErr != nil {
+		return nil, rpcErr
+	}
+	ev, err := h.manager.SetStatus(ctx, p.SessionID, p.Kind, p.Data)
+	if err != nil {
+		return nil, rpcErrOf(err)
+	}
+	return map[string]any{"event_id": ev.ID}, nil
 }
 
 // handleDaemonStop implements nabu.daemon.stop.

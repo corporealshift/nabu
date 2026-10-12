@@ -166,6 +166,14 @@ type Run struct {
 	// reflection (docs/specs/2026-10-11-run-reflection-design.md).
 	History []Record `json:"history,omitempty"`
 
+	// Since is when the current step began, or during work the current
+	// task; SinceKey is the step and task it was taken for. Statused is the
+	// fingerprint of the status last set on the home, so it is set only when
+	// it changes (status.go).
+	Since    time.Time `json:"since,omitzero"`
+	SinceKey string    `json:"since_key,omitempty"`
+	Statused string    `json:"statused,omitempty"`
+
 	Started time.Time `json:"started"`
 	Updated time.Time `json:"updated"`
 }

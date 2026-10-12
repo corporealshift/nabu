@@ -66,6 +66,9 @@ func (rn *Runner) load() error {
 
 func (rn *Runner) save(r *Run) error {
 	r.Updated = rn.Now()
+	if key := fmt.Sprintf("%s %d", r.Step, r.Task); key != r.SinceKey {
+		r.Since, r.SinceKey = r.Updated, key
+	}
 	return r.Save(rn.Root)
 }
 
@@ -246,6 +249,7 @@ func withRun(current []string, label string) []string {
 const maxSteps = 20
 
 func (rn *Runner) advance(ctx context.Context, d Daemon, r *Run) error {
+	defer rn.show(ctx, d, r)
 	for range maxSteps {
 		if r.Step.Over() || r.Waiting {
 			return rn.label(ctx, d, r, nil)
@@ -352,6 +356,7 @@ func (rn *Runner) Start(ctx context.Context, d Daemon, n int) (int, error) {
 			errs = append(errs, fmt.Errorf("runner: run %s: %w", r.Home, err))
 			continue
 		}
+		rn.show(ctx, d, r)
 		started++
 	}
 	return started, errors.Join(errs...)

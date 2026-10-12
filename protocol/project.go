@@ -14,6 +14,7 @@ type State struct {
 	Usage            Usage        `json:"usage"`
 	LastEventID      string       `json:"last_event_id"`
 	CompactedThrough string       `json:"compacted_through,omitempty"`
+	Status           *StatusData  `json:"status,omitempty"`
 }
 
 // Project derives State from a log that has already passed ValidateLog.
@@ -50,6 +51,8 @@ func Project(log []Event) State {
 			st.State = MustData[StateChangeData](e).To
 		case EventGoal:
 			st.Goal = MustData[GoalData](e)
+		case EventStatus:
+			st.Status = MustData[StatusData](e)
 		case EventTasks:
 			d := MustData[TasksData](e)
 			st.Tasks = d.Tasks

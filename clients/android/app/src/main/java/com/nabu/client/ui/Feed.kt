@@ -19,6 +19,11 @@ data class TranscriptView(
     val fetched: Boolean = false,
     /** Its options: the parent and labels that place it in a run. */
     val options: com.nabu.client.protocol.Options = com.nabu.client.protocol.Options(),
+    /** The runner's status on a run's or a goal's home, or null. */
+    val status: com.nabu.client.protocol.StatusData? = null,
+    /** Turns taken, and the cap on them; 0 is no cap. */
+    val turns: Int = 0,
+    val maxTurns: Int = 0,
 )
 
 /**
@@ -75,6 +80,9 @@ class TranscriptFeed {
         contextUsed = contextFraction(window, lastInput),
         fetched = lastOrdinal > 0,
         options = state.options,
+        status = state.status,
+        turns = state.turns,
+        maxTurns = state.budget.maxTurns,
     )
 }
 

@@ -13,7 +13,7 @@
       "enum": [
         "session", "message", "thinking", "tool_call", "tool_result", "options_change",
         "state_change", "compaction", "context", "tasks", "goal", "check",
-        "stop_veto", "budget", "notice", "report"
+        "stop_veto", "budget", "notice", "report", "status"
       ]
     },
     "data": { "type": "object" }
@@ -34,7 +34,8 @@
     { "if": { "properties": { "type": { "const": "stop_veto" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/stop_veto" } } } },
     { "if": { "properties": { "type": { "const": "budget" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/budget" } } } },
     { "if": { "properties": { "type": { "const": "notice" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/notice" } } } },
-    { "if": { "properties": { "type": { "const": "report" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/report" } } } }
+    { "if": { "properties": { "type": { "const": "report" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/report" } } } },
+    { "if": { "properties": { "type": { "const": "status" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/status" } } } }
   ],
   "$defs": {
     "ulid": { "type": "string", "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$" },
@@ -190,6 +191,15 @@
         "state": { "type": "string", "enum": ["set", "met", "unmet", "impossible", "cleared"] },
         "reason": { "type": "string" },
         "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "status": {
+      "type": "object",
+      "required": ["source", "kind", "data"],
+      "properties": {
+        "source": { "$ref": "#/$defs/source" },
+        "kind": { "type": "string", "enum": ["run", "goal"] },
+        "data": { "type": "object", "description": "The client's own snapshot, at most 65536 bytes encoded (spec §3.1)." }
       }
     },
     "check": {
