@@ -163,6 +163,9 @@ the machine's Claude Code login, and each call spends your allowance.
   what keeps failing and the files it keeps changing. The model keeps working while Claude
   looks. The answer arrives as an ordinary `claude.ask` call in the conversation. Sessions
   in `ask` permission mode are skipped, because you are there to be asked. 0 turns it off.
+  Claude is also asked to open its answer with `PLAN CANNOT WORK` when the task cannot
+  be done as it is set out. A run's step session that gets that answer is stopped, and
+  the run is planned again from what Claude found.
 
 ### `builtins`: reading another repository
 
