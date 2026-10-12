@@ -81,6 +81,7 @@ so they belong in the PR.
 | `check` | runner | Run `verify.sh` in the worktree | exit code |
 | `fix` | model | After a failed `check`: a session given the output. The goal: `verify.sh` passes, committed, the script untouched. Then `check` again. | as `work` |
 | `revise` | Claude | When a `fix` session says the check itself is wrong: review that reason, the failure and the script. Rewrite it, or refuse; then `check` | — |
+| `replan-review` | Claude | When a `work`, `fix` or `ci-fix` session says the plan cannot work, or Claude's automatic ask said so on its behalf (amended 2026-10-12, `2026-10-12-run-replan-design.md`): `REPLAN` appends the finding to `findings.md` and goes back to `plan`; `REFUSED` returns to the step that claimed, with advice. A verdict from the automatic ask skips the review. | — |
 | `final-review` | Claude | Review the finished work against the brief, once. Blockers become new tasks, then back to `work`; anything else goes in the PR body | — |
 | `pr` | runner | Push the branch; `gh pr create` with the `nabu` label | — |
 | `ci` | runner, model | Part 3 | — |
@@ -177,6 +178,8 @@ point of the design, so they are never skipped.
 |---|---|---|
 | `fix` attempts | 10 | `failed` at `fix` |
 | `revise` rounds | 2 | `failed` at `revise` |
+| re-plans (amended 2026-10-12) | 2 | `failed` at `plan` |
+| refused re-plan requests (amended 2026-10-12) | 2 | `failed` at the step that claimed |
 | A step session that ends `blocked`, `paused` or `error`, or touched `verify.sh` | retried once | `failed` at that step |
 | `final-review` | once | — |
 

@@ -72,7 +72,21 @@ The decisions section has one entry for each behavior the brief leaves open that
 %s
 
 Plan exactly what the brief asks for, and nothing more. Commit it with the message "run: plan".
-%s%s`, r.File(BriefFile), r.File(PlanFile), DecisionsHeading, expectation, rules(r), planningOnly(r, PlanFile))
+%s%s%s`, r.File(BriefFile), r.File(PlanFile), DecisionsHeading, expectation,
+		replanned(r, fmt.Sprintf("Work already committed on this branch stays: see it with `git log origin/%s..HEAD`, and plan only what remains. Rewrite %s; do not keep the old plan.", r.Base, r.File(PlanFile))),
+		rules(r), planningOnly(r, PlanFile))
+}
+
+// replanned tells a planning step that the run's last plan could not be
+// carried out, and where what was found is written
+// (docs/specs/2026-10-12-run-replan-design.md). It is empty for a run that
+// has not been re-planned.
+func replanned(r Run, then string) string {
+	if r.Replans == 0 {
+		return ""
+	}
+	return fmt.Sprintf("\n## This run is being planned again\n\nThe run was planned before, and that plan could not be carried out. %s says what was found: read it first, and plan around it rather than repeating it. %s\n",
+		r.File(FindingsFile), then)
 }
 
 // TasksPrompt asks for tasks.md. The check is written first, so the tasks can
@@ -92,7 +106,8 @@ Write each task as a checkbox line, with indented lines under it saying what it 
   A read-through cache in reader/cache.go with get and put. Tests: CacheTest.getReturnsWhatPutStored, CacheTest.getMissesAnUnknownKey.
 
 Commit it with the message "run: tasks".
-%[5]s%[6]s`, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile), rules(r), planningOnly(r, TasksFile))
+%[7]s%[5]s%[6]s`, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile), rules(r), planningOnly(r, TasksFile),
+		replanned(r, fmt.Sprintf("Work already committed on this branch stays: see it with `git log origin/%s..HEAD`. Replace %s with tasks for only the work that remains, all unticked.", r.Base, r.File(TasksFile))))
 }
 
 // VerifyPrompt asks for verify.sh. It is the one session allowed to write it.
@@ -115,7 +130,7 @@ Check behavior, never the text of the code. Do not grep source files for functio
 Use "set -euo pipefail". It must fail now, before the work is done, unless the brief is already met: a check that passes on untouched code proves nothing. The named tests, which do not exist yet, are what make it fail.
 
 This script is the definition of done for the whole run. Once it is committed, only the runner may change it. Commit it with the message "run: verify".
-
+%[6]s
 ## Rules for this session
 
 - This session does one step of an automated run. Write the script and nothing else.
@@ -123,7 +138,8 @@ This script is the definition of done for the whole run. Once it is committed, o
 - Do not push, and do not open a pull request.
 - Nobody is watching, so there is no one to ask. If you are stuck on something, look it up first: web.search finds documentation and answers, and web.fetch reads a page. If you have tried that and still cannot settle it, ask Claude with claude.ask, saying what you tried and what you are choosing between.
 - Commit your work before you finish.
-`, r.File(BriefFile), r.File(PlanFile), r.File(VerifyFile), DecisionsHeading, expectation)
+`, r.File(BriefFile), r.File(PlanFile), r.File(VerifyFile), DecisionsHeading, expectation,
+		replanned(r, fmt.Sprintf("Name no test that needs what it says cannot be done. If %s already exists, write it again from the new plan.", r.File(VerifyFile))))
 }
 
 // WorkPrompt asks for one task, and gives the goal it is judged against.
@@ -137,9 +153,28 @@ func WorkPrompt(r Run, i, n int, t Task) (prompt, goal string) {
 **%s**%s
 
 For context, the brief is %s, the plan is %s and the whole task list is %s. Do this task and only this task: later tasks belong to later sessions. The run is done when %s passes, so read it. This task's entry names the tests it writes: write each under exactly that name, and make it show what the comment above it in the check says. Build and test what you change. Commit with a message that says what the task did. Do not edit %s; the runner ticks the box when you finish.
-%s`, i+1, n, t.Title, detail, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile), r.File(TasksFile), rules(r))
-	goal = fmt.Sprintf("Task %d of %s (%q) is done and committed, and %s is untouched.", i+1, r.File(TasksFile), t.Title, r.File(VerifyFile))
+%s%s%s`, i+1, n, t.Title, detail, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile), r.File(TasksFile),
+		replanAdvice(r), replanOffer(r, "the plan, or this task,"), rules(r))
+	goal = fmt.Sprintf("Task %d of %s (%q) is done and committed, or %s explains why the plan cannot work; %s is untouched.",
+		i+1, r.File(TasksFile), t.Title, r.File(ReplanFile), r.File(VerifyFile))
 	return prompt, goal
+}
+
+// replanOffer tells a session that carries out the plan how to say the plan
+// cannot work (docs/specs/2026-10-12-run-replan-design.md). Without it, a
+// session given an impossible task goes round it until its turns run out.
+func replanOffer(r Run, what string) string {
+	return fmt.Sprintf("\nIf you find that %s cannot be done as it is written, not because it is hard but because it cannot work in this repository, do not keep trying. Write %s saying what you tried, what makes it impossible, and what is true instead; commit it, and stop. A reviewer then decides: the run may be planned again from what you found, or you will be told how to go on.\n",
+		what, r.File(ReplanFile))
+}
+
+// replanAdvice is what Claude said when it disagreed that the plan cannot
+// work, for the session that takes the step up again.
+func replanAdvice(r Run) string {
+	if strings.TrimSpace(r.ReplanAdvice) == "" {
+		return ""
+	}
+	return "\nAn earlier session on this step said the plan cannot work. A reviewer looked and says it can. Their note:\n\n" + strings.TrimSpace(r.ReplanAdvice) + "\n"
 }
 
 // maxOutput is how much of verify.sh's output a prompt carries, from the end,
@@ -169,9 +204,10 @@ func FixPrompt(r Run, output, advice string) (prompt, goal string) {
 Find the cause and fix it, then commit. The brief is %[4]s and the plan is %[5]s, if you need them. Run %[1]s yourself with bash to see the fix work.
 
 If you are sure the check itself is wrong, and not the work, do not touch %[1]s. Write %[6]s instead, saying exactly what is wrong with the check and what it should do, commit it, and stop. A reviewer then decides.
-%[7]s`, r.File(VerifyFile), strings.TrimSpace(tail(output)), extra, r.File(BriefFile), r.File(PlanFile), r.File(RevisionFile), rules(r))
-	goal = fmt.Sprintf("The failure of %s shown in the first message is fixed and committed, or %s explains why the check is wrong; %s is untouched.",
-		r.File(VerifyFile), r.File(RevisionFile), r.File(VerifyFile))
+%[8]s%[9]s%[7]s`, r.File(VerifyFile), strings.TrimSpace(tail(output)), extra, r.File(BriefFile), r.File(PlanFile), r.File(RevisionFile), rules(r),
+		replanAdvice(r), replanOffer(r, "the plan"))
+	goal = fmt.Sprintf("The failure of %s shown in the first message is fixed and committed, or %s explains why the check is wrong, or %s explains why the plan cannot work; %s is untouched.",
+		r.File(VerifyFile), r.File(RevisionFile), r.File(ReplanFile), r.File(VerifyFile))
 	return prompt, goal
 }
 
@@ -254,6 +290,19 @@ If the check is right and the work is wrong, reply with REFUSED, followed by one
 		r.File(VerifyFile), r.File(RevisionFile), r.File(BriefFile), strings.TrimSpace(tail(output)), Begin(VerifyFile), End(VerifyFile), expectation)
 }
 
+// ReplanReviewPrompt asks Claude to judge a session's claim that the plan
+// cannot work. doing says what the session was on, such as a task.
+func ReplanReviewPrompt(r Run, doing string) string {
+	return reviewer + fmt.Sprintf(`A session doing one step of this run, %[1]s, says the plan cannot be carried out as written. Its reasons are in %[2]s. The brief is %[3]s, the plan %[4]s and the tasks %[5]s. The check, %[6]s, defines done for the run.
+
+Decide whether it is right. Check its reasons against the repository: read the code, the build files and the tests they name. A plan that is hard, or a session that has not yet found the way, is not a plan that cannot work.
+
+If the plan cannot work as written, reply with REPLAN on its own line, then the finding: what cannot be done as planned, why, and what is true instead that a new plan can build on. Name files, APIs and commands. The run goes back to be planned again from the brief, and the planner reads your finding first. If it is the brief itself that asks for something impossible, still reply REPLAN and say so: if planning again cannot get round it, the run fails to its owner.
+
+If it can work, reply with REFUSED on its own line, then one paragraph telling the next session on this step how to go on.`,
+		doing, r.File(ReplanFile), r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile))
+}
+
 // FinalReviewPrompt asks Claude for blockers in the finished work, once.
 func FinalReviewPrompt(r Run, changed []string) string {
 	return reviewer + fmt.Sprintf(`The run is finished and its check, %[1]s, passes. Review the work against the brief, %[2]s, before it becomes a pull request. The plan is %[3]s. The branch changed these files since %[4]s:
@@ -289,8 +338,9 @@ func CIFixPrompt(r Run, failures string) (prompt, goal string) {
 Find the cause and fix it, then commit. The brief is %[2]s and the plan is %[3]s, if you need them. CI may check things %[4]s does not, such as formatting, another platform or a linter; fix what it reports. Then run %[4]s yourself with bash: a CI fix that breaks the brief is no fix.
 
 If you are sure the failure shows %[4]s is wrong, do not touch it. Write %[5]s instead, saying exactly what is wrong with the check, commit it, and stop.
-%[6]s`, strings.TrimSpace(tail(failures)), r.File(BriefFile), r.File(PlanFile), r.File(VerifyFile), r.File(RevisionFile), rules(r))
-	goal = fmt.Sprintf("The CI failures listed in the first message are fixed and committed, %s still passes, and %s is untouched.",
-		r.File(VerifyFile), r.File(VerifyFile))
+%[7]s%[8]s%[6]s`, strings.TrimSpace(tail(failures)), r.File(BriefFile), r.File(PlanFile), r.File(VerifyFile), r.File(RevisionFile), rules(r),
+		replanAdvice(r), replanOffer(r, "the plan"))
+	goal = fmt.Sprintf("The CI failures listed in the first message are fixed and committed and %s still passes, or %s explains why the plan cannot work; %s is untouched.",
+		r.File(VerifyFile), r.File(ReplanFile), r.File(VerifyFile))
 	return prompt, goal
 }

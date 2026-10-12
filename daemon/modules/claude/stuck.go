@@ -109,6 +109,21 @@ func question(log []protocol.Event, commands []string) string {
 		b.WriteString("\n")
 	}
 
+	// What to do is never cut: without it Claude does not know what is
+	// asked, or how to say the plan cannot work.
+	ask := whatToDo(commands)
+	return cut(b.String(), questionMax-len(ask)) + ask
+}
+
+// PlanVerdict opens an answer that says the task cannot be done as it is set
+// out (docs/specs/2026-10-12-run-replan-design.md). The runner, which reads
+// the answer in a step session's log, keeps its own copy: a client does not
+// import a module.
+const PlanVerdict = "PLAN CANNOT WORK"
+
+// whatToDo is the question's last section: what Claude is asked for.
+func whatToDo(commands []string) string {
+	var b strings.Builder
 	b.WriteString("## What to do\n\nRead the repository. ")
 	if len(commands) > 0 {
 		// The model keeps working while Claude looks (TurnEnd), so a build
@@ -118,8 +133,10 @@ func question(log []protocol.Event, commands []string) string {
 			"and result files may change under you. ")
 	}
 	b.WriteString("Say what is going wrong and what to do next, " +
-		"as specific steps: files, functions, commands. If the approach is wrong, say so.\n")
-	return cut(b.String(), questionMax)
+		"as specific steps: files, functions, commands. If the approach is wrong, say so.\n\n")
+	b.WriteString("If the task cannot be done as it is set out, begin your answer with the line " + PlanVerdict +
+		", then say what makes it impossible and what is true instead.\n")
+	return b.String()
 }
 
 // lastMessages is the model's last few things said, each on one line.

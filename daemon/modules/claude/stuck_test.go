@@ -92,6 +92,7 @@ func TestTheQuestionSaysWhatClaudeNeeds(t *testing.T) {
 		"SettingsViewModelTest.kt (6 times)",
 		"MissionControlScreenTest.kt (1 times)",
 		"Read the repository.",
+		"begin your answer with the line PLAN CANNOT WORK",
 	} {
 		if !strings.Contains(q, want) {
 			t.Errorf("the question is missing %q", want)
@@ -122,6 +123,9 @@ func TestAHugeLogStillGivesAShortQuestion(t *testing.T) {
 	}
 	if !utf8.ValidString(q) {
 		t.Error("a cut split a character")
+	}
+	if !strings.HasSuffix(q, whatToDo(nil)) {
+		t.Error("the cut reached what Claude is asked to do")
 	}
 }
 

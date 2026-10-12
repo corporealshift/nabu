@@ -157,7 +157,9 @@ Why these values:
   finished within 42 turns, but about one in five ran past 150. The long ones we looked
   at closely were stuck on one thing an outside look fixed: a test asserting the wrong
   thing, or failure output cut off by `| tail`. At 50 turns nabu asks Claude what's going
-  wrong, and asks again at 100. The model keeps working meanwhile, and nothing is stopped.
+  wrong, and asks again at 100. The model keeps working meanwhile. In a run, if Claude
+  answers that the plan cannot work, the runner stops the session and plans the run
+  again from what Claude found.
 - **`claude.commands`** lets Claude run your build and tests. Name the commands your
   projects use.
 - **Turn cap: `work_turns: 130`.** Each work session gets two rounds of help before the

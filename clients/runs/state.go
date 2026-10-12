@@ -47,6 +47,9 @@ const (
 	StepCIFix        Step = "ci-fix"
 	StepPush         Step = "push"
 	StepMerge        Step = "merge"
+	// StepReplanReview is Claude judging a session's claim that the plan
+	// cannot work (docs/specs/2026-10-12-run-replan-design.md).
+	StepReplanReview Step = "replan-review"
 	// StepReflect is the run looking back before it ends, done or failed
 	// (docs/specs/2026-10-11-run-reflection-design.md).
 	StepReflect Step = "reflect"
@@ -66,7 +69,7 @@ func (s Step) Session() bool {
 // Claude reports whether a step is one of Claude's gates.
 func (s Step) Claude() bool {
 	switch s {
-	case StepPlanReview, StepVerifyReview, StepRevise, StepFinalReview:
+	case StepPlanReview, StepVerifyReview, StepRevise, StepFinalReview, StepReplanReview:
 		return true
 	}
 	return false
@@ -126,6 +129,22 @@ type Run struct {
 	// Advice is what Claude said when it refused to change the check, for
 	// the next fix session.
 	Advice string `json:"advice,omitempty"`
+
+	// Replans counts the times the run went back to plan because the plan
+	// could not work, and Refusals the times Claude disagreed that it could
+	// not (docs/specs/2026-10-12-run-replan-design.md).
+	Replans  int `json:"replans,omitempty"`
+	Refusals int `json:"refusals,omitempty"`
+	// ReplanFrom is the step whose session claimed the plan cannot work,
+	// and ReplanAdvice what Claude said when it disagreed, for that step's
+	// next session.
+	ReplanFrom   Step   `json:"replan_from,omitempty"`
+	ReplanAdvice string `json:"replan_advice,omitempty"`
+	// Finding is Claude's automatic verdict that the plan cannot work, read
+	// from the running session's log and acted on once the session stops.
+	Finding string `json:"finding,omitempty"`
+	// Seen is the id of the last event read from the running session's log.
+	Seen string `json:"seen,omitempty"`
 	// Labelled is the run label last put on the home, so it is set only when
 	// it changes.
 	Labelled string `json:"labelled,omitempty"`
@@ -198,6 +217,10 @@ const (
 	TasksFile    = "tasks.md"
 	VerifyFile   = "verify.sh"
 	RevisionFile = "verify-revision.md"
+	// ReplanFile is a session's claim that the plan cannot work, and
+	// FindingsFile every claim Claude agreed with, for the planner.
+	ReplanFile   = "replan-request.md"
+	FindingsFile = "findings.md"
 )
 
 // RunsDir holds one state file per run.
