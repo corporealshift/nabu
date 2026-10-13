@@ -410,9 +410,20 @@ Tasks (<done>/<total> done):        ← omitted entirely when there are no tasks
 - [!] <id> <title> — blocked: <note>
 - [-] <id> <title> — <failed|cancelled>
 Budget: turn <turns> of <max_turns> ← or:  Budget: turn <turns> (unlimited)
+The person said (<shown> of <total>, oldest first):   ← omitted when there is no user message
+- <YYYY-MM-DD HH:MM>Z: <content>
+- (<n> left out)
 ```
 
 Lines are joined with `\n`, no trailing newline.
+
+The person's section lists every `user` `message` in the log the block is rendered
+from, verbatim and in log order, each with its event timestamp in UTC to the minute.
+Lines after the first line of a message are indented by two spaces. The section's
+lines after its heading are bounded by 4,096 bytes, counting the `\n` between them: the
+first message is always kept, then the newest that fit, taken newest first. Each run of
+messages left out is one `- (<n> left out)` line, not counted against the bound. The
+person's words are rendered from the log so that a summary cannot lose them.
 
 ### 6.4 Veto message (normative text)
 

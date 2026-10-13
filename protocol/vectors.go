@@ -102,7 +102,7 @@ func executeVector(v Vector) (any, error) {
 	case "project":
 		return Project(v.Input), nil
 	case "render_state":
-		return map[string]any{"text": RenderCurrentState(Project(v.Input))}, nil
+		return map[string]any{"text": RenderStateBlock(v.Input)}, nil
 	case "render_vetoes":
 		return map[string]any{"text": RenderVetoes(OutstandingVetoes(v.Input))}, nil
 	case "assemble":

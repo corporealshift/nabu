@@ -89,7 +89,7 @@ func Assemble(log []Event) []Segment {
 	// start has not changed. What happened since is in the messages.
 	if summarizeAt >= 0 {
 		out = append(out, Segment{Kind: SegSummary, ID: log[summarizeAt].ID, Text: MustData[CompactionData](log[summarizeAt]).Summary})
-		out = append(out, Segment{Kind: SegState, Text: RenderCurrentState(Project(log[:summarizeAt+1]))})
+		out = append(out, Segment{Kind: SegState, Text: RenderStateBlock(log[:summarizeAt+1])})
 	}
 
 	// 4. conversation after the last summarize, with clearing applied.
