@@ -143,12 +143,17 @@ func (m *Module) sweep(s module.Session) {
 	}
 }
 
-// BeforeRequest puts the live notes in front of the model.
+// noneLeft replaces a notes block in view once its last note is gone, so the
+// model does not go on reading a deleted note as live.
+const noneLeft = "## Working notes\nNone left.\n"
+
+// BeforeRequest puts the live notes in front of the model when they differ
+// from the notes block it can already see.
 //
 // A suffix block, never prefix: the prefix must not change between compactions
-// and notes change constantly. Assembly keeps only suffix contexts after the
-// last assistant message, so this replaces itself each turn rather than
-// accumulating.
+// and notes change constantly. A suffix block stays in the conversation until
+// the next summarize, so sending the same notes again would only repeat them.
+// What is in view is read from the log, so it holds across a daemon restart.
 func (m *Module) BeforeRequest(_ context.Context, s module.Session) ([]module.ContextBlock, error) {
 	if !m.enabled {
 		return nil, nil
@@ -157,12 +162,40 @@ func (m *Module) BeforeRequest(_ context.Context, s module.Session) ([]module.Co
 	if st == nil {
 		return nil, nil
 	}
-	live := st.List()
-	if len(live) == 0 {
-		// A block saying there are no notes is context spent to say nothing.
+	shown, ok := inView(s)
+	want := ""
+	if live := st.List(); len(live) > 0 {
+		want = Render(live, m.maxBytes)
+	} else if ok && shown != noneLeft {
+		want = noneLeft
+	}
+	// With nothing in view, no notes is not worth a block that says so.
+	if want == "" || (ok && want == shown) {
 		return nil, nil
 	}
-	return []module.ContextBlock{{Slot: "suffix", Content: Render(live, m.maxBytes)}}, nil
+	return []module.ContextBlock{{Slot: "suffix", Content: want}}, nil
+}
+
+// inView returns the last notes block logged since the last summarize, and
+// whether there is one.
+func inView(s module.Session) (string, bool) {
+	log, err := s.Events(nil)
+	if err != nil {
+		return "", false
+	}
+	for i := len(log) - 1; i >= 0; i-- {
+		switch log[i].Type {
+		case protocol.EventCompaction:
+			if protocol.MustData[protocol.CompactionData](log[i]).Mode == protocol.CompactionSummarize {
+				return "", false
+			}
+		case protocol.EventContext:
+			if d := protocol.MustData[protocol.ContextData](log[i]); d.Source == "module:notes" && d.Slot == "suffix" {
+				return d.Content, true
+			}
+		}
+	}
+	return "", false
 }
 
 // BeforeCompaction hands the notes to the summariser as text it must preserve.

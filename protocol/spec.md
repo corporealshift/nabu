@@ -227,8 +227,11 @@ differently.
 ```
 
 `slot` ∈ `prefix | suffix`. A `prefix` block is part of the request prefix from the
-point it is appended until the next `summarize` compaction. A `suffix` block applies
-to exactly one request: the next one assembled after it.
+point it is appended until the next `summarize` compaction. A `suffix` block is part
+of the conversation from the point it is appended until the next `summarize`
+compaction, at its position in the log, so each request is the one before it plus
+what was logged since. A module sends a `suffix` block only when it has something new
+to say.
 
 #### `tasks` — full snapshot
 
@@ -381,10 +384,11 @@ Order:
    results, and the block is rendered again at the next `summarize`. So everything
    before the conversation stays the same between compactions, and a provider's
    prompt cache can resume each request where the last one ended.
-4. `message`, `tool_call`, and `tool_result` events after the last `summarize`
-   compaction, in log order, with §6.2 applied.
-5. `context` blocks with `slot: suffix` appended after the last assistant `message`.
-6. Outstanding `stop_veto`s rendered per §6.4, as one user-role message.
+4. `message`, `tool_call`, `tool_result`, and `context` blocks with `slot: suffix`
+   after the last `summarize` compaction, in log order, with §6.2 applied. A suffix
+   block is a user-role message; suffix blocks next to each other in the log are one
+   message, joined by a blank line.
+5. Outstanding `stop_veto`s rendered per §6.4, as one user-role message.
 
 Events of type `options_change`, `state_change`, `tasks`, `goal`, `check`, `budget`,
 `notice`, `report`, `status`, and `thinking` are never sent to the model directly; their effect

@@ -1,0 +1,142 @@
+{
+  "name": "suffix blocks stay put",
+  "description": "A suffix block, a tool round, a second suffix block. Each stays where it was logged, so the request before the second block is the start of the one after it.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-10-13T12:00:02.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "fix the runner"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-10-13T12:00:03.000Z",
+      "type": "context",
+      "data": {
+        "source": "module:notes",
+        "slot": "suffix",
+        "content": "## Working notes\n### plan (written 2026-10-13 12:00Z)\npark the gate"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-10-13T12:00:04.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000005",
+      "parent_id": "01JEVENT000000000000000004",
+      "timestamp": "2026-10-13T12:00:05.000Z",
+      "type": "tool_call",
+      "data": {
+        "call_id": "c1",
+        "tool": "read",
+        "arguments": {
+          "path": "runner.go"
+        },
+        "source": "model"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000006",
+      "parent_id": "01JEVENT000000000000000005",
+      "timestamp": "2026-10-13T12:00:06.000Z",
+      "type": "tool_result",
+      "data": {
+        "call_id": "c1",
+        "tool": "read",
+        "content": "package runs",
+        "status": "ok"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000007",
+      "parent_id": "01JEVENT000000000000000006",
+      "timestamp": "2026-10-13T12:00:07.000Z",
+      "type": "context",
+      "data": {
+        "source": "module:watch",
+        "slot": "suffix",
+        "content": "Changed outside this session: runner.go"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000008",
+      "parent_id": "01JEVENT000000000000000007",
+      "timestamp": "2026-10-13T12:00:08.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "done",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    }
+  ],
+  "operation": {
+    "op": "assemble"
+  },
+  "expect": {
+    "segments": [
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000002"
+      },
+      {
+        "kind": "suffix_context",
+        "id": "01JEVENT000000000000000003"
+      },
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000004"
+      },
+      {
+        "kind": "tool_call",
+        "id": "01JEVENT000000000000000005"
+      },
+      {
+        "kind": "tool_result",
+        "id": "01JEVENT000000000000000006"
+      },
+      {
+        "kind": "suffix_context",
+        "id": "01JEVENT000000000000000007"
+      },
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000008"
+      }
+    ]
+  }
+}

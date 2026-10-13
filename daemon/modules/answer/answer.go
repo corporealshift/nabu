@@ -50,15 +50,36 @@ func (m *Module) questionTurn(s module.Session) bool {
 	return module.QuestionTurn(log, s.State())
 }
 
-// BeforeRequest implements module.RequestHook. The reminder rides at the end
-// of the request, where it is read last, as a logged context event (invariant
-// 3). It is repeated on every request of the turn, because after the first tool
-// call the previous one is no longer at the end.
+// BeforeRequest implements module.RequestHook. The reminder follows the
+// question, as a logged context event (invariant 3), once per turn: a suffix
+// block stays in the conversation, so sending it again would only repeat it.
 func (m *Module) BeforeRequest(_ context.Context, s module.Session) ([]module.ContextBlock, error) {
-	if !m.questionTurn(s) {
+	if !m.questionTurn(s) || remindedThisTurn(s) {
 		return nil, nil
 	}
 	return []module.ContextBlock{{Slot: "suffix", Content: reminder}}, nil
+}
+
+// remindedThisTurn reports whether the reminder was sent since the person's
+// last message.
+func remindedThisTurn(s module.Session) bool {
+	log, err := s.Events(nil)
+	if err != nil {
+		return false
+	}
+	for i := len(log) - 1; i >= 0; i-- {
+		switch log[i].Type {
+		case protocol.EventMessage:
+			if protocol.MustData[protocol.MessageData](log[i]).Role == "user" {
+				return false
+			}
+		case protocol.EventContext:
+			if d := protocol.MustData[protocol.ContextData](log[i]); d.Source == "module:answer" && d.Slot == "suffix" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // GateTool implements module.ToolGate: a change to the workspace, made while

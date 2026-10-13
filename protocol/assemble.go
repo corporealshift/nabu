@@ -64,15 +64,6 @@ func Assemble(log []Event) []Segment {
 		return false
 	}
 
-	// Last assistant message (for suffix contexts and vetoes).
-	lastAssistant := -1
-	for i := len(log) - 1; i >= 0; i-- {
-		if log[i].Type == EventMessage && MustData[MessageData](log[i]).Role == "assistant" {
-			lastAssistant = i
-			break
-		}
-	}
-
 	var out []Segment
 
 	// 2. prefix contexts after the last summarize.
@@ -92,10 +83,17 @@ func Assemble(log []Event) []Segment {
 		out = append(out, Segment{Kind: SegState, Text: RenderStateBlock(log[:summarizeAt+1])})
 	}
 
-	// 4. conversation after the last summarize, with clearing applied.
+	// 4. conversation after the last summarize, with clearing applied. A
+	// suffix context stays where it was appended, so each request is the one
+	// before it plus what was logged since, and a provider's prompt cache can
+	// resume at its end.
 	for i := summarizeAt + 1; i < len(log); i++ {
 		e := log[i]
 		switch e.Type {
+		case EventContext:
+			if d := MustData[ContextData](e); d.Slot == "suffix" {
+				out = append(out, Segment{Kind: SegSuffixContext, ID: e.ID, Text: d.Content})
+			}
 		case EventMessage:
 			out = append(out, Segment{Kind: SegMessage, ID: e.ID})
 		case EventToolCall:
@@ -111,15 +109,7 @@ func Assemble(log []Event) []Segment {
 		}
 	}
 
-	// 5. suffix contexts after the last assistant message.
-	for i := lastAssistant + 1; i < len(log); i++ {
-		e := log[i]
-		if e.Type == EventContext && MustData[ContextData](e).Slot == "suffix" {
-			out = append(out, Segment{Kind: SegSuffixContext, ID: e.ID, Text: MustData[ContextData](e).Content})
-		}
-	}
-
-	// 6. outstanding vetoes as one user message.
+	// 5. outstanding vetoes as one user message.
 	if text := RenderVetoes(OutstandingVetoes(log)); text != "" {
 		out = append(out, Segment{Kind: SegVetoes, Text: text})
 	}

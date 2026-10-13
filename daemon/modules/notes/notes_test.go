@@ -3,6 +3,7 @@ package notes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,14 +14,25 @@ import (
 	"github.com/corporealshift/rho/protocol"
 )
 
-type fakeSession struct{ id, dir, key string }
+// fakeSession keeps the log the host would: block appends what BeforeRequest
+// returns, as the registry does, so the module can see what is in view.
+type fakeSession struct {
+	id, dir, key string
+	log          *[]protocol.Event
+}
 
 func (f fakeSession) ID() string { return f.id }
 func (f fakeSession) Workspace() module.Workspace {
 	return module.Workspace{Path: f.dir, Key: f.key}
 }
-func (f fakeSession) Events(*string) ([]protocol.Event, error) { return nil, nil }
-func (f fakeSession) State() protocol.State                    { return protocol.State{} }
+func (f fakeSession) Events(*string) ([]protocol.Event, error) { return *f.log, nil }
+
+// logged appends an event of type typ to the fake's log.
+func (f fakeSession) logged(typ protocol.EventType, data any) {
+	raw, _ := json.Marshal(data)
+	*f.log = append(*f.log, protocol.Event{ID: fmt.Sprintf("E%d", len(*f.log)+1), Type: typ, Data: raw})
+}
+func (f fakeSession) State() protocol.State { return protocol.State{} }
 func (f fakeSession) Append(protocol.EventType, any) (protocol.Event, error) {
 	return protocol.Event{}, nil
 }
@@ -39,7 +51,7 @@ func newModule(t *testing.T, cfg module.Config) (*Module, fakeSession, *clock) {
 	if err := m.Init(nil, cfg); err != nil {
 		t.Fatal(err)
 	}
-	return m, fakeSession{id: "S1", dir: t.TempDir(), key: "proj-abc123"}, c
+	return m, fakeSession{id: "S1", dir: t.TempDir(), key: "proj-abc123", log: &[]protocol.Event{}}, c
 }
 
 func write(t *testing.T, m *Module, s fakeSession, name, body string) string {
@@ -64,7 +76,67 @@ func block(t *testing.T, m *Module, s fakeSession) string {
 	if blocks[0].Slot != "suffix" {
 		t.Fatalf("slot = %q; the prefix must not change between compactions", blocks[0].Slot)
 	}
+	s.logged(protocol.EventContext, protocol.ContextData{Source: "module:notes", Slot: "suffix", Content: blocks[0].Content})
 	return blocks[0].Content
+}
+
+// A block stays in the conversation once sent, so the same notes again would
+// only repeat it and grow every request after.
+func TestUnchangedNotesSendNothing(t *testing.T) {
+	m, s, c := newModule(t, nil)
+	write(t, m, s, "plan", "park the gate")
+	if block(t, m, s) == "" {
+		t.Fatal("a new note should be sent")
+	}
+	c.advance(time.Hour)
+	if got := block(t, m, s); got != "" {
+		t.Fatalf("unchanged notes were sent again:\n%s", got)
+	}
+}
+
+func TestAWriteADeleteAndAnExpiryEachSendOneBlock(t *testing.T) {
+	m, s, c := newModule(t, nil)
+	write(t, m, s, "plan", "park the gate")
+	write(t, m, s, "old", "an older finding")
+	block(t, m, s)
+
+	write(t, m, s, "plan", "park the gate, then open the PR")
+	if got := block(t, m, s); !strings.Contains(got, "then open the PR") {
+		t.Fatalf("a rewrite should send the notes again:\n%s", got)
+	}
+	if got := block(t, m, s); got != "" {
+		t.Fatalf("a rewrite should send one block, not two:\n%s", got)
+	}
+
+	args, _ := json.Marshal(map[string]string{"name": "old"})
+	if _, err := m.runDelete(context.Background(), s, args); err != nil {
+		t.Fatal(err)
+	}
+	if got := block(t, m, s); got == "" || strings.Contains(got, "an older finding") {
+		t.Fatalf("a delete should send the notes without the deleted one:\n%s", got)
+	}
+
+	c.advance(15 * 24 * time.Hour)
+	m.SessionStart(context.Background(), s) // sweeps the expired note
+	if got := block(t, m, s); got != noneLeft {
+		t.Fatalf("with the last note expired, the block in view should be replaced:\n%s", got)
+	}
+	if got := block(t, m, s); got != "" {
+		t.Fatalf("no notes should be said once, not on every request:\n%s", got)
+	}
+}
+
+// A summarize ends the life of every suffix block before it, so the notes have
+// to be put back in front of the model.
+func TestNotesAreSentAgainAfterASummary(t *testing.T) {
+	m, s, _ := newModule(t, nil)
+	write(t, m, s, "plan", "park the gate")
+	first := block(t, m, s)
+
+	s.logged(protocol.EventCompaction, protocol.CompactionData{Mode: protocol.CompactionSummarize, Summary: "S"})
+	if got := block(t, m, s); got != first {
+		t.Fatalf("after a summary the notes should be sent again:\n%s", got)
+	}
 }
 
 func TestANoteSurvivesIntoTheNextRequest(t *testing.T) {
@@ -93,6 +165,8 @@ func TestTheBlockReadsTheSameWheneverItIsRendered(t *testing.T) {
 
 	first := block(t, m, s)
 	c.advance(3 * time.Hour)
+	// A summary puts the notes back in view, rendered three hours on.
+	s.logged(protocol.EventCompaction, protocol.CompactionData{Mode: protocol.CompactionSummarize, Summary: "S"})
 	if later := block(t, m, s); later != first {
 		t.Fatalf("the same notes rendered differently three hours later:\n%s\n---\n%s", first, later)
 	}
@@ -183,7 +257,7 @@ func TestSweepRunsAtSessionStart(t *testing.T) {
 // into another's.
 func TestNotesDoNotLeakBetweenWorkspaces(t *testing.T) {
 	m, a, _ := newModule(t, nil)
-	b := fakeSession{id: "S2", dir: a.dir, key: "other-999999"}
+	b := fakeSession{id: "S2", dir: a.dir, key: "other-999999", log: &[]protocol.Event{}}
 
 	write(t, m, a, "mine", "belongs to the first repo")
 

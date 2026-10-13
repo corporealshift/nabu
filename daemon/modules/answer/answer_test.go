@@ -42,8 +42,7 @@ func call(tool, args string) protocol.ToolCallData {
 	return protocol.ToolCallData{CallID: "c1", Tool: tool, Arguments: json.RawMessage(args)}
 }
 
-// The reminder goes at the end of the request, where it is read last, and only
-// on a turn that asked something.
+// The reminder follows the question, and only on a turn that asked something.
 func TestTheReminderRidesOnlyOnAQuestion(t *testing.T) {
 	m := enabled(t)
 
@@ -54,6 +53,32 @@ func TestTheReminderRidesOnlyOnAQuestion(t *testing.T) {
 
 	if blocks, _ := m.BeforeRequest(context.Background(), said("fix the failing test")); len(blocks) != 0 {
 		t.Fatalf("a request should get nothing, got %+v", blocks)
+	}
+}
+
+// The reminder stays in the conversation once sent, so one per question turn
+// is enough; the next question gets its own.
+func TestTheReminderIsSentOncePerQuestionTurn(t *testing.T) {
+	m := enabled(t)
+	s := said("what's the status here?")
+	logged := func(typ protocol.EventType, data any) {
+		raw, _ := json.Marshal(data)
+		s.log = append(s.log, protocol.Event{ID: "E" + string(rune('A'+len(s.log))), Type: typ, Data: raw})
+	}
+
+	blocks, _ := m.BeforeRequest(context.Background(), s)
+	if len(blocks) != 1 {
+		t.Fatalf("the first request of a question turn should be reminded, got %+v", blocks)
+	}
+	logged(protocol.EventContext, protocol.ContextData{Source: "module:answer", Slot: "suffix", Content: blocks[0].Content})
+	logged(protocol.EventMessage, protocol.MessageData{Role: "assistant", Content: ""})
+	if blocks, _ := m.BeforeRequest(context.Background(), s); len(blocks) != 0 {
+		t.Fatalf("a later request of the same turn should not be reminded again, got %+v", blocks)
+	}
+
+	logged(protocol.EventMessage, protocol.MessageData{Role: "user", Content: "and what about the tests?"})
+	if blocks, _ := m.BeforeRequest(context.Background(), s); len(blocks) != 1 {
+		t.Fatalf("a new question should be reminded, got %+v", blocks)
 	}
 }
 
