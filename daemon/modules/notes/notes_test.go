@@ -85,6 +85,22 @@ func TestANoteSurvivesIntoTheNextRequest(t *testing.T) {
 	}
 }
 
+// The block is compared with the last one sent, so time passing must not
+// change it: only a change to the notes may.
+func TestTheBlockReadsTheSameWheneverItIsRendered(t *testing.T) {
+	m, s, c := newModule(t, nil)
+	write(t, m, s, "simplefin-sync", "Y must be initialised before X calls it.")
+
+	first := block(t, m, s)
+	c.advance(3 * time.Hour)
+	if later := block(t, m, s); later != first {
+		t.Fatalf("the same notes rendered differently three hours later:\n%s\n---\n%s", first, later)
+	}
+	if !strings.Contains(first, "### simplefin-sync (written 2026-09-18 12:00Z)") {
+		t.Errorf("a note should show when it was written:\n%s", first)
+	}
+}
+
 // Many notes per workspace is the whole answer to "a multi-session task inside
 // a repo": an effort gets its own note rather than sharing one.
 func TestNotesAreNamedAndIndependent(t *testing.T) {
@@ -359,25 +375,6 @@ func TestNotesAreReadableMarkdownOnDisk(t *testing.T) {
 	}
 }
 
-func TestHumanAge(t *testing.T) {
-	cases := []struct {
-		d    time.Duration
-		want string
-	}{
-		{30 * time.Second, "just now"},
-		{5 * time.Minute, "5m ago"},
-		{3 * time.Hour, "3h ago"},
-		{50 * time.Hour, "2d ago"},
-	}
-	for _, tc := range cases {
-		if got := humanAge(tc.d); got != tc.want {
-			t.Errorf("humanAge(%v) = %q, want %q", tc.d, got, tc.want)
-		}
-	}
-}
-
-// The header alone is a few hundred bytes. If it counted against the first
-// note, a tight cap would produce a block that names every note and shows none.
 func TestTheNewestNoteIsAlwaysShown(t *testing.T) {
 	m, s, _ := newModule(t, module.Config{"max_bytes": 1})
 	write(t, m, s, "only", "this has to be visible")

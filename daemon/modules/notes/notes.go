@@ -162,7 +162,7 @@ func (m *Module) BeforeRequest(_ context.Context, s module.Session) ([]module.Co
 		// A block saying there are no notes is context spent to say nothing.
 		return nil, nil
 	}
-	return []module.ContextBlock{{Slot: "suffix", Content: Render(live, m.now(), m.maxBytes)}}, nil
+	return []module.ContextBlock{{Slot: "suffix", Content: Render(live, m.maxBytes)}}, nil
 }
 
 // BeforeCompaction hands the notes to the summariser as text it must preserve.
@@ -203,11 +203,12 @@ func (m *Module) warn(format string, args ...any) {
 // ---------------------------------------------------------------- rendering
 
 // Render writes the block the model sees: every note newest first, each with
-// its age, up to maxBytes.
+// when it was written, up to maxBytes. It does not read the clock, so the same
+// notes always render the same block.
 //
 // Past the cap the rest are named rather than dropped, so a note never vanishes
 // without the model being able to tell that it did.
-func Render(live []Note, now time.Time, maxBytes int) string {
+func Render(live []Note, maxBytes int) string {
 	var b strings.Builder
 	b.WriteString("## Working notes\n")
 	b.WriteString("What you worked out earlier in this repository. Keep them current with " +
@@ -222,7 +223,7 @@ func Render(live []Note, now time.Time, maxBytes int) string {
 	var listed []Note
 	shown := 0
 	for _, n := range live {
-		entry := fmt.Sprintf("### %s (%s)\n%s\n\n", n.Name, humanAge(n.Age(now)), n.Body)
+		entry := fmt.Sprintf("### %s (written %s)\n%s\n\n", n.Name, writtenAt(n), n.Body)
 		if shown > 0 && b.Len()+len(entry) > maxBytes {
 			listed = append(listed, n)
 			continue
@@ -233,26 +234,10 @@ func Render(live []Note, now time.Time, maxBytes int) string {
 	if len(listed) > 0 {
 		b.WriteString("Not shown here, but still saved — rewrite one to bring it back into view:\n")
 		for _, n := range listed {
-			fmt.Fprintf(&b, "- %s (%s)\n", n.Name, humanAge(n.Age(now)))
+			fmt.Fprintf(&b, "- %s (written %s)\n", n.Name, writtenAt(n))
 		}
 	}
 	return strings.TrimRight(b.String(), "\n") + "\n"
-}
-
-// humanAge is the coarse age a reader actually wants. Minutes matter for a note
-// written this session; days matter for one about to expire; nothing in between
-// is worth the characters.
-func humanAge(d time.Duration) string {
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-	}
 }
 
 // ---------------------------------------------------------------- tools
