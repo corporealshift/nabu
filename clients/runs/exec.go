@@ -200,8 +200,14 @@ func (c ClaudeCLI) Ask(ctx context.Context, dir, prompt string) (string, error) 
 		return "", fmt.Errorf("claude did not answer within %s", timeout)
 	}
 	if err != nil {
+		// The CLI prints its refusal — a rate limit, a bad login — on stdout,
+		// and nothing on stderr, so stderr alone would report no reason at all.
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = strings.TrimSpace(stdout.String())
+		}
 		// The error names the program, never the prompt: that is pages long.
-		return "", fmt.Errorf("claude: %v: %s", err, firstLines(stderr.String(), 10))
+		return "", fmt.Errorf("claude: %v: %s", err, firstLines(msg, 10))
 	}
 	answer := strings.TrimSpace(stdout.String())
 	if answer == "" {

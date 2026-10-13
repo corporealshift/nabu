@@ -120,14 +120,30 @@ func TestCreatePR(t *testing.T) {
 }
 
 // TestMain lets the test binary stand in for the claude CLI: with
-// RHO_FAKE_CLAUDE set it answers with how much prompt it read on stdin.
+// RHO_FAKE_CLAUDE set it answers with how much prompt it read on stdin, or,
+// with RHO_FAKE_CLAUDE_REFUSE set, refuses the way a rate-limited CLI does.
 func TestMain(m *testing.M) {
 	if os.Getenv("RHO_FAKE_CLAUDE") != "" {
 		in, _ := io.ReadAll(os.Stdin)
+		if why := os.Getenv("RHO_FAKE_CLAUDE_REFUSE"); why != "" {
+			fmt.Println(why)
+			os.Exit(1)
+		}
 		fmt.Printf("read %d bytes, %d args", len(in), len(os.Args)-1)
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
+}
+
+// A rate-limited CLI exits 1 with its refusal on stdout and nothing on
+// stderr. The reason has to reach the run, or it fails with no reason at all.
+func TestClaudeAskReportsARefusal(t *testing.T) {
+	t.Setenv("RHO_FAKE_CLAUDE", "1")
+	t.Setenv("RHO_FAKE_CLAUDE_REFUSE", "You've hit your weekly limit · resets 2pm")
+	_, err := ClaudeCLI{Path: os.Args[0]}.Ask(context.Background(), t.TempDir(), "review the plan")
+	if err == nil || !strings.Contains(err.Error(), "weekly limit") {
+		t.Errorf("Ask err = %v, want the refusal in it", err)
+	}
 }
 
 // A prompt past Windows' 32K command-line limit still reaches claude, on
