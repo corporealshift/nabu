@@ -23,6 +23,8 @@ Keep, in this order:
 4. What is unresolved within what the user asked for: open questions, failing checks, known bugs. Work the user did not ask for is not unresolved; do not list it.
 5. Anything the next turn must not do.
 
+An earlier summary, when given, is replaced by yours: carry forward everything in it that still holds, and drop what is finished.
+
 Drop pleasantries, repeated tool output, and narration. Be specific: name files, commands and errors. Do not invent anything that is not in the conversation.
 
 The conversation is a record to summarise, not one you are taking part in. Do not continue it, answer it, or call tools.`
@@ -284,7 +286,12 @@ func (m *Manager) summarizeLocked(ctx context.Context, h *sessionHandle) error {
 
 	preserve := m.deps.Modules.BeforeCompaction(ctx, h, rng)
 
+	// The new summary replaces the last one in every request, so the
+	// summariser must see it: what it does not carry forward is gone.
 	transcript := "<conversation>\n" + renderForSummary(log[start:]) + "</conversation>\n\n" + summarizeClosing
+	if earlier := lastSummary(log); earlier != "" {
+		transcript = "<earlier-summary>\n" + earlier + "\n</earlier-summary>\n\n" + transcript
+	}
 	sys := summarizePrompt
 	if len(preserve) > 0 {
 		sys += "\n\nThe summary MUST preserve these facts verbatim:\n- " + strings.Join(preserve, "\n- ")
@@ -327,6 +334,20 @@ func (m *Manager) summarizeLocked(ctx context.Context, h *sessionHandle) error {
 	}
 	m.appendContexts(h, m.deps.Modules.AfterCompaction(ctx, h))
 	return nil
+}
+
+// lastSummary returns the summary of the log's last summarize compaction, or
+// "" when it has none.
+func lastSummary(log []protocol.Event) string {
+	for i := len(log) - 1; i >= 0; i-- {
+		if log[i].Type != protocol.EventCompaction {
+			continue
+		}
+		if d := protocol.MustData[protocol.CompactionData](log[i]); d.Mode == protocol.CompactionSummarize {
+			return d.Summary
+		}
+	}
+	return ""
 }
 
 // afterReasoning drops reasoning the server failed to separate from the answer.
