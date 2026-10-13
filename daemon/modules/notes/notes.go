@@ -179,7 +179,7 @@ func (m *Module) BeforeCompaction(_ context.Context, s module.Session, _ module.
 	}
 	var out []string
 	for _, n := range st.List() {
-		out = append(out, fmt.Sprintf("Working note %q: %s", n.Name, n.Body))
+		out = append(out, fmt.Sprintf("Working note %q (written %s): %s", n.Name, writtenAt(n), n.Body))
 	}
 	return out
 }
@@ -189,6 +189,10 @@ func (m *Module) BeforeCompaction(_ context.Context, s module.Session, _ module.
 func (m *Module) AfterCompaction(_ context.Context, _ module.Session) ([]module.ContextBlock, error) {
 	return nil, nil
 }
+
+// writtenAt is when a note was last written, in UTC to the minute: a fixed
+// time reads the same whenever it is rendered, where an age does not.
+func writtenAt(n Note) string { return n.Written.UTC().Format("2006-01-02 15:04Z") }
 
 func (m *Module) warn(format string, args ...any) {
 	if m.log != nil {

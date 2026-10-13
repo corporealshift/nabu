@@ -296,6 +296,11 @@ func TestCompactionIsToldToPreserveTheNotes(t *testing.T) {
 	if !strings.Contains(preserve[0], "refactor") {
 		t.Errorf("the name should be preserved, got %q", preserve[0])
 	}
+	// The summariser weighs a note against the person's later messages, so it
+	// has to know when the note was written.
+	if !strings.Contains(preserve[0], "(written 2026-09-18 12:00Z)") {
+		t.Errorf("the write time should be preserved, got %q", preserve[0])
+	}
 }
 
 func TestDisabledOffersNothing(t *testing.T) {

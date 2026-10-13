@@ -25,6 +25,8 @@ Keep, in this order:
 
 An earlier summary, when given, is replaced by yours: carry forward everything in it that still holds, and drop what is finished.
 
+Working notes among the facts to preserve are the agent's own, written at the time shown. Keep them verbatim. Where a message from the user later than a note contradicts it, say the note is out of date: the user's message wins. The same holds for anything else the agent wrote.
+
 Drop pleasantries, repeated tool output, and narration. Be specific: name files, commands and errors. Do not invent anything that is not in the conversation.
 
 The conversation is a record to summarise, not one you are taking part in. Do not continue it, answer it, or call tools.`

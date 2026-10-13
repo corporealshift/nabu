@@ -523,6 +523,23 @@ func TestASecondSummaryIsGivenTheFirst(t *testing.T) {
 	}
 }
 
+// A note the agent wrote before the person decided otherwise must not outvote
+// them in the summary.
+func TestTheSummariserIsToldThePersonOutranksTheAgent(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{
+		{Content: "done"},
+		{Content: "THE SUMMARY"},
+	})
+	s := h.primed(t)
+	if _, err := h.m.Compact(context.Background(), s.ID()); err != nil {
+		t.Fatal(err)
+	}
+	sys := h.fake.Calls[len(h.fake.Calls)-1].Messages[0].Content
+	if !strings.Contains(sys, "the user's message wins") {
+		t.Fatalf("the summary prompt must say the user's later message wins:\n%s", sys)
+	}
+}
+
 func TestAFirstSummaryHasNoEarlierOne(t *testing.T) {
 	h := newHarness(t, nil, []provider.Response{
 		{Content: "done"},
