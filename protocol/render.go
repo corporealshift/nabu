@@ -26,6 +26,62 @@ func RenderCurrentState(s State) string {
 	return strings.Join(lines, "\n")
 }
 
+// MaxSaidBytes bounds the person's words in the Current state block (spec §6.3).
+const MaxSaidBytes = 4096
+
+// RenderStateBlock produces the Current state block (spec §6.3) from a log:
+// the projection's state, then what the person said. The person's words are
+// rendered from the log, not left to a summary, so a summary cannot lose them.
+func RenderStateBlock(log []Event) string {
+	block := RenderCurrentState(Project(log))
+	if said := renderSaid(log); said != "" {
+		block += "\n" + said
+	}
+	return block
+}
+
+// renderSaid renders every user message, or "" when there is none. The first
+// is always kept, since in a run it is the brief; then the newest that fit in
+// MaxSaidBytes. A marker stands where messages were left out.
+func renderSaid(log []Event) string {
+	var lines []string
+	for _, e := range log {
+		if e.Type != EventMessage {
+			continue
+		}
+		if d := MustData[MessageData](e); d.Role == "user" {
+			text := strings.ReplaceAll(d.Content, "\n", "\n  ")
+			lines = append(lines, fmt.Sprintf("- %s: %s", e.Timestamp.UTC().Format("2006-01-02 15:04Z"), text))
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	kept := map[int]bool{0: true}
+	size := len(lines[0])
+	for i := len(lines) - 1; i > 0; i-- {
+		if size+1+len(lines[i]) > MaxSaidBytes {
+			break
+		}
+		size += 1 + len(lines[i])
+		kept[i] = true
+	}
+	out := []string{fmt.Sprintf("The person said (%d of %d, oldest first):", len(kept), len(lines))}
+	for i := 0; i < len(lines); i++ {
+		if kept[i] {
+			out = append(out, lines[i])
+			continue
+		}
+		left := 0
+		for ; i < len(lines) && !kept[i]; i++ {
+			left++
+		}
+		out = append(out, fmt.Sprintf("- (%d left out)", left))
+		i--
+	}
+	return strings.Join(out, "\n")
+}
+
 // RenderTasks renders a task list in the same form the Current state block
 // uses, so a task.update tool result and the state block never disagree.
 func RenderTasks(tasks []Task) string {

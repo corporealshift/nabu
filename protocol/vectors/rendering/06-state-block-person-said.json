@@ -1,0 +1,61 @@
+{
+  "name": "state block with the person's words",
+  "description": "Every user message, verbatim and oldest first, with its time in UTC to the minute. A message's later lines are indented by two spaces.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-10T00:26:41.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-10-13T10:50:50.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "runs fail when claude exits 1"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-10-13T10:51:00.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "looking",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-10-13T13:19:55.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "go with your recommendation\nthen open a PR"
+      }
+    }
+  ],
+  "operation": {
+    "op": "render_state"
+  },
+  "expect": {
+    "text": "## Current state\nGoal: none\nBudget: turn 1 (unlimited)\nThe person said (2 of 2, oldest first):\n- 2026-10-13 10:50Z: runs fail when claude exits 1\n- 2026-10-13 13:19Z: go with your recommendation\n  then open a PR"
+  }
+}

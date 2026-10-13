@@ -227,8 +227,11 @@ differently.
 ```
 
 `slot` ∈ `prefix | suffix`. A `prefix` block is part of the request prefix from the
-point it is appended until the next `summarize` compaction. A `suffix` block applies
-to exactly one request: the next one assembled after it.
+point it is appended until the next `summarize` compaction. A `suffix` block is part
+of the conversation from the point it is appended until the next `summarize`
+compaction, at its position in the log, so each request is the one before it plus
+what was logged since. A module sends a `suffix` block only when it has something new
+to say.
 
 #### `tasks` — full snapshot
 
@@ -381,10 +384,11 @@ Order:
    results, and the block is rendered again at the next `summarize`. So everything
    before the conversation stays the same between compactions, and a provider's
    prompt cache can resume each request where the last one ended.
-4. `message`, `tool_call`, and `tool_result` events after the last `summarize`
-   compaction, in log order, with §6.2 applied.
-5. `context` blocks with `slot: suffix` appended after the last assistant `message`.
-6. Outstanding `stop_veto`s rendered per §6.4, as one user-role message.
+4. `message`, `tool_call`, `tool_result`, and `context` blocks with `slot: suffix`
+   after the last `summarize` compaction, in log order, with §6.2 applied. A suffix
+   block is a user-role message; suffix blocks next to each other in the log are one
+   message, joined by a blank line.
+5. Outstanding `stop_veto`s rendered per §6.4, as one user-role message.
 
 Events of type `options_change`, `state_change`, `tasks`, `goal`, `check`, `budget`,
 `notice`, `report`, `status`, and `thinking` are never sent to the model directly; their effect
@@ -410,9 +414,20 @@ Tasks (<done>/<total> done):        ← omitted entirely when there are no tasks
 - [!] <id> <title> — blocked: <note>
 - [-] <id> <title> — <failed|cancelled>
 Budget: turn <turns> of <max_turns> ← or:  Budget: turn <turns> (unlimited)
+The person said (<shown> of <total>, oldest first):   ← omitted when there is no user message
+- <YYYY-MM-DD HH:MM>Z: <content>
+- (<n> left out)
 ```
 
 Lines are joined with `\n`, no trailing newline.
+
+The person's section lists every `user` `message` in the log the block is rendered
+from, verbatim and in log order, each with its event timestamp in UTC to the minute.
+Lines after the first line of a message are indented by two spaces. The section's
+lines after its heading are bounded by 4,096 bytes, counting the `\n` between them: the
+first message is always kept, then the newest that fit, taken newest first. Each run of
+messages left out is one `- (<n> left out)` line, not counted against the bound. The
+person's words are rendered from the log so that a summary cannot lose them.
 
 ### 6.4 Veto message (normative text)
 

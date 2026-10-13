@@ -114,7 +114,10 @@ type SessionStarter interface {
 
 // RequestHook runs before every request is assembled. It may return suffix
 // blocks only; a prefix block returned here is rejected by the host, because
-// the prefix must not change between compactions.
+// the prefix must not change between compactions. A suffix block stays in the
+// conversation where it was logged until the next summarize, so return one
+// only when there is something new to say: the same block again only repeats
+// it, and grows every request after.
 type RequestHook interface {
 	BeforeRequest(ctx context.Context, s Session) ([]ContextBlock, error)
 }

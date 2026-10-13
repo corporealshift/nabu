@@ -143,12 +143,17 @@ func (m *Module) sweep(s module.Session) {
 	}
 }
 
-// BeforeRequest puts the live notes in front of the model.
+// noneLeft replaces a notes block in view once its last note is gone, so the
+// model does not go on reading a deleted note as live.
+const noneLeft = "## Working notes\nNone left.\n"
+
+// BeforeRequest puts the live notes in front of the model when they differ
+// from the notes block it can already see.
 //
 // A suffix block, never prefix: the prefix must not change between compactions
-// and notes change constantly. Assembly keeps only suffix contexts after the
-// last assistant message, so this replaces itself each turn rather than
-// accumulating.
+// and notes change constantly. A suffix block stays in the conversation until
+// the next summarize, so sending the same notes again would only repeat them.
+// What is in view is read from the log, so it holds across a daemon restart.
 func (m *Module) BeforeRequest(_ context.Context, s module.Session) ([]module.ContextBlock, error) {
 	if !m.enabled {
 		return nil, nil
@@ -157,12 +162,40 @@ func (m *Module) BeforeRequest(_ context.Context, s module.Session) ([]module.Co
 	if st == nil {
 		return nil, nil
 	}
-	live := st.List()
-	if len(live) == 0 {
-		// A block saying there are no notes is context spent to say nothing.
+	shown, ok := inView(s)
+	want := ""
+	if live := st.List(); len(live) > 0 {
+		want = Render(live, m.maxBytes)
+	} else if ok && shown != noneLeft {
+		want = noneLeft
+	}
+	// With nothing in view, no notes is not worth a block that says so.
+	if want == "" || (ok && want == shown) {
 		return nil, nil
 	}
-	return []module.ContextBlock{{Slot: "suffix", Content: Render(live, m.now(), m.maxBytes)}}, nil
+	return []module.ContextBlock{{Slot: "suffix", Content: want}}, nil
+}
+
+// inView returns the last notes block logged since the last summarize, and
+// whether there is one.
+func inView(s module.Session) (string, bool) {
+	log, err := s.Events(nil)
+	if err != nil {
+		return "", false
+	}
+	for i := len(log) - 1; i >= 0; i-- {
+		switch log[i].Type {
+		case protocol.EventCompaction:
+			if protocol.MustData[protocol.CompactionData](log[i]).Mode == protocol.CompactionSummarize {
+				return "", false
+			}
+		case protocol.EventContext:
+			if d := protocol.MustData[protocol.ContextData](log[i]); d.Source == "module:notes" && d.Slot == "suffix" {
+				return d.Content, true
+			}
+		}
+	}
+	return "", false
 }
 
 // BeforeCompaction hands the notes to the summariser as text it must preserve.
@@ -179,7 +212,7 @@ func (m *Module) BeforeCompaction(_ context.Context, s module.Session, _ module.
 	}
 	var out []string
 	for _, n := range st.List() {
-		out = append(out, fmt.Sprintf("Working note %q: %s", n.Name, n.Body))
+		out = append(out, fmt.Sprintf("Working note %q (written %s): %s", n.Name, writtenAt(n), n.Body))
 	}
 	return out
 }
@@ -190,6 +223,10 @@ func (m *Module) AfterCompaction(_ context.Context, _ module.Session) ([]module.
 	return nil, nil
 }
 
+// writtenAt is when a note was last written, in UTC to the minute: a fixed
+// time reads the same whenever it is rendered, where an age does not.
+func writtenAt(n Note) string { return n.Written.UTC().Format("2006-01-02 15:04Z") }
+
 func (m *Module) warn(format string, args ...any) {
 	if m.log != nil {
 		m.log.Warn(fmt.Sprintf(format, args...))
@@ -199,11 +236,12 @@ func (m *Module) warn(format string, args ...any) {
 // ---------------------------------------------------------------- rendering
 
 // Render writes the block the model sees: every note newest first, each with
-// its age, up to maxBytes.
+// when it was written, up to maxBytes. It does not read the clock, so the same
+// notes always render the same block.
 //
 // Past the cap the rest are named rather than dropped, so a note never vanishes
 // without the model being able to tell that it did.
-func Render(live []Note, now time.Time, maxBytes int) string {
+func Render(live []Note, maxBytes int) string {
 	var b strings.Builder
 	b.WriteString("## Working notes\n")
 	b.WriteString("What you worked out earlier in this repository. Keep them current with " +
@@ -218,7 +256,7 @@ func Render(live []Note, now time.Time, maxBytes int) string {
 	var listed []Note
 	shown := 0
 	for _, n := range live {
-		entry := fmt.Sprintf("### %s (%s)\n%s\n\n", n.Name, humanAge(n.Age(now)), n.Body)
+		entry := fmt.Sprintf("### %s (written %s)\n%s\n\n", n.Name, writtenAt(n), n.Body)
 		if shown > 0 && b.Len()+len(entry) > maxBytes {
 			listed = append(listed, n)
 			continue
@@ -229,26 +267,10 @@ func Render(live []Note, now time.Time, maxBytes int) string {
 	if len(listed) > 0 {
 		b.WriteString("Not shown here, but still saved — rewrite one to bring it back into view:\n")
 		for _, n := range listed {
-			fmt.Fprintf(&b, "- %s (%s)\n", n.Name, humanAge(n.Age(now)))
+			fmt.Fprintf(&b, "- %s (written %s)\n", n.Name, writtenAt(n))
 		}
 	}
 	return strings.TrimRight(b.String(), "\n") + "\n"
-}
-
-// humanAge is the coarse age a reader actually wants. Minutes matter for a note
-// written this session; days matter for one about to expire; nothing in between
-// is worth the characters.
-func humanAge(d time.Duration) string {
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-	}
 }
 
 // ---------------------------------------------------------------- tools

@@ -10,8 +10,9 @@ import (
 // buildRequest turns the log into a provider request (protocol spec §6).
 // The system message is systemPrompt + prefix context blocks + (after a
 // summarize) the summary and Current state block. Message and tool events
-// follow, with tool calls folded into their assistant message. Suffix blocks
-// and outstanding vetoes become one trailing user message.
+// follow, with tool calls folded into their assistant message. A suffix block
+// is a user message where it was logged, joined with any suffix block next to
+// it; outstanding vetoes are one trailing user message.
 func buildRequest(log []protocol.Event, systemPrompt, model string, tools []provider.ToolSpec, maxTokens int) provider.Request {
 	byID := make(map[string]protocol.Event, len(log))
 	for _, e := range log {
@@ -26,11 +27,15 @@ func buildRequest(log []protocol.Event, systemPrompt, model string, tools []prov
 	}
 	var msgs []provider.Message
 	var pending *provider.Message // assistant message collecting tool calls
-	var trailing []string
+	var suffix []string           // adjacent suffix blocks, one user message
 	flush := func() {
 		if pending != nil {
 			msgs = append(msgs, *pending)
 			pending = nil
+		}
+		if len(suffix) > 0 {
+			msgs = append(msgs, provider.Message{Role: "user", Content: strings.Join(suffix, "\n\n")})
+			suffix = nil
 		}
 	}
 	for _, s := range segs {
@@ -56,6 +61,7 @@ func buildRequest(log []protocol.Event, systemPrompt, model string, tools []prov
 		case protocol.SegToolCall:
 			d := protocol.MustData[protocol.ToolCallData](byID[s.ID])
 			if pending == nil {
+				flush()
 				pending = &provider.Message{Role: "assistant"}
 			}
 			pending.ToolCalls = append(pending.ToolCalls, provider.ToolCall{
@@ -68,14 +74,18 @@ func buildRequest(log []protocol.Event, systemPrompt, model string, tools []prov
 			flush()
 			d := protocol.MustData[protocol.ToolResultData](byID[s.ID])
 			msgs = append(msgs, provider.Message{Role: "tool", ToolCallID: d.CallID, Content: s.Text})
-		case protocol.SegSuffixContext, protocol.SegVetoes:
-			trailing = append(trailing, s.Text)
+		case protocol.SegSuffixContext:
+			if pending != nil {
+				msgs = append(msgs, *pending)
+				pending = nil
+			}
+			suffix = append(suffix, s.Text)
+		case protocol.SegVetoes:
+			flush()
+			msgs = append(msgs, provider.Message{Role: "user", Content: s.Text})
 		}
 	}
 	flush()
-	if len(trailing) > 0 {
-		msgs = append(msgs, provider.Message{Role: "user", Content: strings.Join(trailing, "\n\n")})
-	}
 	all := append([]provider.Message{{Role: "system", Content: sys.String()}}, msgs...)
 	return provider.Request{Model: model, Messages: all, Tools: tools, MaxTokens: maxTokens}
 }

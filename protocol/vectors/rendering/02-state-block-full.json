@@ -127,6 +127,6 @@
     "op": "render_state"
   },
   "expect": {
-    "text": "## Current state\nGoal: all vectors pass (set)\nTasks (1/5 done):\n- [x] t1 Write validate.go\n- [>] t2 Write cursor.go\n- [ ] t3 Write vectors\n- [!] t4 Kotlin runner — blocked: no Android project yet\n- [-] t5 Old approach — cancelled\nBudget: turn 2 of 40"
+    "text": "## Current state\nGoal: all vectors pass (set)\nTasks (1/5 done):\n- [x] t1 Write validate.go\n- [>] t2 Write cursor.go\n- [ ] t3 Write vectors\n- [!] t4 Kotlin runner — blocked: no Android project yet\n- [-] t5 Old approach — cancelled\nBudget: turn 2 of 40\nThe person said (1 of 1, oldest first):\n- 2026-09-10 00:26Z: go"
   }
 }

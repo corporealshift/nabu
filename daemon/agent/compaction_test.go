@@ -494,6 +494,67 @@ func TestInterruptEndsARequestedCompaction(t *testing.T) {
 // Issue 87's summary was the agent's next edit, not a summary: at the end of a
 // long transcript the model carried on with the work. The instruction now
 // follows the transcript, and reasoning that leaked into the answer is dropped.
+// The second summary replaces the first in every request, so it has to be
+// written from the first: otherwise whatever only the first held is lost.
+func TestASecondSummaryIsGivenTheFirst(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{
+		{Content: "done"},
+		{Content: "SUMMARY ONE"},
+		{Content: "done again"},
+		{Content: "SUMMARY TWO"},
+	})
+	s := h.primed(t)
+	if _, err := h.m.Compact(context.Background(), s.ID()); err != nil {
+		t.Fatal(err)
+	}
+	h.m.Prompt(context.Background(), s.ID(), "more")
+	h.m.WaitIdle(s.ID())
+	if _, err := h.m.Compact(context.Background(), s.ID()); err != nil {
+		t.Fatal(err)
+	}
+
+	req := h.fake.Calls[len(h.fake.Calls)-1]
+	user := req.Messages[len(req.Messages)-1].Content
+	if !strings.HasPrefix(user, "<earlier-summary>\nSUMMARY ONE\n</earlier-summary>\n\n<conversation>\n") {
+		t.Fatalf("the first summary must lead the second summary's transcript:\n%s", user)
+	}
+	if !strings.Contains(user, "user: more") {
+		t.Fatalf("the conversation since the first summary is missing:\n%s", user)
+	}
+}
+
+// A note the agent wrote before the person decided otherwise must not outvote
+// them in the summary.
+func TestTheSummariserIsToldThePersonOutranksTheAgent(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{
+		{Content: "done"},
+		{Content: "THE SUMMARY"},
+	})
+	s := h.primed(t)
+	if _, err := h.m.Compact(context.Background(), s.ID()); err != nil {
+		t.Fatal(err)
+	}
+	sys := h.fake.Calls[len(h.fake.Calls)-1].Messages[0].Content
+	if !strings.Contains(sys, "the user's message wins") {
+		t.Fatalf("the summary prompt must say the user's later message wins:\n%s", sys)
+	}
+}
+
+func TestAFirstSummaryHasNoEarlierOne(t *testing.T) {
+	h := newHarness(t, nil, []provider.Response{
+		{Content: "done"},
+		{Content: "THE SUMMARY"},
+	})
+	s := h.primed(t)
+	if _, err := h.m.Compact(context.Background(), s.ID()); err != nil {
+		t.Fatal(err)
+	}
+	req := h.fake.Calls[len(h.fake.Calls)-1]
+	if user := req.Messages[len(req.Messages)-1].Content; strings.Contains(user, "<earlier-summary>") {
+		t.Fatalf("a first summary has nothing earlier:\n%s", user)
+	}
+}
+
 func TestTheSummariserIsAskedAgainAfterTheTranscript(t *testing.T) {
 	h := newHarness(t, nil, []provider.Response{
 		{Content: "done"},

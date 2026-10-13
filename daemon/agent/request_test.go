@@ -67,13 +67,50 @@ func TestBuildRequestFoldsToolCallsAndContexts(t *testing.T) {
 	if m[4].Role != "assistant" || m[4].Content != "One file." {
 		t.Fatalf("m4: %+v", m[4])
 	}
-	last := m[len(m)-1]
-	if last.Role != "user" || !strings.Contains(last.Content, "maybe relevant: foo") ||
-		!strings.Contains(last.Content, "Before stopping") || !strings.Contains(last.Content, "(verify) tree dirty") {
-		t.Fatalf("suffix+vetoes must be one trailing user message: %+v", last)
+	if m[5].Role != "user" || m[5].Content != "maybe relevant: foo" {
+		t.Fatalf("the suffix block must be a user message where it was logged: %+v", m[5])
 	}
-	if len(m) != 6 {
+	last := m[len(m)-1]
+	if last.Role != "user" || !strings.Contains(last.Content, "Before stopping") || !strings.Contains(last.Content, "(verify) tree dirty") {
+		t.Fatalf("vetoes must be one trailing user message: %+v", last)
+	}
+	if len(m) != 7 {
 		t.Fatalf("message count %d: %+v", len(m), m)
+	}
+}
+
+// A provider's prompt cache resumes a request only where the last one ended.
+// So a request must start with the one before it, message for message, even
+// when suffix blocks came between them.
+func TestEachRequestStartsWithThePreviousOne(t *testing.T) {
+	items := []any{
+		protocol.EventSession, sess,
+		protocol.EventMessage, protocol.MessageData{Role: "user", Content: "fix it"},
+		protocol.EventContext, protocol.ContextData{Source: "module:notes", Slot: "suffix", Content: "## Working notes\nplan"},
+		protocol.EventContext, protocol.ContextData{Source: "module:watch", Slot: "suffix", Content: "changed: a.go"},
+	}
+	before := buildRequest(mklog(t, items...), "SYS", "qwen", nil, 0)
+
+	items = append(items,
+		protocol.EventMessage, protocol.MessageData{Role: "assistant", Content: ""},
+		protocol.EventToolCall, protocol.ToolCallData{CallID: "c1", Tool: "bash", Arguments: json.RawMessage(`{"command":"ls"}`), Source: "model"},
+		protocol.EventToolResult, protocol.ToolResultData{CallID: "c1", Tool: "bash", Content: "a.go", Status: "ok"},
+		protocol.EventContext, protocol.ContextData{Source: "module:notes", Slot: "suffix", Content: "## Working notes\nplan, revised"},
+	)
+	after := buildRequest(mklog(t, items...), "SYS", "qwen", nil, 0)
+
+	if len(after.Messages) <= len(before.Messages) {
+		t.Fatalf("the later request is not longer: %d then %d messages", len(before.Messages), len(after.Messages))
+	}
+	for i, m := range before.Messages {
+		got, _ := json.Marshal(after.Messages[i])
+		want, _ := json.Marshal(m)
+		if string(got) != string(want) {
+			t.Fatalf("message %d changed between requests:\nbefore %s\nafter  %s", i, want, got)
+		}
+	}
+	if s := before.Messages[2]; s.Role != "user" || s.Content != "## Working notes\nplan\n\nchanged: a.go" {
+		t.Fatalf("adjacent suffix blocks must be one user message: %+v", s)
 	}
 }
 

@@ -164,7 +164,7 @@
       },
       {
         "kind": "state",
-        "text": "## Current state\nGoal: tests pass (set)\nTasks (0/1 done):\n- [>] t1 Fix\nBudget: turn 2 (unlimited)"
+        "text": "## Current state\nGoal: tests pass (set)\nTasks (0/1 done):\n- [>] t1 Fix\nBudget: turn 2 (unlimited)\nThe person said (2 of 2, oldest first):\n- 2026-09-10 00:26Z: start\n- 2026-09-10 00:26Z: more"
       },
       {
         "kind": "message",
