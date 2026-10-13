@@ -55,8 +55,9 @@ notes wrote 874 of the 1,006 suffix blocks; skills 77, answer 33, loop 22.
   - The block is sent when the live notes (names, bodies, write times) differ from the
     last notes block in the log since the last `summarize`, and on the first request
     after one. An expiry is a change.
-  - Each note shows when it was written (`written 2026-10-13 12:33`) instead of its age,
-    so the same notes render the same text whenever they are rendered.
+  - Each note shows when it was written, in UTC to the minute (`written 2026-10-13
+    12:33Z`), instead of its age, so the same notes render the same text whenever they
+    are rendered.
   - The comparison reads the last `module:notes` suffix block from the log, so it holds
     across a daemon restart.
 - **Answer.** Its reminder is sent once, on the first request of a question turn,
