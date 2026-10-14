@@ -59,6 +59,8 @@ type Verdict struct {
 	Round  int    `json:"round"`
 	Met    bool   `json:"met"`
 	Reason string `json:"reason"`
+	// Skipped is a round the owner passed without Claude's check.
+	Skipped bool `json:"skipped,omitempty"`
 	// At is when the check gave it.
 	At time.Time `json:"at,omitzero"`
 }
@@ -92,9 +94,10 @@ type Goal struct {
 	Failures int `json:"failures,omitempty"`
 	// Attempt counts failed tries of the current step.
 	Attempt int `json:"attempt,omitempty"`
-	// Parked is why the current Claude gate is waiting for Claude, as a
-	// run's.
+	// Parked is why the current Claude gate is waiting for Claude, and Skip
+	// the owner's word to pass the check without it, as a run's.
 	Parked string `json:"parked,omitempty"`
+	Skip   bool   `json:"skip,omitempty"`
 	// CIFailure is the final PR's failed checks, for the check it led to.
 	CIFailure string `json:"ci_failure,omitempty"`
 

@@ -16,6 +16,10 @@ import (
 // LabelRequested is the label /run puts on a home.
 const LabelRequested = "run:requested"
 
+// LabelSkip asks the runner to pass the Claude gate a run is at without
+// asking Claude (docs/specs/2026-10-13-claude-park-and-skip-design.md).
+const LabelSkip = "run:skip"
+
 // NoPushLabel makes the guard refuse a session anything that publishes: a
 // push, or a post to GitHub.
 const NoPushLabel = "guard:no-push"

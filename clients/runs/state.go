@@ -115,6 +115,11 @@ type Run struct {
 	// not answering; empty when it is not
 	// (docs/specs/2026-10-13-claude-park-and-skip-design.md).
 	Parked string `json:"parked,omitempty"`
+	// Skip is the owner's word to pass the current Claude gate without
+	// asking Claude, and Skipped every gate passed that way, for the PR
+	// (docs/specs/2026-10-13-claude-park-and-skip-design.md).
+	Skip    bool   `json:"skip,omitempty"`
+	Skipped []Step `json:"skipped,omitempty"`
 	// Session is the current step's session, and Start the commit the
 	// worktree was at when it began.
 	Session  string `json:"session,omitempty"`

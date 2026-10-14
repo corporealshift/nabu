@@ -123,7 +123,13 @@ func (rn *Runner) Advance(ctx context.Context, d Daemon) error {
 	if err := rn.pickUp(ctx, d); err != nil {
 		errs = append(errs, err)
 	}
+	if err := rn.pickUpSkips(ctx, d); err != nil {
+		errs = append(errs, err)
+	}
 	if err := rn.pickUpGoals(ctx, d); err != nil {
+		errs = append(errs, err)
+	}
+	if err := rn.pickUpGoalSkips(ctx, d); err != nil {
 		errs = append(errs, err)
 	}
 	if err := rn.advanceGoals(ctx, d); err != nil {
@@ -191,6 +197,41 @@ func (rn *Runner) pickUp(ctx context.Context, d Daemon) error {
 			rn.logf("run %s: %s", h.ID, r.Branch)
 		}
 		r.Labelled = "" // the home was relabeled by /run, so label it again
+		if err := rn.save(r); err != nil {
+			return err
+		}
+		if err := rn.label(ctx, d, r, h.Labels); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// pickUpSkips takes each home labeled run:skip: the owner passing the Claude
+// gate its run is at without asking Claude
+// (docs/specs/2026-10-13-claude-park-and-skip-design.md). A skip given
+// anywhere else does nothing, so it never skips a gate the owner has not seen.
+func (rn *Runner) pickUpSkips(ctx context.Context, d Daemon) error {
+	homes, err := d.Requested(ctx, LabelSkip)
+	if err != nil {
+		return err
+	}
+	for _, h := range homes {
+		r, known := rn.runs[h.ID]
+		if !known {
+			rn.logf("run %s: skip asked for, but there is no run", h.ID)
+			if err := d.SetLabels(ctx, h.ID, withPrefix(h.Labels, LabelSkip)); err != nil {
+				return err
+			}
+			continue
+		}
+		if r.Step.Claude() {
+			r.Skip = true
+			rn.logf("run %s: the owner skips Claude at %s", h.ID, r.Step)
+		} else {
+			rn.logf("run %s: skip asked for at %s, which is not one of Claude's gates; nothing skipped", h.ID, r.Step)
+		}
+		r.Labelled = "" // the home was relabeled by /skip, so label it again
 		if err := rn.save(r); err != nil {
 			return err
 		}
@@ -274,7 +315,7 @@ func (rn *Runner) advance(ctx context.Context, d Daemon, r *Run) error {
 		from, failedBefore, parked := r.Step, r.FailedAt, r.Parked
 		rn.record(r, o)
 		*r = Transition(*r, o)
-		if parked != "" {
+		if parked != "" && !o.Skipped {
 			rn.logf("run %s: Claude answered at %s", r.Home, from)
 		}
 		if !o.OK {
@@ -322,6 +363,32 @@ func (rn *Runner) wait(r *Run, o Outcome) error {
 	return rn.save(r)
 }
 
+// skipped passes the Claude gate a run is at without asking Claude, as the
+// owner asked: the run's work stands as it is. A revision or re-plan request
+// is answered the way Claude's refusal would answer it.
+func (rn *Runner) skipped(ctx context.Context, r *Run) (Outcome, error) {
+	if !slices.Contains(r.Skipped, r.Step) {
+		r.Skipped = append(r.Skipped, r.Step)
+	}
+	o := Outcome{OK: true, Skipped: true}
+	switch r.Step {
+	case StepRevise:
+		r.Advice = "The owner kept verify.sh as it is, without asking Claude. Make it pass."
+		o.Note = r.Advice
+		if err := rn.Git.Remove(ctx, r.Worktree, "run: revision request answered by the owner", r.File(RevisionFile)); err != nil {
+			return Outcome{}, err
+		}
+	case StepReplanReview:
+		o.Refused = "The owner skipped Claude's review and says the plan stands. Carry on with it."
+		o.Note = o.Refused
+		if err := rn.Git.Remove(ctx, r.Worktree, "run: re-plan request answered by the owner", r.File(ReplanFile)); err != nil {
+			return Outcome{}, err
+		}
+	}
+	rn.logf("run %s: %s skipped by the owner", r.Home, r.Step)
+	return o, nil
+}
+
 // claudeFailed is a gate's outcome when its question got no answer: a wait
 // while Claude is not answering, which costs no try, and a failed try
 // otherwise.
@@ -342,6 +409,8 @@ func (rn *Runner) record(r *Run, o Outcome) {
 	}
 	switch {
 	case !o.OK:
+	case o.Skipped:
+		rec.Result = "skipped by the owner"
 	case o.ReplanRequest:
 		rec.Result = "said the plan cannot work"
 	case r.Step == StepReplanReview && o.Replan != "":
@@ -1078,6 +1147,9 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 	case StepSetup:
 		return rn.setup(ctx, r), nil
 	case StepPlanReview:
+		if r.Skip {
+			return rn.skipped(ctx, r)
+		}
 		answer, err := rn.Claude.Ask(ctx, r.Worktree, PlanReviewPrompt(*r))
 		if err != nil {
 			return claudeFailed(err), nil
@@ -1092,6 +1164,9 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		}
 		return Outcome{OK: true}, nil
 	case StepVerifyReview:
+		if r.Skip {
+			return rn.skipped(ctx, r)
+		}
 		passed, output, err := rn.Shell.Verify(ctx, r.Worktree, r.File(VerifyFile), time.Duration(rn.Cfg.VerifyTimeout))
 		if err != nil {
 			return Outcome{Why: err.Error()}, nil
@@ -1123,6 +1198,9 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		}
 		return o, nil
 	case StepRevise:
+		if r.Skip {
+			return rn.skipped(ctx, r)
+		}
 		answer, err := rn.Claude.Ask(ctx, r.Worktree, RevisePrompt(*r, r.Output))
 		if err != nil {
 			return claudeFailed(err), nil
@@ -1145,6 +1223,9 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		}
 		return Outcome{OK: true, Note: note}, nil
 	case StepReplanReview:
+		if r.Skip {
+			return rn.skipped(ctx, r)
+		}
 		answer, err := rn.Claude.Ask(ctx, r.Worktree, ReplanReviewPrompt(*r, rn.doing(r)))
 		if err != nil {
 			return claudeFailed(err), nil
@@ -1168,6 +1249,9 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		rn.logf("run %s: claude says the plan can work", r.Home)
 		return Outcome{OK: true, Refused: advice, Note: advice}, nil
 	case StepFinalReview:
+		if r.Skip {
+			return rn.skipped(ctx, r)
+		}
 		changed, err := rn.Git.Diffed(ctx, r.Worktree, r.Base)
 		if err != nil {
 			return Outcome{}, err
@@ -1406,7 +1490,7 @@ func (rn *Runner) prBody(r *Run) string {
 	if r.Fixes > 0 {
 		fmt.Fprintf(&b, " after %d fix sessions", r.Fixes)
 	}
-	b.WriteString(". Claude reviewed the plan, the check and the finished work; any blockers it found were fixed before this PR.\n")
+	b.WriteString(reviewed(r.Skipped))
 	plan, _ := rn.read(r, PlanFile)
 	b.WriteString(decisionsForPR(plan, r.File(PlanFile), r.File(VerifyFile)))
 	if len(r.Notes) > 0 {
@@ -1417,6 +1501,47 @@ func (rn *Runner) prBody(r *Run) string {
 	}
 	b.WriteString("\n" + github.Marker + "\n")
 	return b.String()
+}
+
+// reviewed ends the PR's sentence about the check with what Claude reviewed,
+// and names each gate the owner skipped, so a PR never claims a review that
+// did not happen.
+func reviewed(skipped []Step) string {
+	if len(skipped) == 0 {
+		return ". Claude reviewed the plan, the check and the finished work; any blockers it found were fixed before this PR.\n"
+	}
+	var did []string
+	for _, g := range []struct {
+		step Step
+		what string
+	}{{StepPlanReview, "the plan"}, {StepVerifyReview, "the check"}, {StepFinalReview, "the finished work"}} {
+		if !slices.Contains(skipped, g.step) {
+			did = append(did, g.what)
+		}
+	}
+	var b strings.Builder
+	b.WriteString(".")
+	if len(did) > 0 {
+		fmt.Fprintf(&b, " Claude reviewed %s.", joinAnd(did))
+	}
+	names := make([]string, len(skipped))
+	for i, s := range skipped {
+		names[i] = string(s)
+	}
+	fmt.Fprintf(&b, " The owner skipped Claude at %s, so Claude did not review what those gates check.", strings.Join(names, ", "))
+	if !slices.Contains(skipped, StepFinalReview) {
+		b.WriteString(" Any blockers the final review found were fixed before this PR.")
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// joinAnd joins items as a sentence does: "a", "a and b", "a, b and c".
+func joinAnd(items []string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
 }
 
 // IssueOf is the issue number in a home's issue:<owner>/<repo>/<n> label, or

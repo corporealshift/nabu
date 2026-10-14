@@ -109,6 +109,12 @@ func TestGoalTransition(t *testing.T) {
 					t.Errorf("goal = %+v", g)
 				}
 			}},
+		{name: "a skipped check is met, and says it was skipped", from: Goal{Step: GoalCheck, Round: 2, Skip: true}, o: GoalOutcome{OK: true, Met: true, Skipped: true, Reason: "skipped"}, want: GoalPR,
+			check: func(t *testing.T, g Goal) {
+				if g.Skip || len(g.Verdicts) != 1 || !g.Verdicts[0].Skipped || g.Verdicts[0].Round != 2 {
+					t.Errorf("goal = %+v", g)
+				}
+			}},
 		{name: "an answer ends the park", from: Goal{Step: GoalCheck, Parked: "limit"}, o: GoalOutcome{OK: true, Met: true}, want: GoalPR,
 			check: func(t *testing.T, g Goal) {
 				if g.Parked != "" {

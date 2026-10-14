@@ -227,7 +227,9 @@ func GoalPRBody(g Goal) string {
 		}
 		b.WriteString("\n")
 	}
-	if n := len(g.Verdicts); n > 0 && g.Verdicts[n-1].Met {
+	if n := len(g.Verdicts); n > 0 && g.Verdicts[n-1].Skipped {
+		fmt.Fprintf(&b, "## Not checked by Claude\n\n%s Claude did not judge whether the goal is met.\n\n", g.Verdicts[n-1].Reason)
+	} else if n > 0 && g.Verdicts[n-1].Met {
 		fmt.Fprintf(&b, "## Claude's verdict\n\n%s\n\n", g.Verdicts[n-1].Reason)
 	}
 	b.WriteString("## Runs\n\n")

@@ -31,9 +31,11 @@ type GoalOutcome struct {
 	// unmet check's next round.
 	DoneWhen []string
 	Briefs   []GoalBrief
-	// Met and Reason are the check's verdict.
-	Met    bool
-	Reason string
+	// Met and Reason are the check's verdict, and Skipped a check the owner
+	// passed without asking Claude.
+	Met     bool
+	Reason  string
+	Skipped bool
 
 	// Run is how the current brief's run ended, with what it left: its PR
 	// and review notes, or where and why it failed.
@@ -69,7 +71,7 @@ func GoalTransition(g Goal, o GoalOutcome, maxRounds int) Goal {
 		}
 		return g
 	}
-	g.Attempt = 0
+	g.Attempt, g.Skip = 0, false
 
 	switch g.Step {
 	case GoalSetup:
@@ -109,7 +111,7 @@ func GoalTransition(g Goal, o GoalOutcome, maxRounds int) Goal {
 			g.Step = GoalCheck
 		}
 	case GoalCheck:
-		g.Verdicts = append(g.Verdicts, Verdict{Round: g.Round, Met: o.Met, Reason: o.Reason})
+		g.Verdicts = append(g.Verdicts, Verdict{Round: g.Round, Met: o.Met, Reason: o.Reason, Skipped: o.Skipped})
 		g.CIFailure = ""
 		if o.Met {
 			g.Step = GoalPR

@@ -58,6 +58,8 @@ type Outcome struct {
 	ReplanRequest bool
 	Replan        string
 	Refused       string
+	// Skipped is a Claude gate the owner passed without asking Claude.
+	Skipped bool
 }
 
 // claims reports whether a step's session may say the plan cannot work: the
@@ -95,6 +97,8 @@ func Transition(r Run, o Outcome) Run {
 		}
 		return enter(r, r.Step, false)
 	}
+	// The gate a skip was given at is passed, so it goes no further.
+	r.Skip = false
 
 	if claims(r.Step) {
 		switch {
