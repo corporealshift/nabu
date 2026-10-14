@@ -114,10 +114,16 @@ func (rn *Runner) advanceGoal(ctx context.Context, d Daemon, g *Goal) error {
 		}
 		o, err := rn.performGoal(ctx, d, g)
 		if err != nil || o.Wait {
+			if err == nil {
+				err = rn.waitGoal(g, o)
+			}
 			return errors.Join(err, rn.showGoal(ctx, d, g))
 		}
-		from, verdicts := g.Step, len(g.Verdicts)
+		from, verdicts, parked := g.Step, len(g.Verdicts), g.Parked
 		*g = GoalTransition(*g, o, rn.Cfg.GoalRounds)
+		if parked != "" {
+			rn.logf("goal %s: Claude answered at %s", g.Home, from)
+		}
 		for i := verdicts; i < len(g.Verdicts); i++ {
 			g.Verdicts[i].At = rn.Now()
 		}
@@ -148,6 +154,28 @@ func (rn *Runner) advanceGoal(ctx context.Context, d Daemon, g *Goal) error {
 	return nil
 }
 
+// waitGoal takes a goal step that has nothing to do yet, saving it only when
+// it parks the goal or ends a park, as wait does for a run.
+func (rn *Runner) waitGoal(g *Goal, o GoalOutcome) error {
+	before := g.Parked
+	*g = GoalTransition(*g, o, rn.Cfg.GoalRounds)
+	if g.Parked == before {
+		return nil
+	}
+	if g.Parked != "" {
+		rn.logf("goal %s: waiting for Claude at %s: %s", g.Home, g.Step, g.Parked)
+	}
+	return rn.saveGoal(g)
+}
+
+// goalClaudeFailed is claudeFailed for a goal's gates.
+func goalClaudeFailed(err error) GoalOutcome {
+	if o := claudeFailed(err); o.Wait {
+		return GoalOutcome{Wait: true, Parked: o.Parked}
+	}
+	return GoalOutcome{Why: err.Error()}
+}
+
 // performGoal does a goal's current step.
 func (rn *Runner) performGoal(ctx context.Context, d Daemon, g *Goal) (GoalOutcome, error) {
 	switch g.Step {
@@ -156,7 +184,7 @@ func (rn *Runner) performGoal(ctx context.Context, d Daemon, g *Goal) (GoalOutco
 	case GoalBreakdown:
 		answer, err := rn.Claude.Ask(ctx, g.Worktree, BreakdownPrompt(*g))
 		if err != nil {
-			return GoalOutcome{Why: err.Error()}, nil
+			return goalClaudeFailed(err), nil
 		}
 		doneWhen, briefs, ok := ParseBreakdown(answer)
 		if !ok {
@@ -176,7 +204,7 @@ func (rn *Runner) performGoal(ctx context.Context, d Daemon, g *Goal) (GoalOutco
 		}
 		answer, err := rn.Claude.Ask(ctx, g.Worktree, CheckPrompt(*g, changed))
 		if err != nil {
-			return GoalOutcome{Why: err.Error()}, nil
+			return goalClaudeFailed(err), nil
 		}
 		met, reason, briefs, ok := ParseCheck(answer)
 		if !ok {

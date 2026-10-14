@@ -111,6 +111,10 @@ type Run struct {
 
 	// Waiting means the current step needs a session and has no slot yet.
 	Waiting bool `json:"waiting,omitempty"`
+	// Parked is why the current Claude gate is waiting for Claude, which is
+	// not answering; empty when it is not
+	// (docs/specs/2026-10-13-claude-park-and-skip-design.md).
+	Parked string `json:"parked,omitempty"`
 	// Session is the current step's session, and Start the commit the
 	// worktree was at when it began.
 	Session  string `json:"session,omitempty"`

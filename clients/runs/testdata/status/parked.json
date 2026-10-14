@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "title": "In-Flight notes: data, state and actions (no UI)",
+  "step": "plan-review",
+  "tasks": [],
+  "attempt": 0,
+  "since": "2026-10-11T17:26:44Z",
+  "waiting": false,
+  "parked": "You've hit your weekly limit · resets 2pm",
+  "goal": "01M498J1N9D785RFV6AZBRZN7G",
+  "pr": {
+    "number": 41,
+    "url": "https://github.com/o/r/pull/41"
+  },
+  "fixes": 1,
+  "ci_fixes": 0,
+  "revisions": 1,
+  "history": [
+    {
+      "step": "setup",
+      "ok": true,
+      "at": "2026-10-11T15:53:45Z"
+    },
+    {
+      "step": "plan",
+      "session": "01M4P8ENR4XCTQT7HMWDVSCWG8",
+      "ok": true,
+      "at": "2026-10-11T17:26:44Z"
+    }
+  ],
+  "brief": "# In-Flight notes: data, state and actions (no UI)\n\nAdd the data side.\n",
+  "started": "2026-10-11T15:53:44Z",
+  "updated": "2026-10-11T18:03:44Z"
+}

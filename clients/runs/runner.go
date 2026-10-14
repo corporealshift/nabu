@@ -264,13 +264,19 @@ func (rn *Runner) advance(ctx context.Context, d Daemon, r *Run) error {
 			done = true
 		}
 		if err != nil || !done || o.Wait {
-			// A session still working, or checks still running: nothing to
-			// do until the next poll.
+			// A session still working, checks still running, or Claude not
+			// answering: nothing to do until the next poll.
+			if err == nil && done {
+				err = rn.wait(r, o)
+			}
 			return errors.Join(err, rn.label(ctx, d, r, nil))
 		}
-		from, failedBefore := r.Step, r.FailedAt
+		from, failedBefore, parked := r.Step, r.FailedAt, r.Parked
 		rn.record(r, o)
 		*r = Transition(*r, o)
+		if parked != "" {
+			rn.logf("run %s: Claude answered at %s", r.Home, from)
+		}
 		if !o.OK {
 			rn.logf("run %s: %s did not work: %s", r.Home, from, o.Why)
 		}
@@ -298,6 +304,33 @@ func (rn *Runner) advance(ctx context.Context, d Daemon, r *Run) error {
 		}
 	}
 	return nil
+}
+
+// wait takes a step that has nothing to do yet. A wait is saved only when it
+// parks the run or ends a park, so a poll that finds CI still running writes
+// nothing, and the log says once that Claude is not answering, not at every
+// poll.
+func (rn *Runner) wait(r *Run, o Outcome) error {
+	before := r.Parked
+	*r = Transition(*r, o)
+	if r.Parked == before {
+		return nil
+	}
+	if r.Parked != "" {
+		rn.logf("run %s: waiting for Claude at %s: %s", r.Home, r.Step, r.Parked)
+	}
+	return rn.save(r)
+}
+
+// claudeFailed is a gate's outcome when its question got no answer: a wait
+// while Claude is not answering, which costs no try, and a failed try
+// otherwise.
+func claudeFailed(err error) Outcome {
+	var un ClaudeUnavailable
+	if errors.As(err, &un) {
+		return Outcome{Wait: true, Parked: un.Reason}
+	}
+	return Outcome{Why: err.Error()}
 }
 
 // record adds the step just finished to the run's history, before Transition
@@ -1047,7 +1080,7 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 	case StepPlanReview:
 		answer, err := rn.Claude.Ask(ctx, r.Worktree, PlanReviewPrompt(*r))
 		if err != nil {
-			return Outcome{Why: err.Error()}, nil
+			return claudeFailed(err), nil
 		}
 		// An answer that neither revises the plan nor passes it is taken as
 		// passing it: the plan still gets its tasks, and verify is reviewed.
@@ -1065,7 +1098,7 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		}
 		answer, err := rn.Claude.Ask(ctx, r.Worktree, VerifyReviewPrompt(*r, passed, output))
 		if err != nil {
-			return Outcome{Why: err.Error()}, nil
+			return claudeFailed(err), nil
 		}
 		text, changed, ok := ParseRewrite(answer, VerifyFile, "APPROVED")
 		if !ok {
@@ -1092,7 +1125,7 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 	case StepRevise:
 		answer, err := rn.Claude.Ask(ctx, r.Worktree, RevisePrompt(*r, r.Output))
 		if err != nil {
-			return Outcome{Why: err.Error()}, nil
+			return claudeFailed(err), nil
 		}
 		text, changed, ok := ParseRewrite(answer, VerifyFile, "REFUSED")
 		if !ok {
@@ -1114,7 +1147,7 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 	case StepReplanReview:
 		answer, err := rn.Claude.Ask(ctx, r.Worktree, ReplanReviewPrompt(*r, rn.doing(r)))
 		if err != nil {
-			return Outcome{Why: err.Error()}, nil
+			return claudeFailed(err), nil
 		}
 		finding, advice, ok := ParseReplan(answer)
 		if !ok {
@@ -1141,7 +1174,7 @@ func (rn *Runner) perform(ctx context.Context, d Daemon, r *Run) (Outcome, error
 		}
 		answer, err := rn.Claude.Ask(ctx, r.Worktree, FinalReviewPrompt(*r, changed))
 		if err != nil {
-			return Outcome{Why: err.Error()}, nil
+			return claudeFailed(err), nil
 		}
 		blockers, notes, ok := ParseFinal(answer)
 		if !ok {

@@ -22,8 +22,10 @@ type GoalOutcome struct {
 	OK  bool
 	Why string
 	// Wait is a step with nothing to do yet: a run still going, checks
-	// still running. It changes nothing and costs no attempt.
-	Wait bool
+	// still running. It costs no attempt. Parked is why a Claude gate waits:
+	// Claude is not answering.
+	Wait   bool
+	Parked string
 
 	// DoneWhen and Briefs are the breakdown's answer; Briefs is also an
 	// unmet check's next round.
@@ -48,9 +50,14 @@ type GoalOutcome struct {
 // GoalTransition is a goal's whole workflow: given where it is and what came
 // of its step, where it goes next. It is pure, as Transition is for a run.
 func GoalTransition(g Goal, o GoalOutcome, maxRounds int) Goal {
-	if g.Step.Over() || o.Wait {
+	if g.Step.Over() {
 		return g
 	}
+	if o.Wait {
+		g.Parked = o.Parked
+		return g
+	}
+	g.Parked = ""
 	if !o.OK {
 		g.Attempt++
 		tries := otherTries

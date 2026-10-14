@@ -111,6 +111,9 @@ fun GoalPage(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(status.text.ifBlank { "Goal" }, style = MaterialTheme.typography.titleMedium, color = c.ink)
                 Text(goalLine(status), style = MaterialTheme.typography.bodyMedium, color = c.accent)
+                parkedLine(status.parked)?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = c.muted)
+                }
                 if (status.why.isNotBlank()) {
                     Text(status.why, style = MaterialTheme.typography.bodySmall, color = c.muted)
                 }

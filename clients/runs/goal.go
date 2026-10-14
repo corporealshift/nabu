@@ -92,6 +92,9 @@ type Goal struct {
 	Failures int `json:"failures,omitempty"`
 	// Attempt counts failed tries of the current step.
 	Attempt int `json:"attempt,omitempty"`
+	// Parked is why the current Claude gate is waiting for Claude, as a
+	// run's.
+	Parked string `json:"parked,omitempty"`
 	// CIFailure is the final PR's failed checks, for the check it led to.
 	CIFailure string `json:"ci_failure,omitempty"`
 

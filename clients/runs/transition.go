@@ -46,8 +46,10 @@ type Outcome struct {
 	// CI is what a poll of the PR's checks found.
 	CI string
 	// Wait is a step with nothing to do yet, such as checks still running.
-	// It changes nothing and costs no attempt.
-	Wait bool
+	// It costs no attempt. Parked is why a Claude gate waits: Claude is not
+	// answering (docs/specs/2026-10-13-claude-park-and-skip-design.md).
+	Wait   bool
+	Parked string
 	// Note is what the step found worth keeping in the run's history.
 	Note string
 	// ReplanRequest is a session's claim that the plan cannot work, left for
@@ -66,9 +68,14 @@ func claims(s Step) bool { return s == StepWork || s == StepFix || s == StepCIFi
 // its step, where it goes next. It is pure, so every arrow of the spec's
 // table is a test row.
 func Transition(r Run, o Outcome) Run {
-	if r.Step.Over() || o.Wait {
+	if r.Step.Over() {
 		return r
 	}
+	if o.Wait {
+		r.Parked = o.Parked
+		return r
+	}
+	r.Parked = ""
 	if r.Step == StepReflect {
 		// Whatever came of it: the reflection never decides how a run ends,
 		// and is not worth a second try.
