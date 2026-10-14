@@ -166,9 +166,10 @@ func (c ClaudeCLI) exe() string {
 func (c ClaudeCLI) Available() bool { return c.exe() != "" }
 
 // Args is the command line for one question. The prompt goes on stdin, not
-// here: a long prompt would pass Windows' 32K command-line limit.
+// here: a long prompt would pass Windows' 32K command-line limit. The answer
+// comes back as the CLI's JSON result, which says why when there is none.
 func (c ClaudeCLI) Args() []string {
-	args := []string{"-p"}
+	args := []string{"-p", "--output-format", "json"}
 	for _, t := range readOnly {
 		args = append(args, "--allowedTools", t)
 	}
@@ -177,6 +178,14 @@ func (c ClaudeCLI) Args() []string {
 	}
 	return args
 }
+
+// ClaudeUnavailable is Claude not answering: a rate or usage limit, a lapsed
+// login, an outage, or no answer in time. Nothing about the question was
+// wrong, so a gate waits for Claude instead of counting a failed try
+// (docs/specs/2026-10-13-claude-park-and-skip-design.md).
+type ClaudeUnavailable struct{ Reason string }
+
+func (e ClaudeUnavailable) Error() string { return "claude is not answering: " + e.Reason }
 
 func (c ClaudeCLI) Ask(ctx context.Context, dir, prompt string) (string, error) {
 	exe := c.exe()
@@ -197,23 +206,79 @@ func (c ClaudeCLI) Ask(ctx context.Context, dir, prompt string) (string, error) 
 	cmd.WaitDelay = time.Second
 	err := cmd.Run()
 	if cctx.Err() == context.DeadlineExceeded {
-		return "", fmt.Errorf("claude did not answer within %s", timeout)
+		// With the API unreachable the CLI prints nothing and keeps
+		// retrying, so this is what an outage looks like.
+		return "", ClaudeUnavailable{fmt.Sprintf("claude did not answer within %s", timeout)}
 	}
-	if err != nil {
-		// The CLI prints its refusal — a rate limit, a bad login — on stdout,
-		// and nothing on stderr, so stderr alone would report no reason at all.
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = strings.TrimSpace(stdout.String())
+	res, found := claudeResult(stdout.String())
+	switch {
+	case found && !res.IsError:
+		answer := strings.TrimSpace(res.Result)
+		if answer == "" {
+			return "", errors.New("claude said nothing")
 		}
-		// The error names the program, never the prompt: that is pages long.
-		return "", fmt.Errorf("claude: %v: %s", err, firstLines(msg, 10))
+		return answer, nil
+	case found:
+		reason := firstLines(res.Result, 10)
+		if reason == "" {
+			reason = res.APIError
+		}
+		if reason == "" {
+			reason = res.Subtype
+		}
+		if unavailable(res.Status) {
+			return "", ClaudeUnavailable{reason}
+		}
+		if res.Status != 0 {
+			reason = fmt.Sprintf("%s (status %d)", reason, res.Status)
+		}
+		return "", fmt.Errorf("claude: %s", reason)
 	}
-	answer := strings.TrimSpace(stdout.String())
-	if answer == "" {
-		return "", errors.New("claude said nothing")
+	// No result at all: the CLI failed before asking, on a bad flag, say.
+	msg := strings.TrimSpace(stderr.String())
+	if msg == "" {
+		msg = strings.TrimSpace(stdout.String())
 	}
-	return answer, nil
+	if err == nil {
+		err = errors.New("no result")
+	}
+	// The error names the program, never the prompt: that is pages long.
+	return "", fmt.Errorf("claude: %v: %s", err, firstLines(msg, 10))
+}
+
+// cliResult is the object the CLI prints last with --output-format json.
+type cliResult struct {
+	IsError  bool   `json:"is_error"`
+	Subtype  string `json:"subtype"`
+	Result   string `json:"result"`
+	Status   int    `json:"api_error_status"`
+	APIError string `json:"api_error"`
+}
+
+// claudeResult is the last line of out that is a JSON result object.
+func claudeResult(out string) (cliResult, bool) {
+	lines := strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if !strings.HasPrefix(line, "{") || !strings.HasSuffix(line, "}") {
+			continue
+		}
+		var r struct {
+			Type string `json:"type"`
+			cliResult
+		}
+		if json.Unmarshal([]byte(line), &r) == nil && r.Type == "result" {
+			return r.cliResult, true
+		}
+	}
+	return cliResult{}, false
+}
+
+// unavailable reports whether an API status means Claude is not answering
+// rather than that the question was wrong: a limit (429), a lapsed login
+// (401), or Anthropic down or overloaded (5xx, 529).
+func unavailable(status int) bool {
+	return status == 429 || status == 401 || status >= 500
 }
 
 func firstLines(s string, n int) string {
