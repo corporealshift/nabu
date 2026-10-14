@@ -65,19 +65,21 @@ const (
 
 // nextRequestTokens estimates the next request's size: the last request's,
 // plus the last reply and everything logged since, which the next request
-// carries as well. After a summary the next request is far smaller than the
-// last, and nothing in the log says how much, so the estimate is 0: unknown,
-// and small.
+// carries as well. The reply counts as its text and tool calls, never its
+// thinking: a request carries no thinking back, and a reply that was all
+// thinking can be most of its output tokens. After a summary the next request
+// is far smaller than the last, and nothing in the log says how much, so the
+// estimate is 0: unknown, and small.
 func nextRequestTokens(log []protocol.Event) int {
 	last := -1
-	input, output := 0, 0
+	input, output, reply := 0, 0, 0
 	for i := len(log) - 1; i >= 0; i-- {
 		if log[i].Type != protocol.EventMessage {
 			continue
 		}
 		d := protocol.MustData[protocol.MessageData](log[i])
 		if d.Role == "assistant" && d.Usage != nil {
-			last, input, output = i, d.Usage.InputTokens, d.Usage.OutputTokens
+			last, input, output, reply = i, d.Usage.InputTokens, d.Usage.OutputTokens, len(d.Content)
 			break
 		}
 	}
@@ -91,6 +93,14 @@ func nextRequestTokens(log []protocol.Event) int {
 			if protocol.MustData[protocol.CompactionData](e).Mode == protocol.CompactionSummarize {
 				return 0
 			}
+		case protocol.EventToolCall:
+			// A module's call (claude.ask) is no part of the model's output.
+			d := protocol.MustData[protocol.ToolCallData](e)
+			if d.Source == "model" {
+				reply += len(d.Tool) + len(d.Arguments)
+			} else {
+				chars += len(d.Tool) + len(d.Arguments)
+			}
 		case protocol.EventToolResult:
 			chars += len(protocol.MustData[protocol.ToolResultData](e).Content)
 		case protocol.EventMessage:
@@ -101,7 +111,7 @@ func nextRequestTokens(log []protocol.Event) int {
 			chars += len(protocol.MustData[protocol.StopVetoData](e).Reason)
 		}
 	}
-	return input + output + chars/charsPerToken + requestMargin
+	return input + min(output, reply/charsPerToken) + chars/charsPerToken + requestMargin
 }
 
 // compactWindow is the window a session's compaction measures against: for a

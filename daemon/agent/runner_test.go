@@ -404,15 +404,16 @@ func TestEveryRequestCarriesAReplyCap(t *testing.T) {
 	h.m.WaitIdle(s.ID())
 
 	// The harness window is 8000 tokens: the first request has all of it,
-	// the second only what is left after the first request, its reply, and
-	// the read's result that the second carries too.
+	// the second only what is left after the first request, its reply (the
+	// read call), and the read's result that the second carries too.
+	call := (len("read") + len(`{"path":"x"}`)) / charsPerToken
 	result := 0
 	for _, e := range s.Events() {
 		if e.Type == protocol.EventToolResult {
 			result += len(protocol.MustData[protocol.ToolResultData](e).Content)
 		}
 	}
-	for i, want := range []int{8000, 8000 - 5000 - 10 - result/charsPerToken - requestMargin} {
+	for i, want := range []int{8000, 8000 - 5000 - call - result/charsPerToken - requestMargin} {
 		if got := h.fake.Calls[i].MaxTokens; got != want {
 			t.Errorf("request %d: max tokens %d, want %d", i+1, got, want)
 		}
@@ -693,10 +694,22 @@ func TestNextRequestTokens(t *testing.T) {
 		raw, _ := json.Marshal(data)
 		return protocol.Event{Type: typ, Data: raw}
 	}
-	reply := ev(protocol.EventMessage, protocol.MessageData{Role: "assistant",
+	reply := ev(protocol.EventMessage, protocol.MessageData{Role: "assistant", Content: strings.Repeat("w", 400),
 		Usage: &protocol.Usage{InputTokens: 47000, OutputTokens: 200}})
 	result := ev(protocol.EventToolResult, protocol.ToolResultData{CallID: "c1", Tool: "read", Status: "ok",
 		Content: strings.Repeat("x", 9000)})
+	// A reply that was all thinking and no text: the next request carries
+	// none of it.
+	thought := ev(protocol.EventThinking, protocol.ThinkingData{Content: strings.Repeat("t", 63062), Source: "model"})
+	allThinking := ev(protocol.EventMessage, protocol.MessageData{Role: "assistant",
+		Usage: &protocol.Usage{InputTokens: 65230, OutputTokens: 15293}})
+	thinkThenCall := ev(protocol.EventMessage, protocol.MessageData{Role: "assistant", Content: "ok",
+		Usage: &protocol.Usage{InputTokens: 47000, OutputTokens: 3000}})
+	call := ev(protocol.EventToolCall, protocol.ToolCallData{CallID: "c1", Tool: "read",
+		Arguments: json.RawMessage(`{"path":"a.go"}`), Source: "model"})
+	// A module's call goes into the next request whatever the reply's size.
+	ask := ev(protocol.EventToolCall, protocol.ToolCallData{CallID: "mod_1", Tool: "claude.ask",
+		Arguments: json.RawMessage(`{"prompt":"` + strings.Repeat("q", 6000) + `"}`), Source: "module:claude"})
 	suffix := ev(protocol.EventContext, protocol.ContextData{Source: "module:skills", Slot: "suffix",
 		Content: strings.Repeat("y", 300)})
 	summary := ev(protocol.EventCompaction, protocol.CompactionData{Mode: protocol.CompactionSummarize,
@@ -710,6 +723,11 @@ func TestNextRequestTokens(t *testing.T) {
 		{"just answered", []protocol.Event{reply}, 47200 + requestMargin},
 		{"with what came back since", []protocol.Event{reply, result, suffix}, 47200 + 4500 + 150 + requestMargin},
 		{"after a summary", []protocol.Event{reply, result, summary}, 0},
+		{"a reply that was all thinking", []protocol.Event{thought, allThinking}, 65230 + requestMargin},
+		{"thinking, then a call", []protocol.Event{thought, thinkThenCall, call},
+			47000 + (len("ok")+len("read")+len(`{"path":"a.go"}`))/charsPerToken + requestMargin},
+		{"a module's call", []protocol.Event{thought, allThinking, ask},
+			65230 + (len("claude.ask")+len(`{"prompt":""}`)+6000)/charsPerToken + requestMargin},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := nextRequestTokens(tc.log); got != tc.want {
