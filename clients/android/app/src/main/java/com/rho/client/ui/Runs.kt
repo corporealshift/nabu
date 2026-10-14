@@ -84,6 +84,65 @@ fun goalStatus(labels: List<String>): String? {
 }
 
 /**
+ * The run steps where the runner asks Claude, which a skip can pass
+ * (docs/specs/2026-10-13-claude-park-and-skip-design.md). A goal's only one is
+ * its check: its breakdown writes the briefs.
+ */
+val CLAUDE_GATES = setOf("plan-review", "verify-review", "revise", "replan-review", "final-review")
+
+/**
+ * A home's labels once the owner skips the Claude check its run or goal is at:
+ * run:skip or goal:skip in place of its other labels of that kind. Null when
+ * it is at no check that can be skipped.
+ */
+fun skipLabels(current: List<String>): List<String>? {
+    labelStep(current, GOAL_PREFIX, "round:")?.let { step ->
+        return if (step == "check") current.filterNot { it.startsWith(GOAL_PREFIX) } + "${GOAL_PREFIX}skip" else null
+    }
+    val step = labelStep(current, RUN_PREFIX, "attempt:") ?: return null
+    return if (step in CLAUDE_GATES) current.filterNot { it.startsWith(RUN_PREFIX) } + "${RUN_PREFIX}skip" else null
+}
+
+/** The step a run's or goal's labels name, ignoring the labels that count something. */
+private fun labelStep(labels: List<String>, prefix: String, counter: String): String? =
+    labels.firstNotNullOfOrNull { l ->
+        l.removePrefix(prefix).takeIf { l.startsWith(prefix) && !it.startsWith(counter) }
+    }
+
+/**
+ * The button that skips Claude's check, and the question before it: a skip
+ * cannot be taken back, and the pull request will say Claude did not review
+ * what this gate checks.
+ */
+@Composable
+fun SkipCheck(step: String, onSkip: () -> Unit) {
+    val c = RhoTheme.colors
+    var asking by remember { mutableStateOf(false) }
+    TextButton(onClick = { asking = true }) {
+        Text("Skip Claude's check", style = MaterialTheme.typography.labelMedium, color = c.accent)
+    }
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            containerColor = c.surface,
+            titleContentColor = c.ink,
+            textContentColor = c.muted,
+            title = { Text("Skip Claude's check?") },
+            text = {
+                Text(
+                    "The runner passes $step without asking Claude, as though Claude let the work " +
+                        "stand. The pull request will say Claude did not review it.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { asking = false; onSkip() }) { Text("Skip") }
+            },
+            dismissButton = { TextButton(onClick = { asking = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+/**
  * A card in the list, and how many of its ancestors are listed above it: a
  * run's steps are one deep, a goal's runs one deep and their steps two.
  */

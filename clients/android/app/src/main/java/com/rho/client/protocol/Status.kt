@@ -96,6 +96,8 @@ data class Verdict(
     val round: Int = 0,
     val met: Boolean = false,
     val reason: String = "",
+    /** A round the owner passed without Claude's check. */
+    val skipped: Boolean = false,
     val at: String = "",
 )
 

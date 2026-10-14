@@ -226,6 +226,13 @@ class SessionRepository(
     suspend fun startGoal(client: DaemonClient, sessionId: String, text: String, labels: List<String>) =
         handOver(client, sessionId, text, labels)
 
+    /**
+     * Sets a home's labels and nothing else: how a skip of Claude's check is
+     * asked for (docs/specs/2026-10-13-claude-park-and-skip-design.md).
+     */
+    suspend fun setLabels(client: DaemonClient, sessionId: String, labels: List<String>) =
+        handOver(client, sessionId, "", labels)
+
     private suspend fun handOver(client: DaemonClient, sessionId: String, brief: String, labels: List<String>) {
         if (brief.isNotBlank()) {
             client.callOrThrow("rho.session.set_option", buildJsonObject {

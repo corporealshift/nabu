@@ -72,6 +72,13 @@ fun goalLine(s: GoalStatus): String = buildList {
     add(s.step)
 }.joinToString(" · ")
 
+/** A round's verdict as the page says it: a skipped check was not Claude's. */
+fun verdictLine(v: Verdict): String = when {
+    v.skipped -> "Check: skipped"
+    v.met -> "Check: met"
+    else -> "Check: not met"
+}
+
 /** A brief's state as the page says it: a goal's finished run was merged. */
 fun briefState(b: GoalStatusBrief): String = when (b.state) {
     "done" -> "merged"
@@ -88,6 +95,7 @@ fun GoalPage(
     onBack: () -> Unit,
     onChat: () -> Unit,
     onOpenRun: (String) -> Unit,
+    onSkip: (() -> Unit)? = null,
 ) {
     val c = RhoTheme.colors
     val uri = LocalUriHandler.current
@@ -114,6 +122,7 @@ fun GoalPage(
                 parkedLine(status.parked)?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = c.muted)
                 }
+                if (onSkip != null) SkipCheck("the round's check", onSkip)
                 if (status.why.isNotBlank()) {
                     Text(status.why, style = MaterialTheme.typography.bodySmall, color = c.muted)
                 }
@@ -170,7 +179,7 @@ private fun RoundCard(r: RoundView, onOpenRun: (String) -> Unit) {
         }
         r.verdict?.let { v ->
             Text(
-                (if (v.met) "Check: met" else "Check: not met") + if (showReason) " ▾" else " ▸",
+                verdictLine(v) + if (showReason) " ▾" else " ▸",
                 style = MaterialTheme.typography.labelMedium,
                 color = if (v.met) c.accent else c.muted,
                 modifier = Modifier.clickable { showReason = !showReason }.padding(vertical = 2.dp),

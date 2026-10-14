@@ -605,6 +605,21 @@ class RhoViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Asks the runner to pass the Claude check a run or goal is at without
+     * asking Claude, by labeling its home
+     * (docs/specs/2026-10-13-claude-park-and-skip-design.md).
+     */
+    fun skipCheck(sessionId: String, labels: List<String>) {
+        viewModelScope.launch {
+            val next = skipLabels(labels) ?: run { _error.value = "not at a Claude check that can be skipped"; return@launch }
+            val c = client ?: run { _error.value = "not connected: a skip is asked of the daemon"; return@launch }
+            runCatching { repo.setLabels(c, sessionId, next) }
+                .onSuccess { _error.value = null }
+                .onFailure { _error.value = it.message ?: "could not ask for the skip" }
+        }
+    }
+
     /** Asks the daemon to notify this phone, when the build can be pushed to. */
     private suspend fun registerForPushes(c: DaemonClient) {
         val token = com.rho.client.notify.pushToken(getApplication()) ?: return

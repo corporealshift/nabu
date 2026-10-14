@@ -21,6 +21,18 @@ class RunsTest {
     }
 
     @Test
+    fun `a skip is offered only at a Claude check`() {
+        assertEquals(listOf("mine", "run:skip"), skipLabels(listOf("mine", "run:plan-review")))
+        assertEquals(listOf("run:skip"), skipLabels(listOf("run:final-review")))
+        assertNull(skipLabels(listOf("run:check", "run:attempt:2/10")))
+        assertNull(skipLabels(listOf("run:skip")))
+        assertEquals(listOf("goal:skip"), skipLabels(listOf("goal:check", "goal:round:3")))
+        // The breakdown writes the briefs, so nothing stands in for it.
+        assertNull(skipLabels(listOf("goal:breakdown")))
+        assertNull(skipLabels(listOf("mine")))
+    }
+
+    @Test
     fun `run status reads a home's labels`() {
         assertNull(runStatus(emptyList()))
         assertNull(runStatus(listOf("mine", "guard:no-push")))

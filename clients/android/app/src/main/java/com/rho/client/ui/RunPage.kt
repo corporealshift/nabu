@@ -171,6 +171,7 @@ fun RunPage(
     onChat: () -> Unit,
     onOpenSession: (String) -> Unit,
     onOpenGoal: (String) -> Unit,
+    onSkip: (() -> Unit)? = null,
 ) {
     val c = RhoTheme.colors
     val uri = LocalUriHandler.current
@@ -220,7 +221,10 @@ fun RunPage(
 
             // Now.
             if (status.step != "done" && status.step != "failed") {
-                NowCard(status, live, now, onOpenSession)
+                Column {
+                    NowCard(status, live, now, onOpenSession)
+                    if (onSkip != null) SkipCheck(status.step, onSkip)
+                }
             }
 
             // Timeline.
