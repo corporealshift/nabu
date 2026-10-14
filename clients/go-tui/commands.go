@@ -21,7 +21,7 @@ type action struct {
 
 	// text carries a prompt or a brief
 	text string
-	// labels are the whole new label list a /run or /goal sets.
+	// labels are the whole new label list a /run, /goal or /skip sets.
 	labels []string
 }
 
@@ -42,6 +42,7 @@ const (
 	actStats
 	actRun
 	actGoal
+	actSkip
 	actContext
 )
 
@@ -61,6 +62,7 @@ type commandResult struct {
 var commands = []struct{ name, what string }{
 	{"/run [text]", "hand this session to the runner, the text as its brief"},
 	{"/goal [text]", "hand the runner a broad goal to work as many runs; bare /goal resumes a blocked one"},
+	{"/skip", "pass the Claude check this run or goal is at, without asking Claude"},
 	{"/compact", "summarise the history now"},
 	{"/context [normal|large]", "how much of the model's window this session fills before it is summarised"},
 	{"/stop", "end the session"},
@@ -123,6 +125,8 @@ func parseCommand(line string) commandResult {
 		return commandResult{act: &action{kind: actRun, text: rest}}
 	case "/goal":
 		return commandResult{act: &action{kind: actGoal, text: rest}}
+	case "/skip":
+		return commandResult{act: &action{kind: actSkip}}
 	case "/context":
 		switch size := strings.ToLower(rest); size {
 		case "", protocol.ContextNormal, protocol.ContextLarge:
@@ -168,6 +172,52 @@ func goalLabels(current []string) []string {
 		}
 	}
 	return append(out, goalPrefix+"requested")
+}
+
+// claudeGates are the run steps where the runner asks Claude, which /skip
+// can pass (docs/specs/2026-10-13-claude-park-and-skip-design.md). A goal's
+// only one is its check: its breakdown writes the briefs.
+var claudeGates = map[string]bool{"plan-review": true, "verify-review": true, "revise": true, "replan-review": true, "final-review": true}
+
+// skipLabels is a home's labels once /skip asks the runner to pass the Claude
+// gate its run or goal is at: run:skip or goal:skip in place of its other
+// labels of that kind. why says what is wrong when there is no such gate.
+func skipLabels(current []string) (labels []string, why string) {
+	if step := labelStep(current, goalPrefix, "round:"); step != "" {
+		if step != "check" {
+			return nil, "/skip: the goal is at " + step + "; only its check can be skipped"
+		}
+		return replacePrefix(current, goalPrefix, goalPrefix+"skip"), ""
+	}
+	if step := labelStep(current, runPrefix, "attempt:"); step != "" {
+		if !claudeGates[step] {
+			return nil, "/skip: the run is at " + step + ", which is not one of Claude's checks"
+		}
+		return replacePrefix(current, runPrefix, runPrefix+"skip"), ""
+	}
+	return nil, "/skip is for a run's or a goal's home"
+}
+
+// labelStep is the step a run's or goal's labels name, ignoring the labels
+// that count something.
+func labelStep(labels []string, prefix, counter string) string {
+	for _, l := range labels {
+		if rest, ok := strings.CutPrefix(l, prefix); ok && !strings.HasPrefix(rest, counter) {
+			return rest
+		}
+	}
+	return ""
+}
+
+// replacePrefix is labels with every one starting prefix replaced by label.
+func replacePrefix(current []string, prefix, label string) []string {
+	out := []string{}
+	for _, l := range current {
+		if !strings.HasPrefix(l, prefix) {
+			out = append(out, l)
+		}
+	}
+	return append(out, label)
 }
 
 // goalStatus is how far a goal is, from its home's labels, as "goal: runs,

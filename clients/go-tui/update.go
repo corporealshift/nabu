@@ -361,6 +361,13 @@ func (m model) submit() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		act.labels = goalLabels(m.labels)
+	case actSkip:
+		labels, why := skipLabels(m.labels)
+		if why != "" {
+			m.note(why)
+			return m, nil
+		}
+		act.labels = labels
 	case actContext:
 		if act.text == "" {
 			m.note(contextWords(m.contextSize))
