@@ -22,16 +22,20 @@ type GoalOutcome struct {
 	OK  bool
 	Why string
 	// Wait is a step with nothing to do yet: a run still going, checks
-	// still running. It changes nothing and costs no attempt.
-	Wait bool
+	// still running. It costs no attempt. Parked is why a Claude gate waits:
+	// Claude is not answering.
+	Wait   bool
+	Parked string
 
 	// DoneWhen and Briefs are the breakdown's answer; Briefs is also an
 	// unmet check's next round.
 	DoneWhen []string
 	Briefs   []GoalBrief
-	// Met and Reason are the check's verdict.
-	Met    bool
-	Reason string
+	// Met and Reason are the check's verdict, and Skipped a check the owner
+	// passed without asking Claude.
+	Met     bool
+	Reason  string
+	Skipped bool
 
 	// Run is how the current brief's run ended, with what it left: its PR
 	// and review notes, or where and why it failed.
@@ -48,9 +52,14 @@ type GoalOutcome struct {
 // GoalTransition is a goal's whole workflow: given where it is and what came
 // of its step, where it goes next. It is pure, as Transition is for a run.
 func GoalTransition(g Goal, o GoalOutcome, maxRounds int) Goal {
-	if g.Step.Over() || o.Wait {
+	if g.Step.Over() {
 		return g
 	}
+	if o.Wait {
+		g.Parked = o.Parked
+		return g
+	}
+	g.Parked = ""
 	if !o.OK {
 		g.Attempt++
 		tries := otherTries
@@ -62,7 +71,7 @@ func GoalTransition(g Goal, o GoalOutcome, maxRounds int) Goal {
 		}
 		return g
 	}
-	g.Attempt = 0
+	g.Attempt, g.Skip = 0, false
 
 	switch g.Step {
 	case GoalSetup:
@@ -102,7 +111,7 @@ func GoalTransition(g Goal, o GoalOutcome, maxRounds int) Goal {
 			g.Step = GoalCheck
 		}
 	case GoalCheck:
-		g.Verdicts = append(g.Verdicts, Verdict{Round: g.Round, Met: o.Met, Reason: o.Reason})
+		g.Verdicts = append(g.Verdicts, Verdict{Round: g.Round, Met: o.Met, Reason: o.Reason, Skipped: o.Skipped})
 		g.CIFailure = ""
 		if o.Met {
 			g.Step = GoalPR

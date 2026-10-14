@@ -43,6 +43,17 @@ func recordedRun() Run {
 	}
 }
 
+// parkedRun is a run waiting at plan-review for Claude, which is not
+// answering.
+func parkedRun() Run {
+	r := recordedRun()
+	r.Step, r.Task, r.Attempt, r.Session = StepPlanReview, 0, 0, ""
+	r.History = r.History[:2]
+	r.Since = r.History[1].At
+	r.Parked = "You've hit your weekly limit · resets 2pm"
+	return r
+}
+
 func recordedGoal() Goal {
 	return Goal{
 		Home: "01M498J1N9D785RFV6AZBRZN7G", Text: "build the app based on the designs in the design directory",
@@ -335,8 +346,9 @@ func TestAGoalSetsItsStatus(t *testing.T) {
 // shape, and the app's tests then say whether it still reads it.
 func TestTheStatusFixtureIsCurrent(t *testing.T) {
 	for name, v := range map[string]any{
-		"run.json":  NewRunStatus(recordedRun(), recordedBrief, []string{"Notes in Room", "Notes in state", "Actions"}, "build the app based on the designs in the design directory"),
-		"goal.json": NewGoalStatus(recordedGoal(), 10),
+		"run.json":    NewRunStatus(recordedRun(), recordedBrief, []string{"Notes in Room", "Notes in state", "Actions"}, "build the app based on the designs in the design directory"),
+		"goal.json":   NewGoalStatus(recordedGoal(), 10),
+		"parked.json": NewRunStatus(parkedRun(), recordedBrief, nil, ""),
 	} {
 		want, err := json.MarshalIndent(v, "", "  ")
 		if err != nil {

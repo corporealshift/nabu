@@ -103,6 +103,24 @@ func TestGoalTransition(t *testing.T) {
 			}},
 		{name: "ci gets more tries", from: Goal{Step: GoalCI, Attempt: otherTries}, o: GoalOutcome{Why: "gh failed"}, want: GoalCI},
 		{name: "waiting changes nothing", from: twoBriefs(), o: GoalOutcome{Wait: true}, want: GoalRuns},
+		{name: "claude not answering parks the check", from: Goal{Step: GoalCheck, Attempt: 1}, o: GoalOutcome{Wait: true, Parked: "limit"}, want: GoalCheck,
+			check: func(t *testing.T, g Goal) {
+				if g.Attempt != 1 || g.Parked != "limit" {
+					t.Errorf("goal = %+v", g)
+				}
+			}},
+		{name: "a skipped check is met, and says it was skipped", from: Goal{Step: GoalCheck, Round: 2, Skip: true}, o: GoalOutcome{OK: true, Met: true, Skipped: true, Reason: "skipped"}, want: GoalPR,
+			check: func(t *testing.T, g Goal) {
+				if g.Skip || len(g.Verdicts) != 1 || !g.Verdicts[0].Skipped || g.Verdicts[0].Round != 2 {
+					t.Errorf("goal = %+v", g)
+				}
+			}},
+		{name: "an answer ends the park", from: Goal{Step: GoalCheck, Parked: "limit"}, o: GoalOutcome{OK: true, Met: true}, want: GoalPR,
+			check: func(t *testing.T, g Goal) {
+				if g.Parked != "" {
+					t.Errorf("still parked: %q", g.Parked)
+				}
+			}},
 		{name: "a finished goal stays finished", from: Goal{Step: GoalDone}, o: GoalOutcome{OK: true, CI: CIClosed}, want: GoalDone},
 	}
 	for _, tt := range tests {

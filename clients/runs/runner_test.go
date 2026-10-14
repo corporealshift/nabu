@@ -354,8 +354,11 @@ func (c *fakeClaude) Ask(_ context.Context, _, prompt string) (string, error) {
 	c.prompts[k] = append(c.prompts[k], prompt)
 	if q := c.answers[k]; len(q) > 0 {
 		c.answers[k] = q[1:]
-		if q[0] == "ERROR" {
+		switch q[0] {
+		case "ERROR":
 			return "", errors.New("claude timed out")
+		case "LIMIT":
+			return "", ClaudeUnavailable{limitReason}
 		}
 		return q[0], nil
 	}
@@ -1010,6 +1013,49 @@ func TestClaudeFailuresAreRetriedAtTheNextPoll(t *testing.T) {
 	g.tick() // approved (queue empty), and on to the tasks
 	if run.Step != StepTasks {
 		t.Errorf("run = %+v\nlog:\n%s", run, g.log.String())
+	}
+}
+
+// limitReason is what the CLI says when the usage limit is reached.
+const limitReason = "You've hit your weekly limit · resets 2pm"
+
+// A gate Claude does not answer waits there, costing no try, for as long as
+// it takes, and says why; the log says so once, not at every poll.
+func TestAGateClaudeDoesNotAnswerParks(t *testing.T) {
+	g := newRig(t)
+	g.claude.answers["plan"] = []string{"LIMIT", "LIMIT", "LIMIT", "LIMIT", "LIMIT"}
+	g.ask("H1", "Add a Median function")
+	g.tick()
+	r := g.run("H1")
+	g.finish(map[string]string{r.File(PlanFile): "p"})
+	for range 4 {
+		g.tick()
+	}
+	if r.Step != StepPlanReview || r.Attempt != 0 || r.Parked != limitReason {
+		t.Fatalf("run = %+v\nlog:\n%s", r, g.log.String())
+	}
+	saved, err := LoadAll(g.rn.Root)
+	if err != nil || len(saved) != 1 || saved[0].Parked != limitReason {
+		t.Errorf("saved = %+v, %v", saved, err)
+	}
+	all := statuses(t, g.d.homes["H1"])
+	if last := all[len(all)-1]; last.Step != StepPlanReview || last.Parked != limitReason {
+		t.Errorf("status = %+v", last)
+	}
+	if n := strings.Count(g.log.String(), "waiting for Claude at plan-review"); n != 1 {
+		t.Errorf("parking logged %d times:\n%s", n, g.log.String())
+	}
+
+	g.tick() // the fifth refusal
+	g.tick() // Claude answers
+	if r.Step != StepVerify || r.Parked != "" {
+		t.Fatalf("run = %+v\nlog:\n%s", r, g.log.String())
+	}
+	if !strings.Contains(g.log.String(), "Claude answered at plan-review") {
+		t.Errorf("log:\n%s", g.log.String())
+	}
+	if all := statuses(t, g.d.homes["H1"]); all[len(all)-1].Parked != "" {
+		t.Errorf("status still parked: %+v", all[len(all)-1])
 	}
 }
 

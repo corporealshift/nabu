@@ -40,6 +40,7 @@ type RunStatus struct {
 	Since     time.Time   `json:"since,omitzero"`
 	Session   string      `json:"session,omitempty"`
 	Waiting   bool        `json:"waiting"`
+	Parked    string      `json:"parked,omitempty"`
 	Goal      string      `json:"goal,omitempty"`
 	GoalTitle string      `json:"goal_title,omitempty"`
 	PR        StatusPR    `json:"pr"`
@@ -83,6 +84,7 @@ type GoalStatus struct {
 	Briefs   []GoalStatusBrief `json:"briefs"`
 	Verdicts []Verdict         `json:"verdicts"`
 	PR       StatusPR          `json:"pr"`
+	Parked   string            `json:"parked,omitempty"`
 	Why      string            `json:"why,omitempty"`
 	Started  time.Time         `json:"started"`
 	Updated  time.Time         `json:"updated"`
@@ -108,7 +110,7 @@ func NewRunStatus(r Run, brief string, tasks []string, goalTitle string) RunStat
 	}
 	s := RunStatus{
 		Version: StatusVersion, Title: titleOf(brief), Step: r.Step, Tasks: tasks,
-		Attempt: r.Attempt, Since: r.Since, Session: r.Session, Waiting: r.Waiting,
+		Attempt: r.Attempt, Since: r.Since, Session: r.Session, Waiting: r.Waiting, Parked: cutText(r.Parked, statusText),
 		Goal: r.Goal, GoalTitle: goalTitle, PR: StatusPR{Number: r.PR, URL: r.PRURL},
 		Fixes: r.Fixes, CIFixes: r.CIFixes, Revisions: r.Revisions,
 		FailedAt: r.FailedAt, Why: cutText(r.Why, statusText),
@@ -142,7 +144,7 @@ func NewGoalStatus(g Goal, rounds int) GoalStatus {
 	s := GoalStatus{
 		Version: StatusVersion, Text: g.Text, Step: g.Step, Round: g.Round, Rounds: rounds,
 		Since: g.Since, Briefs: []GoalStatusBrief{}, Verdicts: []Verdict{},
-		PR: StatusPR{Number: g.PR, URL: g.PRURL}, Why: cutText(g.Why, statusText),
+		PR: StatusPR{Number: g.PR, URL: g.PRURL}, Parked: cutText(g.Parked, statusText), Why: cutText(g.Why, statusText),
 		Started: g.Started, Updated: g.Updated,
 	}
 	for _, b := range g.Briefs {

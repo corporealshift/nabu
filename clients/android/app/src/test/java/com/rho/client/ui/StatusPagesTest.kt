@@ -28,6 +28,19 @@ class StatusPagesTest {
     private val minute = 60_000L
 
     @Test
+    fun `a skipped check is not called met`() {
+        assertEquals("Check: skipped", verdictLine(com.rho.client.protocol.Verdict(met = true, skipped = true)))
+        assertEquals("Check: met", verdictLine(com.rho.client.protocol.Verdict(met = true)))
+        assertEquals("Check: not met", verdictLine(com.rho.client.protocol.Verdict()))
+    }
+
+    @Test
+    fun `a parked gate says it waits for Claude, and why`() {
+        assertEquals("Waiting for Claude: You've hit your weekly limit", parkedLine("You've hit your weekly limit"))
+        assertNull(parkedLine(""))
+    }
+
+    @Test
     fun `the timeline times each step from the one before`() {
         val now = parseInstant(run.since)!! + 42 * minute
         val rows = timeline(run, now)

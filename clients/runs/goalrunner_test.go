@@ -263,6 +263,36 @@ func TestAGoalNeedsTextAndClaude(t *testing.T) {
 	}
 }
 
+// oneBrief is a breakdown of a single brief, so a goal reaches its check
+// after one run.
+const oneBrief = "```json\n{\"done_when\":[\"stats has Median\"],\"briefs\":[" +
+	"{\"title\":\"Median\",\"brief\":\"Add a Median function to stats.\"}]}\n```"
+
+// A goal's check Claude does not answer waits, as a run's gate does, instead
+// of blocking the goal.
+func TestAGoalCheckClaudeDoesNotAnswerParks(t *testing.T) {
+	g := newRig(t)
+	g.claude.answers["breakdown"] = []string{oneBrief}
+	g.claude.answers["check"] = []string{"LIMIT", "LIMIT", "LIMIT", "LIMIT"}
+	g.askGoal("G1", "Add Median to stats")
+	g.tick()
+	goal := g.goal("G1")
+	g.work(g.currentRun(goal))
+	for range 4 {
+		g.tick()
+	}
+	if goal.Step != GoalCheck || goal.Attempt != 0 || goal.Parked != limitReason {
+		t.Fatalf("goal = %+v\nlog:\n%s", goal, g.log.String())
+	}
+	if n := strings.Count(g.log.String(), "waiting for Claude at check"); n != 1 {
+		t.Errorf("parking logged %d times:\n%s", n, g.log.String())
+	}
+	g.tick()
+	if goal.Step != GoalDone || goal.Parked != "" {
+		t.Errorf("goal = %+v\nlog:\n%s", goal, g.log.String())
+	}
+}
+
 func TestBreakdownFailuresBlockAfterThreeTries(t *testing.T) {
 	g := newRig(t)
 	g.claude.answers["breakdown"] = []string{"ERROR", "no json here", "ERROR"}

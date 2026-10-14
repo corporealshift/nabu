@@ -290,6 +290,11 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 		if err == nil {
 			p.Send(noteMsg{text: "handed to the runner as a goal: its runs are listed under this session, and its roadmap is the task list"})
 		}
+	case actSkip:
+		if _, err = c.Call(ctx, "rho.session.set_option",
+			map[string]any{"session_id": a.sessionID, "key": "labels", "value": a.labels}); err == nil {
+			p.Send(noteMsg{text: "asked the runner to pass Claude's check without asking Claude"})
+		}
 	case actListSessions:
 		var sessions []goclient.SessionSummary
 		if sessions, err = c.List(ctx); err == nil {

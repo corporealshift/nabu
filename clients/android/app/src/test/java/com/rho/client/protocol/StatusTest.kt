@@ -58,6 +58,16 @@ class StatusTest {
     }
 
     @Test
+    fun `a run waiting for Claude says why`() {
+        val parsed = parseStatus(fixture("run", "parked.json"))
+        val run = (parsed as? ParsedStatus.Run)?.status ?: error("not a run: $parsed")
+        assertEquals("plan-review", run.step)
+        assertEquals("You've hit your weekly limit · resets 2pm", run.parked)
+        val fresh = parseStatus(fixture("run", "run.json")) as ParsedStatus.Run
+        assertEquals("", fresh.status.parked)
+    }
+
+    @Test
     fun `the runner's goal status reads`() {
         val parsed = parseStatus(fixture("goal", "goal.json"))
         val goal = (parsed as? ParsedStatus.Goal)?.status ?: error("not a goal: $parsed")

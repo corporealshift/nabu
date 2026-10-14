@@ -198,6 +198,30 @@ func TestTransition(t *testing.T) {
 			}},
 		{name: "a claude gate gets three tries", from: Run{Step: StepVerifyReview, Attempt: 1}, o: failed, want: StepVerifyReview},
 		{name: "and fails on the third", from: Run{Step: StepVerifyReview, Attempt: 2}, o: failed, want: StepFailed},
+		{name: "claude not answering parks a gate", from: Run{Step: StepPlanReview, Attempt: 2}, o: Outcome{Wait: true, Parked: "limit"}, want: StepPlanReview,
+			check: func(t *testing.T, r Run) {
+				if r.Attempt != 2 || r.Parked != "limit" {
+					t.Errorf("run = %+v", r)
+				}
+			}},
+		{name: "an answer ends the park", from: Run{Step: StepPlanReview, Parked: "limit"}, o: ok, want: StepVerify,
+			check: func(t *testing.T, r Run) {
+				if r.Parked != "" {
+					t.Errorf("still parked: %q", r.Parked)
+				}
+			}},
+		{name: "a skip is spent at its gate", from: Run{Step: StepPlanReview, Skip: true, Parked: "limit"}, o: Outcome{OK: true, Skipped: true}, want: StepVerify,
+			check: func(t *testing.T, r Run) {
+				if r.Skip || r.Parked != "" {
+					t.Errorf("run = %+v", r)
+				}
+			}},
+		{name: "so does a failed try", from: Run{Step: StepPlanReview, Parked: "limit"}, o: failed, want: StepPlanReview,
+			check: func(t *testing.T, r Run) {
+				if r.Parked != "" || r.Attempt != 1 {
+					t.Errorf("run = %+v", r)
+				}
+			}},
 		{name: "the pr gets three tries", from: Run{Step: StepPR, Attempt: 2}, o: failed, want: StepFailed},
 		{name: "a finished run stays finished", from: at(StepDone), o: failed, want: StepDone},
 		// A run reflects before it ends, when a session did any of its work

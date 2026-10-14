@@ -352,6 +352,12 @@ private fun StatusPage(
             value = System.currentTimeMillis()
         }
     }
+    // Offered only while the home's label names a check that can be skipped,
+    // which also hides it once the skip is asked for.
+    val labels = sessions.firstOrNull { it.row.id == home }?.options?.labels.orEmpty()
+    val onSkip = if (connected && com.rho.client.ui.skipLabels(labels) != null) {
+        { vm.skipCheck(home, labels) }
+    } else null
     when (parsed) {
         is ParsedStatus.Run -> {
             val step = parsed.status.session
@@ -361,9 +367,9 @@ private fun StatusPage(
             val live = if (step.isNotBlank() && row != null) {
                 LiveStep(row.state, stepView.turns, stepView.maxTurns, stepView.contextUsed, row.updatedAt)
             } else null
-            RunPage(title, parsed.status, tree, live, now, onBack, onChat, onOpen, onOpenGoal = onOpen)
+            RunPage(title, parsed.status, tree, live, now, onBack, onChat, onOpen, onOpenGoal = onOpen, onSkip = onSkip)
         }
-        is ParsedStatus.Goal -> GoalPage(title, parsed.status, tree, onBack, onChat, onOpenRun = onOpen)
+        is ParsedStatus.Goal -> GoalPage(title, parsed.status, tree, onBack, onChat, onOpenRun = onOpen, onSkip = onSkip)
         is ParsedStatus.Unsupported -> UnsupportedStatus(title, parsed, onBack, onChat)
     }
 }

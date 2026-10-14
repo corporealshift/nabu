@@ -136,6 +136,13 @@ fun turnsPerTask(s: RunStatus, tree: TreeStats?): List<TaskBar> {
     }
 }
 
+/**
+ * What the page says of a gate parked because Claude is not answering (a
+ * limit, an outage), or null when it is not
+ * (docs/specs/2026-10-13-claude-park-and-skip-design.md).
+ */
+fun parkedLine(parked: String): String? = if (parked.isBlank()) null else "Waiting for Claude: $parked"
+
 /** How many times Claude was consulted at the run's gates, from the timeline. */
 fun claudeGates(s: RunStatus): Int =
     s.history.count { it.step in setOf("plan-review", "verify-review", "revise", "final-review") }
@@ -164,6 +171,7 @@ fun RunPage(
     onChat: () -> Unit,
     onOpenSession: (String) -> Unit,
     onOpenGoal: (String) -> Unit,
+    onSkip: (() -> Unit)? = null,
 ) {
     val c = RhoTheme.colors
     val uri = LocalUriHandler.current
@@ -213,7 +221,10 @@ fun RunPage(
 
             // Now.
             if (status.step != "done" && status.step != "failed") {
-                NowCard(status, live, now, onOpenSession)
+                Column {
+                    NowCard(status, live, now, onOpenSession)
+                    if (onSkip != null) SkipCheck(status.step, onSkip)
+                }
             }
 
             // Timeline.
@@ -244,6 +255,7 @@ private fun NowCard(s: RunStatus, live: LiveStep?, now: Long, onOpenSession: (St
         Text("Now", style = MaterialTheme.typography.labelMedium, color = c.muted)
         Text(stepName(s.step, s.task), style = MaterialTheme.typography.titleMedium, color = c.ink, fontWeight = FontWeight.SemiBold)
         val detail = when {
+            s.parked.isNotBlank() -> parkedLine(s.parked)!!
             s.waiting -> "Waiting for a slot."
             !open -> "Done by the runner or Claude, without a session."
             live == null -> "Session ${s.session.takeLast(6)}."

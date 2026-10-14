@@ -2,6 +2,8 @@ package runs
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"go/parser"
 	"go/token"
@@ -10,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -120,29 +123,84 @@ func TestCreatePR(t *testing.T) {
 }
 
 // TestMain lets the test binary stand in for the claude CLI: with
-// RHO_FAKE_CLAUDE set it answers with how much prompt it read on stdin, or,
-// with RHO_FAKE_CLAUDE_REFUSE set, refuses the way a rate-limited CLI does.
+// RHO_FAKE_CLAUDE set it answers, as a JSON result, with how much prompt it
+// read on stdin. RHO_FAKE_CLAUDE_OUT replaces what it prints and
+// RHO_FAKE_CLAUDE_EXIT its exit code, so it can refuse the ways the real CLI
+// does; RHO_FAKE_CLAUDE_HANG makes it never answer.
 func TestMain(m *testing.M) {
 	if os.Getenv("RHO_FAKE_CLAUDE") != "" {
 		in, _ := io.ReadAll(os.Stdin)
-		if why := os.Getenv("RHO_FAKE_CLAUDE_REFUSE"); why != "" {
-			fmt.Println(why)
-			os.Exit(1)
+		if os.Getenv("RHO_FAKE_CLAUDE_HANG") != "" {
+			time.Sleep(time.Minute)
 		}
-		fmt.Printf("read %d bytes, %d args", len(in), len(os.Args)-1)
-		os.Exit(0)
+		out := os.Getenv("RHO_FAKE_CLAUDE_OUT")
+		if out == "" {
+			b, _ := json.Marshal(map[string]any{"type": "result", "subtype": "success", "is_error": false,
+				"result": fmt.Sprintf("read %d bytes, %d args", len(in), len(os.Args)-1)})
+			out = string(b)
+		}
+		fmt.Println(out)
+		code, _ := strconv.Atoi(os.Getenv("RHO_FAKE_CLAUDE_EXIT"))
+		os.Exit(code)
 	}
 	os.Exit(m.Run())
 }
 
-// A rate-limited CLI exits 1 with its refusal on stdout and nothing on
-// stderr. The reason has to reach the run, or it fails with no reason at all.
-func TestClaudeAskReportsARefusal(t *testing.T) {
+// What the CLI prints for each way it answers or does not, taken from the
+// real CLI's output.
+func TestClaudeAsk(t *testing.T) {
+	limit := `{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"api_error":"usage_limit_reached","result":"You've hit your weekly limit · resets 2pm","terminal_reason":"api_error"}`
+	cases := []struct {
+		name, out, exit string
+		want            string // the answer, when there is one
+		unavailable     string // the reason Claude is not answering
+		err             string // a plain error containing this
+	}{
+		{name: "answer", out: `{"type":"result","subtype":"success","is_error":false,"result":"  APPROVED\n","terminal_reason":"completed"}`, want: "APPROVED"},
+		{name: "progress before the result", out: "{\"type\":\"system\"}\n" + `{"type":"result","subtype":"success","is_error":false,"result":"OK"}`, want: "OK"},
+		{name: "usage limit", out: limit, exit: "1", unavailable: "weekly limit"},
+		{name: "logged out", out: `{"type":"result","is_error":true,"api_error_status":401,"result":"Invalid API key · Please run /login"}`, exit: "1", unavailable: "/login"},
+		{name: "overloaded", out: `{"type":"result","is_error":true,"api_error_status":529,"api_error":"overloaded_error"}`, exit: "1", unavailable: "overloaded_error"},
+		{name: "bad model", out: `{"type":"result","is_error":true,"api_error_status":404,"result":"model not found"}`, exit: "1", err: "model not found (status 404)"},
+		{name: "error with no status", out: `{"type":"result","subtype":"error_max_turns","is_error":true}`, exit: "1", err: "error_max_turns"},
+		{name: "no result", out: "error: unknown option '--frob'", exit: "1", err: "unknown option"},
+		{name: "empty answer", out: `{"type":"result","is_error":false,"result":"  "}`, err: "said nothing"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("RHO_FAKE_CLAUDE", "1")
+			t.Setenv("RHO_FAKE_CLAUDE_OUT", c.out)
+			t.Setenv("RHO_FAKE_CLAUDE_EXIT", c.exit)
+			got, err := ClaudeCLI{Path: os.Args[0]}.Ask(context.Background(), t.TempDir(), "review the plan")
+			var un ClaudeUnavailable
+			isUn := errors.As(err, &un)
+			switch {
+			case c.want != "":
+				if got != c.want || err != nil {
+					t.Errorf("Ask = %q, %v, want %q", got, err, c.want)
+				}
+			case c.unavailable != "":
+				if !isUn || !strings.Contains(un.Reason, c.unavailable) {
+					t.Errorf("Ask err = %#v, want ClaudeUnavailable with %q", err, c.unavailable)
+				}
+			default:
+				if err == nil || isUn || !strings.Contains(err.Error(), c.err) {
+					t.Errorf("Ask err = %#v, want a plain error with %q", err, c.err)
+				}
+			}
+		})
+	}
+}
+
+// With the API unreachable the CLI prints nothing and keeps trying, so a
+// timeout is Claude not answering, not a failed review.
+func TestClaudeAskTimeoutIsUnavailable(t *testing.T) {
 	t.Setenv("RHO_FAKE_CLAUDE", "1")
-	t.Setenv("RHO_FAKE_CLAUDE_REFUSE", "You've hit your weekly limit · resets 2pm")
-	_, err := ClaudeCLI{Path: os.Args[0]}.Ask(context.Background(), t.TempDir(), "review the plan")
-	if err == nil || !strings.Contains(err.Error(), "weekly limit") {
-		t.Errorf("Ask err = %v, want the refusal in it", err)
+	t.Setenv("RHO_FAKE_CLAUDE_HANG", "1")
+	_, err := ClaudeCLI{Path: os.Args[0], Timeout: 300 * time.Millisecond}.Ask(context.Background(), t.TempDir(), "review the plan")
+	var un ClaudeUnavailable
+	if !errors.As(err, &un) || !strings.Contains(un.Reason, "did not answer within 300ms") {
+		t.Errorf("Ask err = %#v", err)
 	}
 }
 
@@ -159,7 +217,7 @@ func TestClaudeAskTakesALongPrompt(t *testing.T) {
 
 func TestClaudeArgsAreReadOnly(t *testing.T) {
 	args := ClaudeCLI{Model: "opus"}.Args()
-	want := []string{"-p", "--allowedTools", "Read", "--allowedTools", "Grep", "--allowedTools", "Glob", "--model", "opus"}
+	want := []string{"-p", "--output-format", "json", "--allowedTools", "Read", "--allowedTools", "Grep", "--allowedTools", "Glob", "--model", "opus"}
 	if !reflect.DeepEqual(args, want) {
 		t.Errorf("args = %q", args)
 	}

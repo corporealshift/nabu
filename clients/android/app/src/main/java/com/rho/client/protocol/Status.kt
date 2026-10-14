@@ -27,6 +27,8 @@ data class RunStatus(
     val since: String = "",
     val session: String = "",
     val waiting: Boolean = false,
+    /** Why the Claude gate the run is at waits for Claude, which is not answering; empty when it is not. */
+    val parked: String = "",
     val goal: String = "",
     @SerialName("goal_title") val goalTitle: String = "",
     val pr: StatusPr = StatusPr(),
@@ -69,6 +71,8 @@ data class GoalStatus(
     val briefs: List<GoalStatusBrief> = emptyList(),
     val verdicts: List<Verdict> = emptyList(),
     val pr: StatusPr = StatusPr(),
+    /** As a run's. */
+    val parked: String = "",
     val why: String = "",
     val started: String = "",
     val updated: String = "",
@@ -92,6 +96,8 @@ data class Verdict(
     val round: Int = 0,
     val met: Boolean = false,
     val reason: String = "",
+    /** A round the owner passed without Claude's check. */
+    val skipped: Boolean = false,
     val at: String = "",
 )
 

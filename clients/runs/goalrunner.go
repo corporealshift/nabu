@@ -15,6 +15,10 @@ import (
 // it to take up a blocked one again.
 const LabelGoalRequested = "goal:requested"
 
+// LabelGoalSkip asks the runner to pass a goal's check without asking Claude,
+// as LabelSkip does for a run.
+const LabelGoalSkip = "goal:skip"
+
 // goalPrefix starts every label the runner reads or sets on a goal's home.
 const goalPrefix = "goal:"
 
@@ -81,6 +85,39 @@ func (rn *Runner) pickUpGoals(ctx context.Context, d Daemon) error {
 	return nil
 }
 
+// pickUpGoalSkips takes each home labeled goal:skip. Only the check can be
+// skipped: the breakdown writes the briefs, and nothing stands in for them.
+func (rn *Runner) pickUpGoalSkips(ctx context.Context, d Daemon) error {
+	homes, err := d.Requested(ctx, LabelGoalSkip)
+	if err != nil {
+		return err
+	}
+	for _, h := range homes {
+		g, known := rn.goals[h.ID]
+		if !known {
+			rn.logf("goal %s: skip asked for, but there is no goal", h.ID)
+			if err := d.SetLabels(ctx, h.ID, withPrefix(h.Labels, LabelGoalSkip)); err != nil {
+				return err
+			}
+			continue
+		}
+		if g.Step == GoalCheck {
+			g.Skip = true
+			rn.logf("goal %s: the owner skips Claude's check", h.ID)
+		} else {
+			rn.logf("goal %s: skip asked for at %s, which only the check allows; nothing skipped", h.ID, g.Step)
+		}
+		g.Labelled = "" // the home was relabeled by /skip, so label it again
+		if err := rn.saveGoal(g); err != nil {
+			return err
+		}
+		if err := rn.labelGoal(ctx, d, g, h.Labels); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (rn *Runner) saveGoal(g *Goal) error {
 	g.Updated = rn.Now()
 	if key := fmt.Sprintf("%s %d", g.Step, g.Round); key != g.SinceKey {
@@ -114,10 +151,16 @@ func (rn *Runner) advanceGoal(ctx context.Context, d Daemon, g *Goal) error {
 		}
 		o, err := rn.performGoal(ctx, d, g)
 		if err != nil || o.Wait {
+			if err == nil {
+				err = rn.waitGoal(g, o)
+			}
 			return errors.Join(err, rn.showGoal(ctx, d, g))
 		}
-		from, verdicts := g.Step, len(g.Verdicts)
+		from, verdicts, parked := g.Step, len(g.Verdicts), g.Parked
 		*g = GoalTransition(*g, o, rn.Cfg.GoalRounds)
+		if parked != "" && !o.Skipped {
+			rn.logf("goal %s: Claude answered at %s", g.Home, from)
+		}
 		for i := verdicts; i < len(g.Verdicts); i++ {
 			g.Verdicts[i].At = rn.Now()
 		}
@@ -148,6 +191,28 @@ func (rn *Runner) advanceGoal(ctx context.Context, d Daemon, g *Goal) error {
 	return nil
 }
 
+// waitGoal takes a goal step that has nothing to do yet, saving it only when
+// it parks the goal or ends a park, as wait does for a run.
+func (rn *Runner) waitGoal(g *Goal, o GoalOutcome) error {
+	before := g.Parked
+	*g = GoalTransition(*g, o, rn.Cfg.GoalRounds)
+	if g.Parked == before {
+		return nil
+	}
+	if g.Parked != "" {
+		rn.logf("goal %s: waiting for Claude at %s: %s", g.Home, g.Step, g.Parked)
+	}
+	return rn.saveGoal(g)
+}
+
+// goalClaudeFailed is claudeFailed for a goal's gates.
+func goalClaudeFailed(err error) GoalOutcome {
+	if o := claudeFailed(err); o.Wait {
+		return GoalOutcome{Wait: true, Parked: o.Parked}
+	}
+	return GoalOutcome{Why: err.Error()}
+}
+
 // performGoal does a goal's current step.
 func (rn *Runner) performGoal(ctx context.Context, d Daemon, g *Goal) (GoalOutcome, error) {
 	switch g.Step {
@@ -156,7 +221,7 @@ func (rn *Runner) performGoal(ctx context.Context, d Daemon, g *Goal) (GoalOutco
 	case GoalBreakdown:
 		answer, err := rn.Claude.Ask(ctx, g.Worktree, BreakdownPrompt(*g))
 		if err != nil {
-			return GoalOutcome{Why: err.Error()}, nil
+			return goalClaudeFailed(err), nil
 		}
 		doneWhen, briefs, ok := ParseBreakdown(answer)
 		if !ok {
@@ -170,13 +235,18 @@ func (rn *Runner) performGoal(ctx context.Context, d Daemon, g *Goal) (GoalOutco
 		if err := rn.sync(ctx, g); err != nil {
 			return GoalOutcome{Why: err.Error()}, nil
 		}
+		if g.Skip {
+			rn.logf("goal %s: round %d check skipped by the owner", g.Home, g.Round)
+			return GoalOutcome{OK: true, Met: true, Skipped: true,
+				Reason: fmt.Sprintf("The owner skipped Claude's check of round %d.", g.Round)}, nil
+		}
 		changed, err := rn.Git.Diffed(ctx, g.Worktree, g.Base)
 		if err != nil {
 			return GoalOutcome{Why: err.Error()}, nil
 		}
 		answer, err := rn.Claude.Ask(ctx, g.Worktree, CheckPrompt(*g, changed))
 		if err != nil {
-			return GoalOutcome{Why: err.Error()}, nil
+			return goalClaudeFailed(err), nil
 		}
 		met, reason, briefs, ok := ParseCheck(answer)
 		if !ok {
