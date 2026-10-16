@@ -214,6 +214,7 @@ A line starting with `/` is a command:
 | `/goal [text]` | Hand the runner a broader goal, split into runs until it's met |
 | `/compact` | Summarize the history now (interrupt a running turn first) |
 | `/context large` | Let the session fill the whole window before summarizing; `/context normal` undoes it |
+| `/effort medium` | How hard the model thinks: `none`, `low`, `medium`, `high`, `xhigh` or `max`; `/effort default` leaves it to the server. On a run's or goal's home, every later session under it uses it |
 | `/stats` | Turns, tokens, how the context grew, tool failures, files read over and over |
 | `/open <name>` | Open a page the agent made |
 | `/archive`, `/stop`, `/sessions`, `/help` | What they say |

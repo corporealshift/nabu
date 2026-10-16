@@ -44,6 +44,7 @@ const (
 	actGoal
 	actSkip
 	actContext
+	actEffort
 )
 
 // commandResult is what a line of composer input means: something to do, or
@@ -65,6 +66,7 @@ var commands = []struct{ name, what string }{
 	{"/skip", "pass the Claude check this run or goal is at, without asking Claude"},
 	{"/compact", "summarise the history now"},
 	{"/context [normal|large]", "how much of the model's window this session fills before it is summarised"},
+	{"/effort [none|low|medium|high|xhigh|max|default]", "how hard the model thinks; default leaves it to the server"},
 	{"/stop", "end the session"},
 	{"/archive", "put this session away"},
 	{"/stats", "how much work this session was"},
@@ -133,6 +135,17 @@ func parseCommand(line string) commandResult {
 			return commandResult{act: &action{kind: actContext, text: size}}
 		}
 		return commandResult{note: "/context takes normal or large"}
+	case "/effort":
+		// The action's text is "" to ask, and "default" to clear: the daemon's
+		// "" would read as asking.
+		level := strings.ToLower(rest)
+		if level == "default" || (level != "" && protocol.ValidEffort(level) == nil) {
+			return commandResult{act: &action{kind: actEffort, text: level}}
+		}
+		if level == "" {
+			return commandResult{act: &action{kind: actEffort}}
+		}
+		return commandResult{note: "/effort takes none, low, medium, high, xhigh, max or default"}
 	case "/help":
 		return commandResult{note: helpText}
 	default:
