@@ -104,24 +104,26 @@ Contract and its implementation together, as the spec requires.
   projection applies it. The full gate.
 - **Depends on:** 2.
 
-## 5. Android: choose it from the session, run and goal pages
+## 5. Android: choose it from the session top bar
 
-Run and goal pages do not link to their home session, so the control goes on all three.
+The run and goal pages reach their home's own session through Chat, which has the same
+top bar, so one control serves sessions, runs and goals. (An earlier draft put copies on
+the run and goal pages; Chat made them unnecessary.)
 
 - **Changes:**
   - `ui/Screens.kt`: an effort chip beside `ContextBadge` in the session top bar. It
-    reads the level, or "auto" when unset, and tapping it opens a dialog with Default
-    and the six levels, one line each, noting that on Strata high, xhigh and max are the
-    same.
-  - `ui/RunPage.kt` and `ui/GoalPage.kt`: the same chip and dialog, acting on the run's
-    or goal's home id, with a line saying later sessions under it use the level.
+    reads "effort <level>", or "effort auto" when unset, and tapping it opens a dialog
+    with Default and the six levels, saying that on a home every later session under it
+    uses it and that on Strata high, xhigh and max are the same.
   - `data/SessionRepository.kt` and `ui/RhoViewModel.kt`: `setEffort(sessionId, level)`
     through `set_option`. A refusal shows in the existing refusal banner.
+  - `MainActivity.kt`: the screen's `onEffort` calls it.
 - **Proves it:** `data/EffortTest.kt` with `FakeDaemon`: `setEffort` sends `key: effort`
-  with the level, and `""` for Default; the projection test from step 2 gives the chip's
-  label. `bash clients/android/gradlew.sh :app:testDebugUnitTest :app:assembleDebug`
-  passes. Installed on the phone: the dialog sets it on a session and on a run page, and
-  the chip changes.
+  with the level, and `""` for Default; `ui/EffortChipTest.kt`: the chip's text and the
+  dialog's choices; the projection test from step 2 reads `effort`.
+  `bash clients/android/gradlew.sh :app:testDebugUnitTest :app:assembleDebug` passes.
+  Installed on the phone: the dialog sets it on a session and on a run's home, and the
+  chip changes.
 - **Depends on:** 2.
 
 ## 6. Live

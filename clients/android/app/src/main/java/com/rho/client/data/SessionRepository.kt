@@ -415,6 +415,19 @@ class SessionRepository(
         })
     }
 
+    /**
+     * Sets a session's effort, how hard the model thinks: one of the levels,
+     * or "" to leave it to the server
+     * (docs/specs/2026-10-16-session-effort-design.md).
+     */
+    suspend fun setEffort(client: DaemonClient, sessionId: String, level: String) {
+        client.callOrThrow("rho.session.set_option", buildJsonObject {
+            put("session_id", sessionId)
+            put("key", "effort")
+            put("value", level)
+        })
+    }
+
     suspend fun compactSession(client: DaemonClient, sessionId: String): String {
         val result = client.callOrThrow("rho.session.compact", buildJsonObject {
             put("session_id", sessionId)

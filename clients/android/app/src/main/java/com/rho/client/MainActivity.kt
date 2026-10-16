@@ -432,6 +432,7 @@ private fun TranscriptBody(
             onInterrupt = { vm.interruptSession(s.id) },
             onCompact = { vm.compactSession(s.id) },
             onContext = { vm.setContext(s.id, it) },
+            onEffort = { vm.setEffort(s.id, it) },
             onStats = { vm.loadStats(s.id); onScreen(Screen.Stats(s.id)) },
             onRetryBlocked = { vm.retryBlocked(it) },
             onDiscardBlocked = { vm.discardBlocked(it) },
