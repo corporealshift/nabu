@@ -104,6 +104,13 @@ Every `source` field, where present, is one of `daemon`, `model`, `client`, or
   daemon's provider configuration: a normal session may compact against a window
   smaller than the model's, and a large one uses all of it. Unlike `parent`, `labels`
   and `description`, the daemon acts on it, when it decides to compact.
+- `effort`: how hard the model thinks, one of `none`, `low`, `medium`, `high`, `xhigh`
+  or `max`. Absent or `""` means unset: the daemon sends nothing and the server decides.
+  The daemon passes it to the model's chat template in `chat_template_kwargs`: `none` as
+  `enable_thinking: false`, every other level as `reasoning_effort` with the level as
+  written. The server gives each level its meaning; on a server whose template knows
+  fewer levels, several may behave the same. A summary the daemon writes does not use
+  it. Like `context`, the daemon acts on it, on every model call.
 
 The daemon's core records both and attaches no meaning to either: grouping sessions under
 a parent, or acting on a label, is for clients and modules. An absent `parent` or `labels`
@@ -193,7 +200,7 @@ code, so its absence and a value of `0` are different facts.
 {"key":"permission_mode","from":"ask","to":"auto","source":"client"}
 ```
 
-`key` ∈ `model | compaction_enabled | permission_mode | labels | description | context`. A `labels` change
+`key` ∈ `model | compaction_enabled | permission_mode | labels | description | context | effort`. A `labels` change
 carries the whole new list in `to`, which replaces the old one; it is never a diff.
 `parent` never changes, so it is never a key.
 
@@ -467,11 +474,12 @@ any it holds that a full listing leaves out: they were archived.
 ### 7.3 `rho.session.create {workspace, options?}` → `{session_id, event}`
 
 `options` defaults: model from config, `compaction_enabled: true`,
-`permission_mode: "ask"`, no `parent`, no `labels`, no `description`, `context: "normal"`. The returned `event` is the
+`permission_mode: "ask"`, no `parent`, no `labels`, no `description`, `context: "normal"`, no `effort`. The returned `event` is the
 `session` event.
 
 A `parent` that names no session, live or archived, is `rho_invalid_params`, and so are
-labels outside the rules in §3.1 and a `context` other than `normal` or `large`. In both cases no session is created.
+labels outside the rules in §3.1, a `context` other than `normal` or `large`, and an `effort` that is not one of
+its levels. In each case no session is created.
 
 ### 7.4 `rho.session.send_prompt {session_id, content, client_id?}` → `{event_id}`
 
@@ -547,8 +555,8 @@ Appends `goal {state: cleared}`; `rho_invalid_transition` if no goal is active.
 ### 7.13 `rho.session.set_option {session_id, key, value}` → `{event_id}`
 
 Appends `options_change`. `key` ∈ `model | compaction_enabled | permission_mode | labels |
-description | context`. Setting any option starts nothing: a description is not a goal.
-For `labels`, `value` is the whole new list. `parent` is `rho_invalid_params`, because it
+description | context | effort`. Setting any option starts nothing: a description is not a goal.
+For `labels`, `value` is the whole new list. For `effort`, `""` clears it. `parent` is `rho_invalid_params`, because it
 is set at creation. An invalid value appends nothing.
 
 ### 7.14 `rho.session.update_tasks {session_id, tasks}` → `{event_id}`

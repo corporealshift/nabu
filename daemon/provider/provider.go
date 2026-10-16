@@ -40,6 +40,9 @@ type Request struct {
 	MaxTokens int // 0 = provider default
 	// NoThinking asks the server not to think before answering.
 	NoThinking bool
+	// Effort is how hard the model thinks, passed to the chat template as
+	// written; "none" turns thinking off and "" sends nothing. NoThinking wins.
+	Effort string
 }
 
 // Response is the completed assistant turn.

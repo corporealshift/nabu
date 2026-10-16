@@ -330,6 +330,15 @@ func perform(ctx context.Context, c *goclient.Client, p sender, a action) string
 			map[string]any{"session_id": a.sessionID, "key": "context", "value": a.text}); err == nil {
 			p.Send(noteMsg{text: contextWords(a.text)})
 		}
+	case actEffort:
+		level := a.text
+		if level == "default" {
+			level = ""
+		}
+		if _, err = c.Call(ctx, "rho.session.set_option",
+			map[string]any{"session_id": a.sessionID, "key": "effort", "value": level}); err == nil {
+			p.Send(noteMsg{text: effortWords(level)})
+		}
 	case actAttach:
 		return a.sessionID
 	}

@@ -47,6 +47,8 @@ data class Options(
     val description: String = "",
     // Spec 3.1: "normal" or "large"; empty in a log from before it, which is normal.
     val context: String = "",
+    // Spec 3.1: how hard the model thinks; empty is unset, and the server decides.
+    val effort: String = "",
 )
 
 @Serializable

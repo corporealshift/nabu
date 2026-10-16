@@ -322,6 +322,7 @@ type CreateSessionOptions struct {
 	Labels            []string `json:"labels,omitempty"`
 	Description       string   `json:"description,omitempty"`
 	Context           string   `json:"context,omitempty"`
+	Effort            string   `json:"effort,omitempty"`
 }
 
 // handleSessionCreate implements rho.session.create (spec 7.3).
@@ -348,6 +349,7 @@ func (h *Handler) handleSessionCreate(ctx context.Context, _ *connState, params 
 		co.Parent = p.Options.Parent
 		co.Labels = p.Options.Labels
 		co.Context = p.Options.Context
+		co.Effort = p.Options.Effort
 		co.Description = p.Options.Description
 	}
 

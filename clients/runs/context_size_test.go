@@ -50,10 +50,10 @@ func TestAGoalsRunsCopyItsContext(t *testing.T) {
 // A home that cannot be read gives the daemon's default, and says why.
 func TestAnUnreadableHomeGivesTheDefault(t *testing.T) {
 	g := newRig(t)
-	if got := g.rn.contextOf(context.Background(), g.d, "missing"); got != "" {
-		t.Errorf("context = %q, want empty", got)
+	if got := g.rn.settingsOf(context.Background(), g.d, "missing"); got != (Settings{}) {
+		t.Errorf("settings = %+v, want none", got)
 	}
-	if !strings.Contains(g.log.String(), "context size unknown") {
+	if !strings.Contains(g.log.String(), "context size and effort unknown") {
 		t.Errorf("nothing logged:\n%s", g.log.String())
 	}
 }

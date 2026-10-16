@@ -550,6 +550,20 @@ class RhoViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Sets a session's effort, "" for the server's; a refusal shows in the banner. */
+    fun setEffort(sessionId: String, level: String) {
+        viewModelScope.launch {
+            val c = client
+            if (c == null) {
+                _error.value = "not connected"
+                return@launch
+            }
+            runCatching { repo.setEffort(c, sessionId, level) }
+                .onSuccess { _error.value = null }
+                .onFailure { _error.value = "effort not changed: ${it.message}" }
+        }
+    }
+
     // ------------------------------------------------------------- archive
 
     private val _archived = MutableStateFlow<List<SessionSummary>?>(null)

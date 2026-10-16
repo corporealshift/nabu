@@ -113,6 +113,8 @@ type model struct {
 	// contextSize is the session's context option: "" in a log from before
 	// it, which is normal.
 	contextSize string
+	// effort is the session's effort option: "" when unset.
+	effort string
 
 	// artifacts are the pages the agent made, latest version of each by name,
 	// and lastArtifact the most recent: what o opens.
@@ -243,6 +245,7 @@ func (m *model) appendEventWithoutRefresh(ev protocol.Event) {
 			m.contextWindow = d.ContextWindow
 			m.parent, m.labels = d.Options.Parent, d.Options.Labels
 			m.contextSize = d.Options.Context
+			m.effort = d.Options.Effort
 		}
 	}
 	if ev.Type == protocol.EventOptionsChange {
@@ -257,6 +260,12 @@ func (m *model) appendEventWithoutRefresh(ev protocol.Event) {
 			var size string
 			if json.Unmarshal(d.To, &size) == nil {
 				m.contextSize = size
+			}
+		}
+		if unmarshal(ev, &d) == nil && d.Key == "effort" {
+			var effort string
+			if json.Unmarshal(d.To, &effort) == nil {
+				m.effort = effort
 			}
 		}
 	}
@@ -351,6 +360,7 @@ func (m *model) reset(sessionID string) {
 	m.goal = nil
 	m.parent, m.labels = "", nil
 	m.contextSize = ""
+	m.effort = ""
 	m.artifacts, m.lastArtifact = nil, ""
 	m.contextWindow = 0
 	m.lastInput = 0

@@ -8,7 +8,7 @@ import (
 )
 
 func TestStepSessionOptions(t *testing.T) {
-	opts := stepOptions("01HOME", "large")
+	opts := stepOptions("01HOME", Settings{Context: "large", Effort: "medium"})
 	labels, _ := opts["labels"].([]string)
 	// memory:no-curator: each step is one try of one task; the run reflects
 	// as a whole when it ends (docs/specs/2026-10-11-run-reflection-design.md).
@@ -17,10 +17,15 @@ func TestStepSessionOptions(t *testing.T) {
 			t.Errorf("labels %q lack %q", labels, want)
 		}
 	}
-	if opts["parent"] != "01HOME" || opts["context"] != "large" || opts["permission_mode"] != string(protocol.PermissionAuto) {
+	if opts["parent"] != "01HOME" || opts["context"] != "large" || opts["effort"] != "medium" ||
+		opts["permission_mode"] != string(protocol.PermissionAuto) {
 		t.Errorf("options = %v", opts)
 	}
-	if _, ok := stepOptions("01HOME", "")["context"]; ok {
+	unset := stepOptions("01HOME", Settings{})
+	if _, ok := unset["context"]; ok {
 		t.Error("an unknown context size is sent rather than left to the daemon")
+	}
+	if _, ok := unset["effort"]; ok {
+		t.Error("an unset effort is sent rather than left to the daemon")
 	}
 }

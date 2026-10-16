@@ -7,9 +7,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/corporealshift/rho/clients/github"
+	"github.com/corporealshift/rho/protocol"
 )
 
 // ClaudeConfig is how the runner asks Claude.
@@ -42,7 +44,14 @@ type Config struct {
 	// GoalRounds is how many rounds of runs a goal gets before it stops and
 	// waits for Kyle. Default 5.
 	GoalRounds int `json:"goal_rounds"`
+	// Effort is each step's effort, for a session whose home has none. A step
+	// not listed is unset, so the server decides
+	// (docs/specs/2026-10-16-session-effort-design.md).
+	Effort map[Step]string `json:"effort"`
 }
+
+// sessionSteps are the steps that make a session, and so can have an effort.
+var sessionSteps = []Step{StepBrief, StepPlan, StepTasks, StepVerify, StepWork, StepFix, StepCIFix, StepReflect}
 
 // ConfigPath is where LoadConfig looks.
 func ConfigPath(root string) string { return filepath.Join(root, "runner", "config.json") }
@@ -59,6 +68,9 @@ func LoadConfig(root string) (Config, error) {
 		if err := json.Unmarshal(b, &c); err != nil {
 			return Config{}, fmt.Errorf("runs: %s: %w", ConfigPath(root), err)
 		}
+	}
+	if err := c.validEffort(); err != nil {
+		return Config{}, fmt.Errorf("runs: %s: %w", ConfigPath(root), err)
 	}
 	c.withDefaults()
 	return c, nil
@@ -92,6 +104,20 @@ func (c *Config) withDefaults() {
 	if c.ReflectTurns < 1 {
 		c.ReflectTurns = DefaultReflectTurns
 	}
+}
+
+// validEffort refuses an effort map that could never mean what it says: a
+// step that makes no session, or a level the daemon would refuse.
+func (c Config) validEffort() error {
+	for step, level := range c.Effort {
+		if !slices.Contains(sessionSteps, step) {
+			return fmt.Errorf("effort: %q is not a step that makes a session", step)
+		}
+		if err := protocol.ValidEffort(level); err != nil {
+			return fmt.Errorf("effort.%s: %w", step, err)
+		}
+	}
+	return nil
 }
 
 // DefaultReflectTurns is the reflection's turn cap when none is set.

@@ -411,6 +411,9 @@ func (m model) status() string {
 	if c := m.contextBadge(); c != "" {
 		parts = append(parts, c)
 	}
+	if m.effort != "" {
+		parts = append(parts, dim.Render("effort "+m.effort))
+	}
 	if n := len(m.queued); n > 0 {
 		parts = append(parts, badgeWarn.Render(fmt.Sprintf("%d prompts queued", n)))
 	}
@@ -524,6 +527,14 @@ func contextWords(size string) string {
 		return "context: large — it fills the model's whole window before it is summarised · /context normal to change"
 	}
 	return "context: normal — it is summarised sooner, where the provider sets a smaller normal window · /context large to change"
+}
+
+// effortWords says what a session's effort is, for /effort.
+func effortWords(effort string) string {
+	if effort == "" {
+		return "effort: default — the server decides how hard the model thinks · /effort low|medium|high to change"
+	}
+	return "effort: " + effort + " — how hard the model thinks, from its next call · /effort default to leave it to the server"
 }
 
 // contextBadge says how full the context is, and warns before compaction

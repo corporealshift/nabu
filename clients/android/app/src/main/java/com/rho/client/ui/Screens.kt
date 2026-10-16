@@ -379,6 +379,7 @@ fun TranscriptScreen(
     onCompact: () -> Unit,
     onStats: () -> Unit = {},
     onContext: (String) -> Unit = {},
+    onEffort: (String) -> Unit = {},
     onRetryBlocked: (String) -> Unit,
     onDiscardBlocked: (String) -> Unit,
     onBack: () -> Unit,
@@ -396,6 +397,14 @@ fun TranscriptScreen(
             current = view.options.context,
             onPick = { onContext(it); choosingContext = false },
             onDismiss = { choosingContext = false },
+        )
+    }
+    var choosingEffort by remember { mutableStateOf(false) }
+    if (choosingEffort) {
+        EffortDialog(
+            current = view.options.effort,
+            onPick = { onEffort(it); choosingEffort = false },
+            onDismiss = { choosingEffort = false },
         )
     }
     var running by remember { mutableStateOf(false) }
@@ -436,6 +445,13 @@ fun TranscriptScreen(
                         }
                     }
                     ContextBadge(view.contextUsed, view.options.context) { choosingContext = true }
+                    TextButton(onClick = { choosingEffort = true }) {
+                        Text(
+                            effortChipText(view.options.effort),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = RhoTheme.colors.muted,
+                        )
+                    }
                     // A step of a run is the runner's, not a thing to hand over.
                     if (view.options.parent.isBlank()) {
                         TextButton(onClick = { running = true }) {
@@ -976,6 +992,48 @@ private fun ContextDialog(current: String, onPick: (String) -> Unit, onDismiss: 
                 Text(if (large) "Make it normal" else "Make it large")
             }
         },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** The effort chip's text: the level, or "auto" when the server decides. */
+fun effortChipText(effort: String) = "effort " + effort.ifBlank { "auto" }
+
+/** The choices, in order: "" is Default, the server's own level. */
+val effortLevels = listOf("", "none", "low", "medium", "high", "xhigh", "max")
+
+/**
+ * How hard the model thinks (docs/specs/2026-10-16-session-effort-design.md).
+ * On a run's or goal's home it is what every later session under it uses.
+ */
+@Composable
+private fun EffortDialog(current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    val c = RhoTheme.colors
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = c.surface,
+        titleContentColor = c.ink,
+        textContentColor = c.muted,
+        title = { Text("How hard the model thinks") },
+        text = {
+            Column {
+                Text(
+                    "Lower is faster and writes less. It applies from the next model call. On a " +
+                        "run's or goal's home, every later session under it uses it. On Strata, high, " +
+                        "xhigh and max are the same.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                effortLevels.forEach { level ->
+                    TextButton(onClick = { onPick(level) }) {
+                        Text(
+                            (if (level == current) "✓ " else "") + level.ifBlank { "Default (the server decides)" },
+                            color = if (level == current) c.accent else c.ink,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

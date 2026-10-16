@@ -1,0 +1,40 @@
+{
+  "name": "effort outside the levels",
+  "description": "An effort is one of the levels, or empty; any other value is refused.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-10-16T00:00:01.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.8-flash-next",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-10-16T00:00:02.000Z",
+      "type": "options_change",
+      "data": {
+        "key": "effort",
+        "from": "",
+        "to": "extreme",
+        "source": "client"
+      }
+    }
+  ],
+  "operation": {
+    "op": "validate"
+  },
+  "expect": {
+    "valid": false,
+    "error": "effort must be none, low, medium, high, xhigh, max or empty"
+  }
+}

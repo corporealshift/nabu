@@ -178,6 +178,7 @@ type CreateOptions struct {
 	Labels            []string                // must pass protocol.ValidLabels
 	Description       string                  // must pass protocol.ValidDescription
 	Context           string                  // "" = normal; must pass protocol.ValidContext
+	Effort            string                  // "" = unset; must pass protocol.ValidEffort
 }
 
 func (o CreateOptions) resolve(defaultModel string) protocol.Options {
@@ -205,6 +206,7 @@ func (o CreateOptions) resolve(defaultModel string) protocol.Options {
 	if out.Context == "" {
 		out.Context = protocol.ContextNormal
 	}
+	out.Effort = o.Effort
 	return out
 }
 
@@ -223,6 +225,9 @@ func (m *Manager) Create(ctx context.Context, workspacePath string, co CreateOpt
 		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
 	}
 	if err := protocol.ValidContext(co.Context); err != nil {
+		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
+	}
+	if err := protocol.ValidEffort(co.Effort); err != nil {
 		return nil, protocol.NewRPCError(protocol.CodeInvalidParams, err.Error())
 	}
 	ws, err := workspace.Resolve(workspacePath)
@@ -472,6 +477,14 @@ func (m *Manager) SetOption(ctx context.Context, id, key string, value any) (pro
 		size, ok := value.(string)
 		if !ok || size == "" || protocol.ValidContext(size) != nil {
 			return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams, "context must be normal or large")
+		}
+	case "effort":
+		// "" is a value here: it clears the effort, so the server decides.
+		from = opts.Effort
+		effort, ok := value.(string)
+		if !ok || protocol.ValidEffort(effort) != nil {
+			return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams,
+				"effort must be none, low, medium, high, xhigh, max or empty")
 		}
 	case "parent":
 		return protocol.Event{}, protocol.NewRPCError(protocol.CodeInvalidParams,

@@ -373,6 +373,11 @@ func (m model) submit() (tea.Model, tea.Cmd) {
 			m.note(contextWords(m.contextSize))
 			return m, nil
 		}
+	case actEffort:
+		if act.text == "" {
+			m.note(effortWords(m.effort))
+			return m, nil
+		}
 	case actCompact:
 		// It is a model call and the transcript does not move while it runs,
 		// so without this the client looks like it dropped the command. On a
