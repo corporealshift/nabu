@@ -59,7 +59,7 @@ func (c Client) Home(ctx context.Context, id string) (Home, error) {
 		if err != nil {
 			return Home{}, err
 		}
-		h.Brief, h.Context = st.Options.Description, st.Options.Context
+		h.Brief, h.Context, h.Effort = st.Options.Description, st.Options.Context, st.Options.Effort
 		return h, nil
 	}
 	return Home{}, fmt.Errorf("runs: session %s is not listed", id)
@@ -102,20 +102,20 @@ func (c Client) SetGoal(ctx context.Context, id, condition string) error {
 		map[string]any{"session_id": id, "condition": condition}, nil)
 }
 
-func (c Client) Create(ctx context.Context, workspace, parent string, maxTurns int, size string) (string, error) {
+func (c Client) Create(ctx context.Context, workspace, parent string, maxTurns int, set Settings) (string, error) {
 	var out struct {
 		SessionID string `json:"session_id"`
 	}
 	err := c.C.CallInto(ctx, "rho.session.create", map[string]any{
 		"workspace": workspace,
-		"options":   stepOptions(parent, size),
+		"options":   stepOptions(parent, set),
 		"budget":    map[string]any{"max_turns": maxTurns, "source": "client"},
 	}, &out)
 	return out.SessionID, err
 }
 
 // stepOptions are a step session's options.
-func stepOptions(parent, size string) map[string]any {
+func stepOptions(parent string, set Settings) map[string]any {
 	// guard:no-push: a step session commits, and the runner pushes and posts
 	// once the work is checked.
 	// unattended: nobody watches a step, so it is offered no tool that needs
@@ -124,21 +124,27 @@ func stepOptions(parent, size string) map[string]any {
 	// away; the run reflects as a whole when it ends.
 	opts := map[string]any{"permission_mode": string(protocol.PermissionAuto), "parent": parent,
 		"labels": []string{NoPushLabel, protocol.LabelUnattended, NoCuratorLabel}}
-	if size != "" {
-		opts["context"] = size
-	}
+	set.into(opts)
 	return opts
 }
 
-func (c Client) CreateHome(ctx context.Context, workspace, parent, description, size string) (string, error) {
+// into adds the settings that are set to a session's options.
+func (s Settings) into(opts map[string]any) {
+	if s.Context != "" {
+		opts["context"] = s.Context
+	}
+	if s.Effort != "" {
+		opts["effort"] = s.Effort
+	}
+}
+
+func (c Client) CreateHome(ctx context.Context, workspace, parent, description string, set Settings) (string, error) {
 	var out struct {
 		SessionID string `json:"session_id"`
 	}
 	// Never prompted, so it never runs; the label is there in case.
 	opts := map[string]any{"parent": parent, "description": description, "labels": []string{NoPushLabel, protocol.LabelUnattended}}
-	if size != "" {
-		opts["context"] = size
-	}
+	set.into(opts)
 	err := c.C.CallInto(ctx, "rho.session.create", map[string]any{
 		"workspace": workspace,
 		"options":   opts,

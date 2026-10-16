@@ -20,6 +20,15 @@ type Home struct {
 	// Context is the home's context size, which every session the runner
 	// makes under it copies (docs/specs/2026-10-08-context-size-design.md).
 	Context string
+	// Effort is the home's effort, which every session made under it copies
+	// over the runner's own (docs/specs/2026-10-16-session-effort-design.md).
+	Effort string
+}
+
+// Settings are what a session the runner makes takes from its home: "" in
+// either leaves the daemon's default.
+type Settings struct {
+	Context, Effort string
 }
 
 // Daemon is the part of the protocol the runner uses. Like the watcher, it
@@ -36,12 +45,11 @@ type Daemon interface {
 	// SetDescription sets a session's description, which starts nothing.
 	SetDescription(ctx context.Context, id, text string) error
 	SetGoal(ctx context.Context, id, condition string) error
-	// Create makes a step's session. size is its context size; "" leaves
-	// the daemon's default.
-	Create(ctx context.Context, workspace, parent string, maxTurns int, size string) (string, error)
+	// Create makes a step's session with the given settings.
+	Create(ctx context.Context, workspace, parent string, maxTurns int, set Settings) (string, error)
 	// CreateHome makes a run's home under a goal's: a session that is never
 	// prompted, with the brief as its description.
-	CreateHome(ctx context.Context, workspace, parent, description, size string) (string, error)
+	CreateHome(ctx context.Context, workspace, parent, description string, set Settings) (string, error)
 	// UpdateTasks replaces a session's task list, which is how a goal's
 	// home shows its roadmap.
 	UpdateTasks(ctx context.Context, id string, tasks []protocol.Task) error

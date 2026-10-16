@@ -464,16 +464,16 @@ func (rn *Runner) Start(ctx context.Context, d Daemon, n int) (int, error) {
 	return started, errors.Join(errs...)
 }
 
-// contextOf is a home's context size, for a session made under it to copy.
-// A home that cannot be read gives "", which the daemon takes as normal: the
-// step goes on at the usual size rather than failing over a setting.
-func (rn *Runner) contextOf(ctx context.Context, d Daemon, home string) string {
+// settingsOf is a home's context size and effort, for a session made under it
+// to copy. A home that cannot be read gives neither, which the daemon takes as
+// its defaults: the step goes on rather than failing over a setting.
+func (rn *Runner) settingsOf(ctx context.Context, d Daemon, home string) Settings {
 	h, err := d.Home(ctx, home)
 	if err != nil {
-		rn.logf("home %s: context size unknown, so normal: %v", home, err)
-		return ""
+		rn.logf("home %s: context size and effort unknown, so the defaults: %v", home, err)
+		return Settings{}
 	}
-	return h.Context
+	return Settings{Context: h.Context, Effort: h.Effort}
 }
 
 // begin starts the current step's session. The session id is saved before
@@ -494,7 +494,12 @@ func (rn *Runner) begin(ctx context.Context, d Daemon, r *Run) error {
 	case StepReflect:
 		turns = rn.Cfg.ReflectTurns
 	}
-	id, err := d.Create(ctx, r.Worktree, r.Home, turns, rn.contextOf(ctx, d, r.Home))
+	set := rn.settingsOf(ctx, d, r.Home)
+	if set.Effort == "" {
+		// The home's own effort wins, so a person can turn one run up or down.
+		set.Effort = rn.Cfg.Effort[r.Step]
+	}
+	id, err := d.Create(ctx, r.Worktree, r.Home, turns, set)
 	if err != nil {
 		return err
 	}

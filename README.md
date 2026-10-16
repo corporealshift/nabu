@@ -147,7 +147,11 @@ Then set up rho.
 **`~/.rho/runner/config.json`**:
 
 ```json
-{ "work_turns": 130, "goal_rounds": 10 }
+{
+  "work_turns": 130,
+  "goal_rounds": 10,
+  "effort": { "brief": "medium", "plan": "medium", "tasks": "medium", "verify": "medium", "reflect": "low" }
+}
 ```
 
 Why these values:
@@ -171,6 +175,12 @@ Why these values:
 - **Rounds: `goal_rounds: 10`.** When one run fails, the rest of its round is dropped and
   the goal re-plans. With 10 rounds, a goal can recover from a few failures overnight
   without stopping to wait for you.
+- **Effort: `medium` for the planning steps.** With no effort set, Strata's Qwen3.8
+  template thinks at `xhigh`. That is right for writing code, but a plan or verify
+  session on it wrote 64K to 122K tokens, mostly thinking, and took one to three hours
+  against five to ten minutes on Qwen3.6. Work, fix and ci-fix are left out of the map,
+  so they keep the server's default. A goal's or run's home with an effort of its own
+  overrides the map for every session under it.
 - **`command_timeout: 900`** gives an Android or Rust build time to finish.
 
 Runs and goals need the `claude` CLI on PATH, logged in to Claude Code. A run never
