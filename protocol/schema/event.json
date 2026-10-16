@@ -52,7 +52,8 @@
         "parent": { "$ref": "#/$defs/ulid" },
         "labels": { "$ref": "#/$defs/labels" },
         "description": { "type": "string", "maxLength": 16000 },
-        "context": { "type": "string", "enum": ["normal", "large"] }
+        "context": { "type": "string", "enum": ["normal", "large"] },
+        "effort": { "type": "string", "enum": ["", "none", "low", "medium", "high", "xhigh", "max"] }
       }
     },
     "labels": {
@@ -124,7 +125,7 @@
       "type": "object",
       "required": ["key", "from", "to", "source"],
       "properties": {
-        "key": { "type": "string", "enum": ["model", "compaction_enabled", "permission_mode", "labels", "description", "context"] },
+        "key": { "type": "string", "enum": ["model", "compaction_enabled", "permission_mode", "labels", "description", "context", "effort"] },
         "from": {},
         "to": {},
         "source": { "$ref": "#/$defs/source" }

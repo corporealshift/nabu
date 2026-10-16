@@ -118,6 +118,15 @@ func ValidateEvent(e Event) error {
 			if err := ValidContext(size); err != nil {
 				return fail(err.Error())
 			}
+		case "effort":
+			// Unlike context, "" is a value: it clears the effort.
+			var effort string
+			if err := json.Unmarshal(d.To, &effort); err != nil {
+				return fail("effort must be a string")
+			}
+			if err := ValidEffort(effort); err != nil {
+				return fail(err.Error())
+			}
 		default:
 			return fail(fmt.Sprintf("key %q invalid", d.Key))
 		}
@@ -260,6 +269,9 @@ func validateOptions(o Options) error {
 	}
 	if err := ValidContext(o.Context); err != nil {
 		return fmt.Errorf("options.context: %w", err)
+	}
+	if err := ValidEffort(o.Effort); err != nil {
+		return fmt.Errorf("options.effort: %w", err)
 	}
 	return nil
 }

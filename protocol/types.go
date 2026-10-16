@@ -91,6 +91,29 @@ type Options struct {
 	// Context is how much of the model's window the session uses before it
 	// is summarized: ContextNormal or ContextLarge. Absent means normal.
 	Context string `json:"context,omitempty"`
+	// Effort is how hard the model thinks: one of the Effort levels. Absent
+	// means unset: nothing is sent and the server decides.
+	Effort string `json:"effort,omitempty"`
+}
+
+// The effort levels (spec §3.1). The server gives each its meaning; on
+// Strata high, xhigh and max are the same.
+const (
+	EffortNone   = "none"
+	EffortLow    = "low"
+	EffortMedium = "medium"
+	EffortHigh   = "high"
+	EffortXHigh  = "xhigh"
+	EffortMax    = "max"
+)
+
+// ValidEffort reports whether an effort is allowed. Empty is, and means unset.
+func ValidEffort(e string) error {
+	switch e {
+	case "", EffortNone, EffortLow, EffortMedium, EffortHigh, EffortXHigh, EffortMax:
+		return nil
+	}
+	return fmt.Errorf("effort must be none, low, medium, high, xhigh, max or empty, got %q", e)
 }
 
 // The two context sizes (spec §3.1). What each means in tokens is the

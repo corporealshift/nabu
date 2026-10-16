@@ -59,6 +59,9 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 
 	maxTokens := replyCap(log, pcfg, m.cfg.MaxTokens)
 	req := buildRequest(log, m.cfg.SystemPrompt, modelName, m.toolsFor(pcfg, h), maxTokens)
+	// Only the session's own turns: summaries and module calls think as the
+	// server decides (docs/specs/2026-10-16-session-effort-design.md).
+	req.Effort = st.Options.Effort
 	turnID := protocol.NewULID()
 	// Each stream is watched on its own. A reply that starts repeating a
 	// passage ends the call within a few copies rather than at the cap.

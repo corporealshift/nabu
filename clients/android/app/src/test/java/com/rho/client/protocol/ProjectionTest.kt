@@ -98,6 +98,7 @@ class ProjectionTest {
             assertEquals("$name labels", it.jsonArray.map { l -> l.jsonPrimitive.content }, got.labels)
         }
         want["context"]?.let { assertEquals("$name context", it.jsonPrimitive.content, got.context) }
+        want["effort"]?.let { assertEquals("$name effort", it.jsonPrimitive.content, got.effort) }
     }
 
     private fun assertUsage(name: String, want: JsonObject, got: Usage) {

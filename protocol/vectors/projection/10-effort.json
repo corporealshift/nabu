@@ -1,0 +1,59 @@
+{
+  "name": "effort",
+  "description": "A session created at low effort, cleared, then set to medium, projects medium. The effort changes no state.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-10-16T00:00:01.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "context_window": 92000,
+        "options": {
+          "model": "qwen3.8-flash-next",
+          "compaction_enabled": true,
+          "permission_mode": "auto",
+          "effort": "low"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-10-16T00:00:02.000Z",
+      "type": "options_change",
+      "data": {
+        "key": "effort",
+        "from": "low",
+        "to": "",
+        "source": "client"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-10-16T00:00:03.000Z",
+      "type": "options_change",
+      "data": {
+        "key": "effort",
+        "from": "",
+        "to": "medium",
+        "source": "client"
+      }
+    }
+  ],
+  "operation": {
+    "op": "project"
+  },
+  "expect": {
+    "state": "idle",
+    "options": {
+      "model": "qwen3.8-flash-next",
+      "compaction_enabled": true,
+      "permission_mode": "auto",
+      "effort": "medium"
+    }
+  }
+}
