@@ -243,3 +243,35 @@ func TestOpenAINoThinkingAsksTheTemplate(t *testing.T) {
 		t.Errorf("without NoThinking: chat_template_kwargs = %v", bodies[1]["chat_template_kwargs"])
 	}
 }
+
+// An effort reaches the chat template as written; none turns thinking off;
+// NoThinking wins, so a summary never thinks when it was told not to
+// (docs/specs/2026-10-16-session-effort-design.md).
+func TestToWireEffort(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		req  Request
+		want map[string]any
+	}{
+		{"unset", Request{}, nil},
+		{"none", Request{Effort: "none"}, map[string]any{"enable_thinking": false}},
+		{"low", Request{Effort: "low"}, map[string]any{"reasoning_effort": "low"}},
+		{"medium", Request{Effort: "medium"}, map[string]any{"reasoning_effort": "medium"}},
+		{"high", Request{Effort: "high"}, map[string]any{"reasoning_effort": "high"}},
+		{"xhigh", Request{Effort: "xhigh"}, map[string]any{"reasoning_effort": "xhigh"}},
+		{"max", Request{Effort: "max"}, map[string]any{"reasoning_effort": "max"}},
+		{"no thinking wins", Request{Effort: "high", NoThinking: true}, map[string]any{"enable_thinking": false}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := toWire(tc.req).ChatTemplateKwargs
+			if len(got) != len(tc.want) {
+				t.Fatalf("chat_template_kwargs = %v, want %v", got, tc.want)
+			}
+			for k, v := range tc.want {
+				if got[k] != v {
+					t.Errorf("chat_template_kwargs = %v, want %v", got, tc.want)
+				}
+			}
+		})
+	}
+}
