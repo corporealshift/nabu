@@ -103,6 +103,10 @@ type Config struct {
 	// SummaryThinking false has summaries written without thinking. A local
 	// model can think for ten minutes over one; nil leaves it to think.
 	SummaryThinking *bool
+	// SummaryInSession asks for a summary as one more turn of the session's
+	// own request, which a server's prompt cache already holds, instead of a
+	// fresh transcript.
+	SummaryInSession bool
 }
 
 // DefaultRepeatLimit is the copies in a row that stop a reply. The reply that

@@ -73,6 +73,15 @@ provider has three settings for this:
   template. A thinking model can spend ten minutes thinking over one summary. Left
   unset, summaries think like any other turn. Every summary is asked to stay under about
   2,000 words; one written without thinking is also capped at 6,144 tokens.
+- **`summary_in_session`**: `true` asks for a summary as one more turn of the session's
+  own conversation, so a server that caches the prompt reads only what came after the
+  last turn instead of a whole transcript. If that fails (an error, an empty answer, a
+  tool call), the summary is written from a transcript as usual, with a notice. Off by
+  default: without a prompt cache, it reads more than a transcript would. The summary's
+  prompt must also start as a turn's does. Qwen's template puts the effort's sentence at
+  the top, and a summary without thinking has none, so on Strata set
+  `"effort_position": "end"` in `strata-<model>.json`, or use it only for sessions at
+  `medium`.
 
 Both stages measure the next request: the last one, plus the reply and everything
 logged since, estimated as `max_tokens` is. A turn whose tool results would carry the

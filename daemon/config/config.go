@@ -109,6 +109,11 @@ type ProviderConfig struct {
 	// writes a summary, through chat_template_kwargs, which llama-server and
 	// Strata read. Absent means the model thinks as it always does.
 	SummaryThinking *bool `json:"summary_thinking"`
+	// SummaryInSession asks for a summary as the session's next turn, so a
+	// server that caches the prompt reuses it. Off by default: where the
+	// server does not, it reads more than a transcript
+	// (docs/specs/2026-10-16-summary-in-session-design.md).
+	SummaryInSession bool `json:"summary_in_session"`
 }
 
 // defaultSummarizeAt is the daemon's own summarize threshold, the one a
