@@ -107,6 +107,19 @@ class RhoViewModel(app: Application) : AndroidViewModel(app) {
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /** The sessions being fetched right now (issue 179). */
+    private val inFlight = InFlight()
+    val syncing: StateFlow<Set<String>> = inFlight.ids
+
+    /**
+     * Whether a connection is still listing and fetching every session, which
+     * on a phone that has been away is most of what it does at first.
+     */
+    private val _catchingUp = MutableStateFlow(false)
+    val catchingUp: StateFlow<Boolean> = _catchingUp.asStateFlow()
+
+    private suspend fun sync(c: DaemonClient, id: String) = inFlight.track(id) { repo.sync(c, id) }
+
     fun watchSession(id: String) = repo.watchSession(id)
     fun watchEvents(id: String) = repo.watchEvents(id)
     fun watchPending(id: String) = repo.watchPending(id)
@@ -151,7 +164,7 @@ class RhoViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun syncNow(sessionId: String) {
         val c = client ?: return
-        viewModelScope.launch { runCatching { repo.sync(c, sessionId) } }
+        viewModelScope.launch { runCatching { sync(c, sessionId) } }
     }
 
     /** Appearance saves without disturbing the connection. */
@@ -195,6 +208,8 @@ class RhoViewModel(app: Application) : AndroidViewModel(app) {
             onConnected()
             runConnected(c)
         } finally {
+            // A newer connection's catch-up is its own to end.
+            if (client === c) _catchingUp.value = false
             // The socket outlives the coroutine unless it is closed here.
             // Cancelling stops the collection, not the connection, and a
             // reconnect that only dropped the reference left the old websocket
@@ -215,6 +230,7 @@ class RhoViewModel(app: Application) : AndroidViewModel(app) {
         // full buffer is a lost event or a permission prompt never shown.
         val pump = launch { pump(c) }
 
+        _catchingUp.value = true
         val listed = c.callOrThrow("rho.session.list").jsonObject["sessions"]
             ?.jsonArray
             ?.map { RhoJson.decodeFromJsonElement(SessionSummary.serializer(), it) }
@@ -230,8 +246,9 @@ class RhoViewModel(app: Application) : AndroidViewModel(app) {
         launch { registerForPushes(c) }
 
         for (summary in listed) {
-            runCatching { repo.sync(c, summary.sessionId) }
+            runCatching { sync(c, summary.sessionId) }
         }
+        _catchingUp.value = false
 
         // Sessions made after this point are only heard of by asking again: a
         // run makes one for every step, and they should appear as it works.
@@ -239,7 +256,7 @@ class RhoViewModel(app: Application) : AndroidViewModel(app) {
             while (true) {
                 delay(SESSION_REFRESH_MS)
                 runCatching { repo.refreshSessions(c) }.onSuccess { fresh ->
-                    for (id in fresh) runCatching { repo.sync(c, id) }
+                    for (id in fresh) runCatching { sync(c, id) }
                 }
             }
         }
@@ -672,7 +689,7 @@ class RhoViewModel(app: Application) : AndroidViewModel(app) {
             runCatching {
                 repo.restoreSession(c, sessionId)
                 repo.recordSessions(repo.listSessions(c).filter { it.sessionId == sessionId })
-                repo.sync(c, sessionId)
+                sync(c, sessionId)
             }
                 .onSuccess {
                     _error.value = null

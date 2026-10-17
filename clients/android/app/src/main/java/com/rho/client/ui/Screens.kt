@@ -159,6 +159,10 @@ fun SessionListScreen(
     sessions: List<SessionCard>,
     connection: Connection,
     error: String?,
+    /** Still listing and fetching every session, once connected. */
+    catchingUp: Boolean = false,
+    /** The sessions being fetched right now. */
+    syncing: Set<String> = emptySet(),
     onOpen: (String) -> Unit,
     onSettings: () -> Unit,
     onNewSession: () -> Unit,
@@ -202,24 +206,27 @@ fun SessionListScreen(
             }
         }
     }, topBar = {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = RhoTheme.colors.background,
-                titleContentColor = RhoTheme.colors.ink,
-            ),
-            title = { Text("Rho", fontWeight = FontWeight.SemiBold) },
-            actions = {
-                Text(
-                    connectionLabel(connection),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = RhoTheme.colors.muted,
-                    modifier = Modifier.padding(end = 12.dp),
-                )
-                TextButton(onClick = onStats) { Text("Stats") }
-                TextButton(onClick = onArchived) { Text("Archived") }
-                TextButton(onClick = onSettings) { Text("Settings") }
-            },
-        )
+        Column {
+            TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = RhoTheme.colors.background,
+                    titleContentColor = RhoTheme.colors.ink,
+                ),
+                title = { Text("Rho", fontWeight = FontWeight.SemiBold) },
+                actions = {
+                    Text(
+                        connectionLabel(connection),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = RhoTheme.colors.muted,
+                        modifier = Modifier.padding(end = 12.dp),
+                    )
+                    TextButton(onClick = onStats) { Text("Stats") }
+                    TextButton(onClick = onArchived) { Text("Archived") }
+                    TextButton(onClick = onSettings) { Text("Settings") }
+                },
+            )
+            LoadingBar(listLoading(connection, catchingUp))
+        }
     }) { padding ->
         // With sessions mirrored, a lost connection is a line above them, not a
         // screen in place of them. Swapping the whole list for an error card
@@ -249,8 +256,7 @@ fun SessionListScreen(
         if (sessions.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text(
-                    if (connection == Connection.Connected) "No sessions yet."
-                    else "Nothing mirrored yet. Connect to fetch sessions.",
+                    emptyListText(connection, catchingUp),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -327,12 +333,11 @@ fun SessionListScreen(
                                     color = if (under.working > 0) RhoTheme.colors.accent else RhoTheme.colors.muted,
                                 )
                             }
-                            if (!s.synced) {
-                                // Spec 4 obliges a client to disclose this.
+                            syncLabel(s.synced, s.id in syncing)?.let {
                                 Text(
-                                    "partially synced",
+                                    it,
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = RhoTheme.colors.danger,
+                                    color = if (s.id in syncing) RhoTheme.colors.muted else RhoTheme.colors.danger,
                                 )
                             }
                             stoppedAge(s.state, s.updatedAt, System.currentTimeMillis())?.let {
@@ -376,6 +381,8 @@ fun TranscriptScreen(
     compacting: Boolean,
     error: String?,
     onSend: (String) -> Unit,
+    /** This session is being fetched from the daemon. */
+    downloading: Boolean = false,
     onTaskDone: (String) -> Unit,
     onResume: () -> Unit,
     onInterrupt: () -> Unit,
@@ -419,7 +426,11 @@ fun TranscriptScreen(
             onDismiss = { running = false },
         )
     }
-    val lines = remember(view, synced) { withGap(view.lines, synced, view.fetched) }
+    // Nothing, not a gap, until the mirror has been read: an unread mirror is
+    // not one that is behind.
+    val lines = remember(view, synced, downloading) {
+        if (!view.loaded) emptyList() else withGap(view.lines, synced, view.fetched, downloading)
+    }
     val listState = rememberLazyListState()
 
     // Jump on opening, glide after. Animating from the top of two thousand
@@ -435,31 +446,36 @@ fun TranscriptScreen(
     Scaffold(
         containerColor = RhoTheme.colors.background,
         topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = RhoTheme.colors.background,
-                    titleContentColor = RhoTheme.colors.ink,
-                ),
-                title = { Text(title, style = MaterialTheme.typography.titleSmall) },
-                actions = {
-                    // The badge stays out: it warns before compaction, and a
-                    // warning in a menu is never seen.
-                    ContextBadge(view.contextUsed, view.options.context) { choosingContext = true }
-                    SessionMenu(
-                        // A step of a run is the runner's, not a thing to hand over.
-                        sessionMenuItems(onStatus != null, view.options.effort, view.options.parent.isBlank(), compacting),
-                    ) { item ->
-                        when (item) {
-                            MenuItem.Status -> onStatus?.invoke()
-                            MenuItem.Effort -> choosingEffort = true
-                            MenuItem.Run -> running = true
-                            MenuItem.Compact -> onCompact()
-                            MenuItem.Stats -> onStats()
+            Column {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = RhoTheme.colors.background,
+                        titleContentColor = RhoTheme.colors.ink,
+                    ),
+                    title = { Text(title, style = MaterialTheme.typography.titleSmall) },
+                    actions = {
+                        // The badge stays out: it warns before compaction, and a
+                        // warning in a menu is never seen.
+                        ContextBadge(view.contextUsed, view.options.context) { choosingContext = true }
+                        SessionMenu(
+                            // A step of a run is the runner's, not a thing to hand over.
+                            sessionMenuItems(onStatus != null, view.options.effort, view.options.parent.isBlank(), compacting),
+                        ) { item ->
+                            when (item) {
+                                MenuItem.Status -> onStatus?.invoke()
+                                MenuItem.Effort -> choosingEffort = true
+                                MenuItem.Run -> running = true
+                                MenuItem.Compact -> onCompact()
+                                MenuItem.Stats -> onStats()
+                            }
                         }
-                    }
-                },
-                navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
-            )
+                    },
+                    navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+                )
+                // Until the mirror is read, and while the daemon is asked: an
+                // empty page otherwise looks like an empty session.
+                LoadingBar(downloading || !view.loaded)
+            }
         },
         bottomBar = {
             Composer(
@@ -737,18 +753,13 @@ private fun LineView(line: Line) {
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(Modifier.padding(12.dp)) {
+                val (heading, detail) = gapText(line.neverFetched, line.downloading)
                 Text(
-                    if (line.neverFetched) "Not downloaded" else "Earlier events not downloaded",
+                    heading,
                     style = MaterialTheme.typography.titleSmall,
-                    color = RhoTheme.colors.danger,
+                    color = if (line.downloading) RhoTheme.colors.ink else RhoTheme.colors.danger,
                 )
-                Text(
-                    if (line.neverFetched)
-                        "This session exists on the daemon but nothing has been fetched yet."
-                    else "This device is behind. What follows is only the most recent part.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = RhoTheme.colors.muted,
-                )
+                Text(detail, style = MaterialTheme.typography.bodySmall, color = RhoTheme.colors.muted)
             }
         }
 

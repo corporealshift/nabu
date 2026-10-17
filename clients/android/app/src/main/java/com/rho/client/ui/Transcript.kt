@@ -58,7 +58,7 @@ sealed interface Line {
      * Events this device has not fetched. Spec 15 wants the gap visible at the
      * gap, not as a footnote elsewhere.
      */
-    data class Gap(override val key: String, val neverFetched: Boolean) : Line
+    data class Gap(override val key: String, val neverFetched: Boolean, val downloading: Boolean = false) : Line
 }
 
 /** How much of a tool result is shown before it has to be expanded. */

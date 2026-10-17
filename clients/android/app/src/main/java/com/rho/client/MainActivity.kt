@@ -147,6 +147,8 @@ private fun Screens(vm: RhoViewModel, systemDark: Boolean, opening: String?, onO
     val error by vm.error.collectAsState()
     val expanded by vm.expanded.collectAsState()
     val compacting by vm.compacting.collectAsState()
+    val catchingUp by vm.catchingUp.collectAsState()
+    val syncing by vm.syncing.collectAsState()
 
     // With nowhere to connect to, the first screen is the one that fixes that.
     var screen: Screen by remember { mutableStateOf(Screen.Sessions) }
@@ -274,6 +276,8 @@ private fun Screens(vm: RhoViewModel, systemDark: Boolean, opening: String?, onO
             sessions = sessions,
             connection = connection,
             error = error,
+            catchingUp = catchingUp,
+            syncing = syncing,
             onOpen = { screen = Screen.Transcript(it) },
             onSettings = { screen = Screen.Settings },
             onNewSession = { vm.startBrowsing(); screen = Screen.Browse },
@@ -399,6 +403,7 @@ private fun TranscriptBody(
         val pending by pendingFlow.collectAsState(initial = emptyList<OutboxRow>())
         val blocked by blockedFlow.collectAsState(initial = emptyList<OutboxRow>())
         val tapped by vm.tapped.collectAsState()
+        val syncing by vm.syncing.collectAsState()
         val tasks = remember(view.tasks, tapped) {
             overlay(view.tasks, tapped[s.id].orEmpty())
         }
@@ -417,6 +422,7 @@ private fun TranscriptBody(
             tasks = tasks,
             compacting = compacting,
             error = error,
+            downloading = s.id in syncing,
             // /run is a command, as in the terminal client, not a prompt.
             onSend = { text ->
                 val brief = parseRun(text)

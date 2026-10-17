@@ -17,6 +17,8 @@ data class TranscriptView(
     val contextUsed: Float? = null,
     /** Whether any event has been mirrored at all. */
     val fetched: Boolean = false,
+    /** Whether the mirror has been read yet: until then, empty says nothing (issue 179). */
+    val loaded: Boolean = false,
     /** Its options: the parent and labels that place it in a run. */
     val options: com.rho.client.protocol.Options = com.rho.client.protocol.Options(),
     /** The runner's status on a run's or a goal's home, or null. */
@@ -79,6 +81,7 @@ class TranscriptFeed {
         tasks = state.tasks,
         contextUsed = contextFraction(window, lastInput),
         fetched = lastOrdinal > 0,
+        loaded = true,
         options = state.options,
         status = state.status,
         turns = state.turns,
@@ -90,5 +93,5 @@ class TranscriptFeed {
  * The lines with the gap marker in front when the mirror is behind. Spec 15
  * wants the gap visible where it is, not as a footnote elsewhere.
  */
-fun withGap(lines: List<Line>, synced: Boolean, fetched: Boolean): List<Line> =
-    if (synced) lines else listOf(Line.Gap(key = "gap-top", neverFetched = !fetched)) + lines
+fun withGap(lines: List<Line>, synced: Boolean, fetched: Boolean, downloading: Boolean = false): List<Line> =
+    if (synced) lines else listOf(Line.Gap(key = "gap-top", neverFetched = !fetched, downloading = downloading)) + lines
