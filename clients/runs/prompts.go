@@ -20,6 +20,14 @@ func planningOnly(r Run, name string) string {
 	return fmt.Sprintf("\n- Write only %s. Change no other file: the work itself belongs to later steps, and the runner throws away a session that changes anything else.", r.File(name))
 }
 
+// draftInFile is told to the steps that think hardest before they write. A
+// plan session drafted its whole plan in thinking, grepped, and drafted it
+// again, four times over: thinking does not reach the next request
+// (docs/specs/2026-10-17-plan-in-the-file-design.md).
+func draftInFile(path string) string {
+	return fmt.Sprintf("Work it out in %s, not in your thinking. Write a first draft as soon as you know enough to, then check what you are unsure of and improve the draft with edits. Thinking can be dropped between tool calls, so whatever you work out only there you may have to work out again.", path)
+}
+
 // rules go at the end of every session's prompt. The runner enforces the
 // first one; the others are what an unattended session needs to be told.
 func rules(r Run) string {
@@ -71,8 +79,10 @@ The decisions section has one entry for each behavior the brief leaves open that
 
 %s
 
+%s
+
 Plan exactly what the brief asks for, and nothing more. Commit it with the message "run: plan".
-%s%s%s`, r.File(BriefFile), r.File(PlanFile), DecisionsHeading, expectation,
+%s%s%s`, r.File(BriefFile), r.File(PlanFile), DecisionsHeading, expectation, draftInFile(r.File(PlanFile)),
 		replanned(r, fmt.Sprintf("Work already committed on this branch stays: see it with `git log origin/%s..HEAD`, and plan only what remains. Rewrite %s; do not keep the old plan.", r.Base, r.File(PlanFile))),
 		rules(r), planningOnly(r, PlanFile))
 }
@@ -105,9 +115,12 @@ Write each task as a checkbox line, with indented lines under it saying what it 
 - [ ] Add the cache type
   A read-through cache in reader/cache.go with get and put. Tests: CacheTest.getReturnsWhatPutStored, CacheTest.getMissesAnUnknownKey.
 
+%[8]s
+
 Commit it with the message "run: tasks".
 %[7]s%[5]s%[6]s`, r.File(BriefFile), r.File(PlanFile), r.File(TasksFile), r.File(VerifyFile), rules(r), planningOnly(r, TasksFile),
-		replanned(r, fmt.Sprintf("Work already committed on this branch stays: see it with `git log origin/%s..HEAD`. Replace %s with tasks for only the work that remains, all unticked.", r.Base, r.File(TasksFile))))
+		replanned(r, fmt.Sprintf("Work already committed on this branch stays: see it with `git log origin/%s..HEAD`. Replace %s with tasks for only the work that remains, all unticked.", r.Base, r.File(TasksFile))),
+		draftInFile(r.File(TasksFile)))
 }
 
 // VerifyPrompt asks for verify.sh. It is the one session allowed to write it.
@@ -129,6 +142,8 @@ Check behavior, never the text of the code. Do not grep source files for functio
 
 Use "set -euo pipefail". It must fail now, before the work is done, unless the brief is already met: a check that passes on untouched code proves nothing. The named tests, which do not exist yet, are what make it fail.
 
+%[7]s
+
 This script is the definition of done for the whole run. Once it is committed, only the runner may change it. Commit it with the message "run: verify".
 %[6]s
 ## Rules for this session
@@ -139,7 +154,8 @@ This script is the definition of done for the whole run. Once it is committed, o
 - Nobody is watching, so there is no one to ask. If you are stuck on something, look it up first: web.search finds documentation and answers, and web.fetch reads a page. If you have tried that and still cannot settle it, ask Claude with claude.ask, saying what you tried and what you are choosing between.
 - Commit your work before you finish.
 `, r.File(BriefFile), r.File(PlanFile), r.File(VerifyFile), DecisionsHeading, expectation,
-		replanned(r, fmt.Sprintf("Name no test that needs what it says cannot be done. If %s already exists, write it again from the new plan.", r.File(VerifyFile))))
+		replanned(r, fmt.Sprintf("Name no test that needs what it says cannot be done. If %s already exists, write it again from the new plan.", r.File(VerifyFile))),
+		draftInFile(r.File(VerifyFile)))
 }
 
 // WorkPrompt asks for one task, and gives the goal it is judged against.

@@ -47,6 +47,21 @@ func TestSessionPrompts(t *testing.T) {
 			}
 		})
 	}
+	// The steps that plan draft in their file, not their thinking
+	// (docs/specs/2026-10-17-plan-in-the-file-design.md).
+	for name, p := range map[string][2]string{
+		"plan":   {PlanPrompt(r), r.File(PlanFile)},
+		"tasks":  {TasksPrompt(r), r.File(TasksFile)},
+		"verify": {VerifyPrompt(r), verify},
+	} {
+		if !strings.Contains(p[0], "Work it out in "+p[1]+", not in your thinking. Write a first draft as soon as you know enough to") {
+			t.Errorf("%s is not told to draft in %s", name, p[1])
+		}
+	}
+	if strings.Contains(BriefPrompt(r, "x"), "not in your thinking") || strings.Contains(work, "not in your thinking") {
+		t.Error("only the planning steps are told to draft in their file")
+	}
+
 	// The check is written before the tasks, from the brief and the plan.
 	// One named test per decision made the check ask for tests nobody planned
 	// (docs/specs/2026-10-09-verify-before-tasks-design.md).
