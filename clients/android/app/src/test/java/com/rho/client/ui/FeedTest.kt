@@ -78,6 +78,6 @@ class FeedTest {
         feed.reset()
 
         assertEquals(0L, feed.lastOrdinal)
-        assertEquals(TranscriptView(), feed.view())
+        assertEquals(TranscriptView(loaded = true), feed.view())
     }
 }
