@@ -730,7 +730,7 @@ func TestNextRequestTokens(t *testing.T) {
 			65230 + (len("claude.ask")+len(`{"prompt":""}`)+6000)/charsPerToken + requestMargin},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := nextRequestTokens(tc.log); got != tc.want {
+			if got := nextRequestTokens(tc.log, false); got != tc.want {
 				t.Errorf("got %d, want %d", got, tc.want)
 			}
 		})

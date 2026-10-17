@@ -74,11 +74,11 @@ const (
 // nextRequestTokens estimates the next request's size: the last request's,
 // plus the last reply and everything logged since, which the next request
 // carries as well. The reply counts as its text and tool calls, never its
-// thinking: a request carries no thinking back, and a reply that was all
-// thinking can be most of its output tokens. After a summary the next request
-// is far smaller than the last, and nothing in the log says how much, so the
-// estimate is 0: unknown, and small.
-func nextRequestTokens(log []protocol.Event) int {
+// thinking unless keepThinking: otherwise a request carries no thinking back,
+// and a reply that was all thinking can be most of its output tokens. After a
+// summary the next request is far smaller than the last, and nothing in the
+// log says how much, so the estimate is 0: unknown, and small.
+func nextRequestTokens(log []protocol.Event, keepThinking bool) int {
 	last := -1
 	input, output, reply := 0, 0, 0
 	for i := len(log) - 1; i >= 0; i-- {
@@ -93,6 +93,14 @@ func nextRequestTokens(log []protocol.Event) int {
 	}
 	if last < 0 {
 		return 0
+	}
+	// The reply's thinking is logged just before it, with any notice about it.
+	for i := last - 1; keepThinking && i >= 0; i-- {
+		if log[i].Type == protocol.EventThinking {
+			reply += len(protocol.MustData[protocol.ThinkingData](log[i]).Content)
+		} else if log[i].Type != protocol.EventNotice {
+			break
+		}
 	}
 	chars := 0
 	for _, e := range log[last+1:] {
@@ -162,7 +170,7 @@ func (m *Manager) maybeCompact(ctx context.Context, h *sessionHandle, pcfg provi
 		_, summarizeAt := thresholds(pcfg, m.cfg.Compaction)
 		// Nothing compacts, so the limit is the model's real window: a normal
 		// window only says when to compact.
-		used := float64(nextRequestTokens(log)) / float64(pcfg.ContextWindow)
+		used := float64(nextRequestTokens(log, pcfg.KeepThinking)) / float64(pcfg.ContextWindow)
 		if used >= summarizeAt {
 			h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "error",
 				Message: fmt.Sprintf("context limit reached (%.0f%% of %d tokens) and compaction is disabled for this session",
@@ -171,7 +179,7 @@ func (m *Manager) maybeCompact(ctx context.Context, h *sessionHandle, pcfg provi
 		}
 		return nil
 	}
-	switch stageFor(nextRequestTokens(log), pcfg, m.cfg.Compaction, st.Options.Context) {
+	switch stageFor(nextRequestTokens(log, pcfg.KeepThinking), pcfg, m.cfg.Compaction, st.Options.Context) {
 	case protocol.CompactionSummarize:
 		return m.summarize(ctx, h)
 	case protocol.CompactionClearResults:

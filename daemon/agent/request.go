@@ -12,8 +12,9 @@ import (
 // summarize) the summary and Current state block. Message and tool events
 // follow, with tool calls folded into their assistant message. A suffix block
 // is a user message where it was logged, joined with any suffix block next to
-// it; outstanding vetoes are one trailing user message.
-func buildRequest(log []protocol.Event, systemPrompt, model string, tools []provider.ToolSpec, maxTokens int) provider.Request {
+// it; outstanding vetoes are one trailing user message. With keepThinking,
+// an assistant message carries the thinking logged just before it.
+func buildRequest(log []protocol.Event, systemPrompt, model string, tools []provider.ToolSpec, maxTokens int, keepThinking bool) provider.Request {
 	byID := make(map[string]protocol.Event, len(log))
 	for _, e := range log {
 		byID[e.ID] = e
@@ -28,6 +29,7 @@ func buildRequest(log []protocol.Event, systemPrompt, model string, tools []prov
 	var msgs []provider.Message
 	var pending *provider.Message // assistant message collecting tool calls
 	var suffix []string           // adjacent suffix blocks, one user message
+	var thought []string          // thinking for the next message, if it is the assistant's
 	flush := func() {
 		if pending != nil {
 			msgs = append(msgs, *pending)
@@ -46,11 +48,16 @@ func buildRequest(log []protocol.Event, systemPrompt, model string, tools []prov
 			sys.WriteString("\n\n## Earlier conversation (summarized)\n" + s.Text)
 		case protocol.SegState:
 			sys.WriteString("\n\n" + s.Text)
+		case protocol.SegThinking:
+			if keepThinking {
+				thought = append(thought, protocol.MustData[protocol.ThinkingData](byID[s.ID]).Content)
+			}
 		case protocol.SegMessage:
 			flush()
 			d := protocol.MustData[protocol.MessageData](byID[s.ID])
 			m := provider.Message{Role: d.Role, Content: d.Content}
 			if d.Role == "assistant" {
+				m.Reasoning = strings.Join(thought, "\n\n")
 				if d.Interrupted && m.Content == "" {
 					m.Content = "(interrupted)"
 				}
@@ -58,6 +65,9 @@ func buildRequest(log []protocol.Event, systemPrompt, model string, tools []prov
 			} else {
 				msgs = append(msgs, m)
 			}
+			// Thinking is the next message's only; before a person's, it is
+			// from a turn that never logged its reply.
+			thought = nil
 		case protocol.SegToolCall:
 			d := protocol.MustData[protocol.ToolCallData](byID[s.ID])
 			if pending == nil {

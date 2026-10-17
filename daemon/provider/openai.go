@@ -120,6 +120,9 @@ type wireMessage struct {
 	Content    string         `json:"content"`
 	ToolCalls  []wireToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string         `json:"tool_call_id,omitempty"`
+	// ReasoningContent is how llama-server and Strata take an assistant turn's
+	// thinking back; a Qwen template renders it in the turn's think block.
+	ReasoningContent string `json:"reasoning_content,omitempty"`
 }
 
 type wireTool struct {
@@ -189,7 +192,7 @@ func toWire(req Request) wireRequest {
 		w.ChatTemplateKwargs = map[string]any{"reasoning_effort": req.Effort}
 	}
 	for _, m := range req.Messages {
-		wm := wireMessage{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID}
+		wm := wireMessage{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID, ReasoningContent: m.Reasoning}
 		for _, tc := range m.ToolCalls {
 			var wtc wireToolCall
 			wtc.ID, wtc.Type = tc.ID, "function"

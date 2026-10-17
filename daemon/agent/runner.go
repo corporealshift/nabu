@@ -58,7 +58,7 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 	log = h.s.Events()
 
 	maxTokens := replyCap(log, pcfg, m.cfg.MaxTokens)
-	req := buildRequest(log, m.cfg.SystemPrompt, modelName, m.toolsFor(pcfg, h), maxTokens)
+	req := buildRequest(log, m.cfg.SystemPrompt, modelName, m.toolsFor(pcfg, h), maxTokens, pcfg.KeepThinking)
 	// Only the session's own turns: summaries and module calls think as the
 	// server decides (docs/specs/2026-10-16-session-effort-design.md).
 	req.Effort = st.Options.Effort
@@ -69,8 +69,9 @@ func (m *Manager) turn(ctx context.Context, h *sessionHandle) (bool, error) {
 	// Thinking that repeats is only trimmed from the log. Stopping it ended
 	// two turns, and blocked the session each time, a thousand tokens into a
 	// loop the server's own reasoning budget would have closed with "let's
-	// answer now". Thinking never goes back to the model, so the loop costs
-	// time, and the reply cap bounds that where a server sets no budget.
+	// answer now". Thinking goes back to the model, if at all, as logged, so
+	// the loop costs time, and the reply cap bounds that where a server sets
+	// no budget.
 	callCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	reply, thought := newRepeatWatch(pcfg.RepeatLimit), newRepeatWatch(pcfg.RepeatLimit)
@@ -314,7 +315,7 @@ func replyCap(log []protocol.Event, pcfg provider.Config, override int) int {
 	if limit <= 0 || pcfg.ContextWindow <= 0 {
 		return limit
 	}
-	if room := pcfg.ContextWindow - nextRequestTokens(log); room < limit {
+	if room := pcfg.ContextWindow - nextRequestTokens(log, pcfg.KeepThinking); room < limit {
 		limit = max(room, minReplyCap)
 	}
 	return limit

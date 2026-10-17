@@ -1,6 +1,6 @@
 {
-  "name": "thinking is never sent to the model",
-  "description": "A thinking event is for the reader. It sits between the prompt and the message it produced, and neither appears in the request nor disturbs the order of what does.",
+  "name": "thinking is a segment",
+  "description": "A thinking event is listed where it was logged, between the prompt and the message it produced. The daemon sends it as that message's reasoning only to a provider that keeps thinking.",
   "input": [
     {
       "id": "01JEVENT000000000000000001",
@@ -61,6 +61,10 @@
       {
         "kind": "message",
         "id": "01JEVENT000000000000000002"
+      },
+      {
+        "kind": "thinking",
+        "id": "01JEVENT000000000000000003"
       },
       {
         "kind": "message",
