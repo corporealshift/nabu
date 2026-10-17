@@ -42,6 +42,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -439,28 +442,20 @@ fun TranscriptScreen(
                 ),
                 title = { Text(title, style = MaterialTheme.typography.titleSmall) },
                 actions = {
-                    onStatus?.let {
-                        TextButton(onClick = it) {
-                            Text("Status", style = MaterialTheme.typography.labelMedium, color = RhoTheme.colors.accent)
-                        }
-                    }
+                    // The badge stays out: it warns before compaction, and a
+                    // warning in a menu is never seen.
                     ContextBadge(view.contextUsed, view.options.context) { choosingContext = true }
-                    TextButton(onClick = { choosingEffort = true }) {
-                        Text(
-                            effortChipText(view.options.effort),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = RhoTheme.colors.muted,
-                        )
-                    }
-                    // A step of a run is the runner's, not a thing to hand over.
-                    if (view.options.parent.isBlank()) {
-                        TextButton(onClick = { running = true }) {
-                            Text("Run", style = MaterialTheme.typography.labelMedium, color = RhoTheme.colors.accent)
+                    SessionMenu(
+                        // A step of a run is the runner's, not a thing to hand over.
+                        sessionMenuItems(onStatus != null, view.options.effort, view.options.parent.isBlank(), compacting),
+                    ) { item ->
+                        when (item) {
+                            MenuItem.Status -> onStatus?.invoke()
+                            MenuItem.Effort -> choosingEffort = true
+                            MenuItem.Run -> running = true
+                            MenuItem.Compact -> onCompact()
+                            MenuItem.Stats -> onStats()
                         }
-                    }
-                    CompactButton(compacting, onCompact)
-                    TextButton(onClick = onStats) {
-                        Text("Stats", style = MaterialTheme.typography.labelMedium, color = RhoTheme.colors.accent)
                     }
                 },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
@@ -510,24 +505,49 @@ fun TranscriptScreen(
     }
 }
 
-/**
- * Asks the daemon to summarise the history now.
- *
- * It does not grey itself out while the session is running. The daemon owns
- * that rule and states it plainly when it refuses; a second copy on the phone
- * would be one more thing to keep in step, and a disabled control explains
- * nothing.
- */
+/** The session's actions behind one icon: with effort among them, the title had no room. */
 @Composable
-private fun CompactButton(compacting: Boolean, onCompact: () -> Unit) {
-    TextButton(onClick = onCompact, enabled = !compacting) {
-        Text(
-            if (compacting) "Compacting…" else "Compact",
-            style = MaterialTheme.typography.labelMedium,
-            color = if (compacting) RhoTheme.colors.muted else RhoTheme.colors.accent,
-        )
+private fun SessionMenu(items: List<MenuEntry>, onPick: (MenuItem) -> Unit) {
+    val c = RhoTheme.colors
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = c.ink)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = c.surface) {
+            items.forEach { entry ->
+                DropdownMenuItem(
+                    text = { Text(entry.label, color = if (entry.enabled) c.ink else c.muted) },
+                    enabled = entry.enabled,
+                    onClick = { open = false; onPick(entry.item) },
+                )
+            }
+        }
     }
 }
+
+/** What the session menu can do. */
+enum class MenuItem { Status, Effort, Run, Compact, Stats }
+
+/** One line of the session menu: its label says the current setting where there is one. */
+data class MenuEntry(val item: MenuItem, val label: String, val enabled: Boolean = true)
+
+/**
+ * The session menu, in order. Status only where the screen has one, Run only
+ * for a session of its own, and Compact greyed while a summary is written.
+ *
+ * Compact is not greyed while the session is running. The daemon owns that
+ * rule and states it plainly when it refuses; a second copy on the phone would
+ * be one more thing to keep in step, and a disabled control explains nothing.
+ */
+fun sessionMenuItems(hasStatus: Boolean, effort: String, canRun: Boolean, compacting: Boolean): List<MenuEntry> =
+    buildList {
+        if (hasStatus) add(MenuEntry(MenuItem.Status, "Status"))
+        add(MenuEntry(MenuItem.Effort, effortChipText(effort).replaceFirstChar { it.uppercase() }))
+        if (canRun) add(MenuEntry(MenuItem.Run, "Run"))
+        add(MenuEntry(MenuItem.Compact, if (compacting) "Compacting…" else "Compact", enabled = !compacting))
+        add(MenuEntry(MenuItem.Stats, "Stats"))
+    }
 
 /** What the daemon said when it turned something down. */
 @Composable
