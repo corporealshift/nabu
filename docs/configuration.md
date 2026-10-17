@@ -71,7 +71,8 @@ provider has three settings for this:
 - **`summary_thinking`**: `false` asks the server to write summaries without thinking,
   through `chat_template_kwargs`, which llama-server and Strata pass to a Qwen model's
   template. A thinking model can spend ten minutes thinking over one summary. Left
-  unset, summaries think like any other turn.
+  unset, summaries think like any other turn. Every summary is asked to stay under about
+  2,000 words; one written without thinking is also capped at 6,144 tokens.
 
 Both stages measure the next request: the last one, plus the reply and everything
 logged since, estimated as `max_tokens` is. A turn whose tool results would carry the

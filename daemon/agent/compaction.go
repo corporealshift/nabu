@@ -29,6 +29,8 @@ Working notes among the facts to preserve are the agent's own, written at the ti
 
 Drop pleasantries, repeated tool output, and narration. Be specific: name files, commands and errors. Do not invent anything that is not in the conversation.
 
+Keep the summary under about 2,000 words: the agent re-reads it with every request. Facts you are told to preserve verbatim are kept whole, even past that.
+
 The conversation is a record to summarise, not one you are taking part in. Do not continue it, answer it, or call tools.`
 
 // summarizeClosing follows the transcript. A long transcript buries the system
@@ -36,6 +38,12 @@ The conversation is a record to summarise, not one you are taking part in. Do no
 // carries on with the work instead of describing it: the summary in issue 87
 // was the agent's next edit, and it replaced 1,178 events of history.
 const summarizeClosing = `That is the whole conversation. Write the summary now, following the instructions you were given. Output only the summary.`
+
+// summaryCap bounds a summary written without thinking. The prompt asks for
+// 2,000 words, 3,000 to 4,000 Qwen tokens of paths and identifiers; uncapped,
+// summaries ran to 16,000 tokens and 10 minutes each
+// (docs/specs/2026-10-16-summary-length-design.md).
+const summaryCap = 6144
 
 // lastInputTokens returns the most recent assistant turn's input token count,
 // the best available estimate of the current request size.
@@ -312,14 +320,19 @@ func (m *Manager) summarizeLocked(ctx context.Context, h *sessionHandle) error {
 	if err != nil {
 		return err
 	}
-	resp, err := p.Complete(ctx, provider.Request{
+	req := provider.Request{
 		Model: modelName,
 		Messages: []provider.Message{
 			{Role: "system", Content: sys},
 			{Role: "user", Content: transcript},
 		},
 		NoThinking: pcfg.SummaryThinking != nil && !*pcfg.SummaryThinking,
-	}, nil, nil)
+	}
+	if req.NoThinking {
+		// Thinking counts against the cap, so only a summary without it gets one.
+		req.MaxTokens = summaryCap
+	}
+	resp, err := p.Complete(ctx, req, nil, nil)
 	if err != nil && ctx.Err() != nil {
 		// Asked to stop, not failed: leave the history exactly as it was.
 		h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "warn",
@@ -343,6 +356,15 @@ func (m *Manager) summarizeLocked(ctx context.Context, h *sessionHandle) error {
 	if _, err := h.s.Append(protocol.EventCompaction, protocol.CompactionData{
 		Mode: protocol.CompactionSummarize, RangeStart: rng.Start, RangeEnd: rng.End, Summary: summary}); err != nil {
 		return err
+	}
+	if resp.FinishReason == "length" {
+		// Kept: clearing results instead would leave the whole range in the request.
+		limit := req.MaxTokens
+		if limit == 0 {
+			limit = pcfg.MaxTokens
+		}
+		h.s.Append(protocol.EventNotice, protocol.NoticeData{Source: "daemon", Level: "warn",
+			Message: fmt.Sprintf("the summary reached its %d-token cap and was cut off", limit)})
 	}
 	m.appendContexts(h, m.deps.Modules.AfterCompaction(ctx, h))
 	return nil
