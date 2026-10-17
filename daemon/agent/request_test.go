@@ -47,7 +47,7 @@ func TestBuildRequestFoldsToolCallsAndContexts(t *testing.T) {
 		protocol.EventContext, protocol.ContextData{Source: "module:memory", Slot: "suffix", Content: "maybe relevant: foo"},
 		protocol.EventStopVeto, protocol.StopVetoData{Module: "verify", Reason: "tree dirty"},
 	)
-	req := buildRequest(log, "SYS", "qwen", []provider.ToolSpec{{Name: "bash"}}, 0)
+	req := buildRequest(log, "SYS", "qwen", []provider.ToolSpec{{Name: "bash"}}, 0, false)
 	if req.Model != "qwen" || len(req.Tools) != 1 {
 		t.Fatalf("model/tools: %+v", req)
 	}
@@ -89,7 +89,7 @@ func TestEachRequestStartsWithThePreviousOne(t *testing.T) {
 		protocol.EventContext, protocol.ContextData{Source: "module:notes", Slot: "suffix", Content: "## Working notes\nplan"},
 		protocol.EventContext, protocol.ContextData{Source: "module:watch", Slot: "suffix", Content: "changed: a.go"},
 	}
-	before := buildRequest(mklog(t, items...), "SYS", "qwen", nil, 0)
+	before := buildRequest(mklog(t, items...), "SYS", "qwen", nil, 0, false)
 
 	items = append(items,
 		protocol.EventMessage, protocol.MessageData{Role: "assistant", Content: ""},
@@ -97,7 +97,7 @@ func TestEachRequestStartsWithThePreviousOne(t *testing.T) {
 		protocol.EventToolResult, protocol.ToolResultData{CallID: "c1", Tool: "bash", Content: "a.go", Status: "ok"},
 		protocol.EventContext, protocol.ContextData{Source: "module:notes", Slot: "suffix", Content: "## Working notes\nplan, revised"},
 	)
-	after := buildRequest(mklog(t, items...), "SYS", "qwen", nil, 0)
+	after := buildRequest(mklog(t, items...), "SYS", "qwen", nil, 0, false)
 
 	if len(after.Messages) <= len(before.Messages) {
 		t.Fatalf("the later request is not longer: %d then %d messages", len(before.Messages), len(after.Messages))
@@ -132,7 +132,7 @@ func TestBuildRequestAfterSummarize(t *testing.T) {
 		RangeStart: log[1].ID, RangeEnd: log[4].ID, Summary: "THE SUMMARY"}
 	log[5].Data, _ = json.Marshal(cd)
 
-	req := buildRequest(log, "SYS", "m", nil, 0)
+	req := buildRequest(log, "SYS", "m", nil, 0, false)
 	sys := req.Messages[0].Content
 	if strings.Contains(sys, "OLD PREFIX") || !strings.Contains(sys, "NEW PREFIX") {
 		t.Fatalf("prefix must be the post-compaction one: %q", sys)

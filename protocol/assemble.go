@@ -10,6 +10,7 @@ const (
 	SegSummary           SegmentKind = "summary"
 	SegState             SegmentKind = "state"
 	SegMessage           SegmentKind = "message"
+	SegThinking          SegmentKind = "thinking"
 	SegToolCall          SegmentKind = "tool_call"
 	SegToolResult        SegmentKind = "tool_result"
 	SegToolResultCleared SegmentKind = "tool_result_cleared"
@@ -96,6 +97,10 @@ func Assemble(log []Event) []Segment {
 			}
 		case EventMessage:
 			out = append(out, Segment{Kind: SegMessage, ID: e.ID})
+		case EventThinking:
+			// Listed in place; the daemon sends it only to a provider that
+			// keeps thinking (docs/specs/2026-10-17-thinking-goes-back-design.md).
+			out = append(out, Segment{Kind: SegThinking, ID: e.ID})
 		case EventToolCall:
 			out = append(out, Segment{Kind: SegToolCall, ID: e.ID})
 		case EventToolResult:

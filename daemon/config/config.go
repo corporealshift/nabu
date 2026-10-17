@@ -109,6 +109,11 @@ type ProviderConfig struct {
 	// writes a summary, through chat_template_kwargs, which llama-server and
 	// Strata read. Absent means the model thinks as it always does.
 	SummaryThinking *bool `json:"summary_thinking"`
+	// KeepThinking sends each assistant turn back with its thinking, as
+	// reasoning_content, which llama-server and Strata pass to the template.
+	// Off by default: not every server takes it, and requests grow
+	// (docs/specs/2026-10-17-thinking-goes-back-design.md).
+	KeepThinking bool `json:"keep_thinking"`
 }
 
 // defaultSummarizeAt is the daemon's own summarize threshold, the one a

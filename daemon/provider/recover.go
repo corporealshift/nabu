@@ -21,8 +21,8 @@ import (
 // out turns a stalled session into one that carries on.
 //
 // Deliberately only from the reasoning stream, never from the answer. Reasoning
-// is never sent back to the model and never shown as the reply, so text that
-// looks like a call almost certainly is one. An answer is different: a model
+// is never shown as the reply, so text that looks like a call almost certainly
+// is one. An answer is different: a model
 // explaining tool syntax to a reader would have its explanation executed.
 var (
 	callBlock = regexp.MustCompile(`(?s)<tool_call>(.*?)</tool_call>`)

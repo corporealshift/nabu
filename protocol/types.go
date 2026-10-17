@@ -377,7 +377,8 @@ type BudgetData struct {
 }
 
 // ThinkingData is the model's reasoning for the turn that follows it. It is
-// shown to the reader and never sent back to the model (spec 6.1).
+// shown to the reader, and sent back with that turn only to a provider that
+// keeps thinking (spec §6).
 type ThinkingData struct {
 	Content string `json:"content"`
 	Source  string `json:"source"`

@@ -1,0 +1,140 @@
+{
+  "name": "thinking before a reply of tool calls",
+  "description": "Each turn's thinking is listed before that turn's assistant message, including a turn whose reply is only tool calls, so a provider that keeps thinking gets it with every turn.",
+  "input": [
+    {
+      "id": "01JEVENT000000000000000001",
+      "parent_id": null,
+      "timestamp": "2026-09-16T00:00:01.000Z",
+      "type": "session",
+      "data": {
+        "workspace": "C:/Users/kyle/proj",
+        "workspace_key": "proj-3f9a1c",
+        "options": {
+          "model": "qwen3.6-35b-a3b",
+          "compaction_enabled": true,
+          "permission_mode": "ask"
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000002",
+      "parent_id": "01JEVENT000000000000000001",
+      "timestamp": "2026-09-10T00:26:42.000Z",
+      "type": "message",
+      "data": {
+        "role": "user",
+        "content": "Which file defines the cursor?"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000003",
+      "parent_id": "01JEVENT000000000000000002",
+      "timestamp": "2026-09-10T00:26:43.000Z",
+      "type": "thinking",
+      "data": {
+        "content": "I should search for the cursor type.",
+        "source": "model"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000004",
+      "parent_id": "01JEVENT000000000000000003",
+      "timestamp": "2026-09-10T00:26:44.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "",
+        "usage": {
+          "input_tokens": 40,
+          "output_tokens": 20
+        }
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000005",
+      "parent_id": "01JEVENT000000000000000004",
+      "timestamp": "2026-09-10T00:26:45.000Z",
+      "type": "tool_call",
+      "data": {
+        "call_id": "c1",
+        "tool": "grep",
+        "arguments": {
+          "pattern": "type Cursor"
+        },
+        "source": "model"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000006",
+      "parent_id": "01JEVENT000000000000000005",
+      "timestamp": "2026-09-10T00:26:46.000Z",
+      "type": "tool_result",
+      "data": {
+        "call_id": "c1",
+        "tool": "grep",
+        "content": "protocol/cursor.go:12:type Cursor struct",
+        "status": "ok"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000007",
+      "parent_id": "01JEVENT000000000000000006",
+      "timestamp": "2026-09-10T00:26:47.000Z",
+      "type": "thinking",
+      "data": {
+        "content": "It is in protocol/cursor.go.",
+        "source": "model"
+      }
+    },
+    {
+      "id": "01JEVENT000000000000000008",
+      "parent_id": "01JEVENT000000000000000007",
+      "timestamp": "2026-09-10T00:26:48.000Z",
+      "type": "message",
+      "data": {
+        "role": "assistant",
+        "content": "protocol/cursor.go.",
+        "usage": {
+          "input_tokens": 70,
+          "output_tokens": 12
+        }
+      }
+    }
+  ],
+  "operation": {
+    "op": "assemble"
+  },
+  "expect": {
+    "segments": [
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000002"
+      },
+      {
+        "kind": "thinking",
+        "id": "01JEVENT000000000000000003"
+      },
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000004"
+      },
+      {
+        "kind": "tool_call",
+        "id": "01JEVENT000000000000000005"
+      },
+      {
+        "kind": "tool_result",
+        "id": "01JEVENT000000000000000006"
+      },
+      {
+        "kind": "thinking",
+        "id": "01JEVENT000000000000000007"
+      },
+      {
+        "kind": "message",
+        "id": "01JEVENT000000000000000008"
+      }
+    ]
+  }
+}

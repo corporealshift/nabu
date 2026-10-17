@@ -55,6 +55,13 @@ local model. This page lists every setting.
   over. The default is 8 copies in a row of the same 40 bytes or more. A negative value
   turns it off. The copies are not logged, and the session blocks so you can look.
   Repeated thinking is only trimmed from the log, and the turn goes on.
+- **`keep_thinking`**: `true` sends each earlier assistant turn back with the thinking
+  it was written after, as `reasoning_content`, which llama-server and Strata pass to the
+  model's template. Qwen3.8's template shows a model its earlier thinking; without this,
+  every earlier turn has an empty thinking block, and a model that worked something out
+  before a tool call works it out again after. Off by default: not every server accepts
+  it, and requests grow by the thinking, so sessions compact sooner. Thinking goes back
+  as it was logged, with repeats trimmed, and only since the last summary.
 
 ### Compaction
 

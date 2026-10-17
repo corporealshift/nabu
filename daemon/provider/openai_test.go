@@ -275,3 +275,30 @@ func TestToWireEffort(t *testing.T) {
 		})
 	}
 }
+
+// An assistant turn's thinking goes out as reasoning_content, and a turn with
+// none sends no field (docs/specs/2026-10-17-thinking-goes-back-design.md).
+func TestToWireReasoningContent(t *testing.T) {
+	body, err := json.Marshal(toWire(Request{Messages: []Message{
+		{Role: "user", Content: "hi"},
+		{Role: "assistant", Content: "hello", Reasoning: "Greet back."},
+		{Role: "assistant", Content: "again"},
+	}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &w); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.Messages[1]["reasoning_content"]; got != "Greet back." {
+		t.Errorf("reasoning_content = %v", got)
+	}
+	for _, i := range []int{0, 2} {
+		if _, ok := w.Messages[i]["reasoning_content"]; ok {
+			t.Errorf("message %d has reasoning_content: %s", i, body)
+		}
+	}
+}

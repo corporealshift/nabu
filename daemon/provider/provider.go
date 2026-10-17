@@ -14,6 +14,9 @@ type Message struct {
 	Content    string
 	ToolCalls  []ToolCall // assistant messages only
 	ToolCallID string     // tool messages only
+	// Reasoning is the thinking an assistant message was written after, set
+	// only for a provider that keeps thinking.
+	Reasoning string
 }
 
 // ToolCall is a model-requested tool invocation. Arguments is always a JSON
@@ -49,7 +52,8 @@ type Request struct {
 type Response struct {
 	Content string
 	// Reasoning is what the model thought before answering, when the
-	// provider reports any. It is shown to the reader and never sent back.
+	// provider reports any. It is shown to the reader, and goes back to the
+	// model only for a provider that keeps thinking.
 	Reasoning    string
 	ToolCalls    []ToolCall
 	Usage        protocol.Usage
@@ -103,6 +107,9 @@ type Config struct {
 	// SummaryThinking false has summaries written without thinking. A local
 	// model can think for ten minutes over one; nil leaves it to think.
 	SummaryThinking *bool
+	// KeepThinking sends each assistant turn back with the thinking it was
+	// written after (docs/specs/2026-10-17-thinking-goes-back-design.md).
+	KeepThinking bool
 }
 
 // DefaultRepeatLimit is the copies in a row that stop a reply. The reply that

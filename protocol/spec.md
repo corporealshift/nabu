@@ -151,8 +151,9 @@ The model's reasoning for the turn that follows it, when the provider reports an
 It is appended **before** the `message` it produced, so a reader that stops at the
 message has already seen the thinking behind it.
 
-Thinking is for the reader, never for the model: a `thinking` event MUST NOT appear in
-a request (§6.1), and MUST NOT affect the projection (§5). A provider that reports no
+Thinking is for the reader, and for the model only where its provider keeps thinking: a
+`thinking` event reaches a request only as §6 says, with the assistant turn it preceded,
+and MUST NOT affect the projection (§5). A provider that reports no
 reasoning produces no event — an empty `thinking` event is never written.
 
 #### `tool_call`
@@ -391,17 +392,22 @@ Order:
    results, and the block is rendered again at the next `summarize`. So everything
    before the conversation stays the same between compactions, and a provider's
    prompt cache can resume each request where the last one ended.
-4. `message`, `tool_call`, `tool_result`, and `context` blocks with `slot: suffix`
-   after the last `summarize` compaction, in log order, with §6.2 applied. A suffix
-   block is a user-role message; suffix blocks next to each other in the log are one
-   message, joined by a blank line.
+4. `message`, `thinking`, `tool_call`, `tool_result`, and `context` blocks with
+   `slot: suffix` after the last `summarize` compaction, in log order, with §6.2
+   applied. A suffix block is a user-role message; suffix blocks next to each other in
+   the log are one message, joined by a blank line. A `thinking` segment belongs to the
+   `message` segment after it, when that is the assistant's: when the provider keeps
+   thinking (`keep_thinking`), the daemon sends it as that message's reasoning, several
+   joined in order; otherwise, or when the next `message` is not the assistant's, the
+   daemon drops it
+   (`docs/specs/2026-10-17-thinking-goes-back-design.md`).
 5. Outstanding `stop_veto`s rendered per §6.4, as one user-role message.
 
 Events of type `options_change`, `state_change`, `tasks`, `goal`, `check`, `budget`,
-`notice`, `report`, `status`, and `thinking` are never sent to the model directly; their effect
+`notice`, `report`, and `status` are never sent to the model directly; their effect
 reaches the model through tool results (tasks) and the Current state block. Thinking
-has no effect to reach it: replaying a model's own reasoning back to it is not
-something every provider accepts, and nothing here depends on it.
+goes back only with the turn it preceded, as item 4 says: not every provider accepts a
+model's own reasoning back.
 
 ### 6.2 Tool-result clearing
 

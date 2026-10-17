@@ -185,6 +185,7 @@ func New(opts Options) (*Daemon, error) {
 				SummarizeAt:   p.SummarizeAt,
 
 				SummaryThinking: p.SummaryThinking,
+				KeepThinking:    p.KeepThinking,
 			}
 			providers.Add(pc, provider.NewOpenAI(pc, nil), isFirst)
 			isFirst = false
